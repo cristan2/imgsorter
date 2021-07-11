@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 chrono = "0.4"
+rexif = "0.7.3"
