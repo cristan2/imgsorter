@@ -1,0 +1,35 @@
+[ ] 1 - CLI
+    [ ] a - arg for paths
+    [ ] b - arg for min count for move
+    [ ] c - arg flag for logfile
+    [ ] d - arg flag for target dir
+    [ ] e - defaults for CLI options
+
+[ ] 2 - File handling
+    [x] a - subdirs by device name
+    [ ] b - filter supported files
+    [ ] c - handle video - mp4, etc.
+    [ ] d - handle unknown files
+    [ ] e - copy/move file only if it's file
+    [ ] f - handle dir creation fail / dir already exists
+
+[ ] 3 - Stats
+    [ ] a - show in progress statistics
+    [ ] b - show final statistics - x files found, x dirs created, x files moved, x files left untouched...
+    [ ] c - img count in dir name
+
+[ ] 4 - Config
+    [ ] a - config file - rename device with custom name (i.e. personal name instead of camera name)
+
+[ ] 5 - Optimize code
+    [ ] a - struct to model "supported file" with required metadata (file name, device info, date, etc)
+
+[ ] 6 - Misc / bugs
+    [ ] a - change copy to rename
+    [ ] b - cleanup
+    [ ] c - fix warnings
+    [ ] d - fix eroare "Access is denied." daca rulezi a doua oara si target files exista
+    [ ] e - run with debug - optional debug printouts
+
+[ ] 7 - Nice to have
+    [ ] undo ?

@@ -1,19 +1,12 @@
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::{fs, env};
 use chrono::{DateTime, Utc};
-use std::fs::{DirEntry, DirBuilder};
-// use std::collections::HashMap;
-use rexif::{ExifEntry, ExifTag};
+use std::fs::{DirEntry, DirBuilder, File};
+use std::collections::HashMap;
+use rexif::{ExifEntry, ExifTag, ExifResult};
+use std::io::{Read, Seek, SeekFrom};
 
-// [ ] arg for paths
-// [ ] arg for min count for move
-// [ ] arg flag for logfile
-// [ ] copy/move file only if it's file
-// [x] subdirs by device name
-// [ ] img count in dir name
-// [ ] change copy to rename
-// [ ] cleanup
-// [ ] undo ?
+const DBG_ON: bool = true;
 
 fn main() {
 
@@ -21,56 +14,89 @@ fn main() {
 
     println!("current working directory = {}", cwd.display());
 
-    // TODO temp, ar trebui sa fie argument sau doar current dir
+    // TODO 1a: temporary citim din ./test_pics, normal ar trebui sa fie argument sau doar current dir
     // let path_cwd = Path::new(".")
-    let path_cwd: PathBuf = cwd.join("test_pics");
+    let cwd_path: PathBuf = cwd.join("test_pics");
 
-    // TODO filter files, images
-    let file_list = fs::read_dir(&path_cwd).unwrap();
+    // TODO 2b: filter files, images
+    let all_files = fs::read_dir(&cwd_path).unwrap();
 
-    // let mut new_dir_tree: HashMap<String, Vec<DirEntry>> = HashMap::new();
+    // let img_list = all_files.filter(|f| {
+    //     *f.unwrap().file_type()
+    // })
 
-    // TODO add printout no of files
+    // TODO 3a: add printout no of files
     // iterate files, read modified date and create dirs
-    for entry in file_list {
-        // dbg!(entry);
-        let file = entry.unwrap(); // TODO unwrap?
+    for entry in all_files {
 
-        let formatted_time: Option<String> = get_modified_time(&file);
-        let device_name: Option<String> = get_device_name(&file);
-
-        // create image date subdir path
-        if let Some(date) = formatted_time {
-            let mut target_subdir = path_cwd.join(&date);
-
-            // attach device name subdir path
-            if let Some(device) = device_name {
-                target_subdir.push(&device);
-            }
-
-            create_subdir_if_required(&target_subdir, &path_cwd);
-
-            // attach file path
-            // TODO create new path variable?
-            target_subdir.push(&file.file_name());
-
-            // copy file
-            copy_file_if_not_exists(&file, &target_subdir, &path_cwd);
+        if DBG_ON {
+            /* Print whole entry */
+            println!("---------------");
+            dbg!(&entry);
+            println!("---------------");
         }
 
-        /*let sub_dir = new_dir_tree.entry(formatted_time).or_insert(Vec::new());
-        sub_dir.push(file);*/
+        // TODO 5: unwrap here?
+        let file: DirEntry = entry.unwrap();
+
+        if DBG_ON {
+            /* Print extensions */
+            let n_path = &file.path();
+            if let Some(n) = n_path.extension() {
+                let ext = n.to_str().unwrap_or("");
+                println!("Ext: '{}'", ext);
+            } else {
+                println!("No extension for : '{}'", n_path.to_str().unwrap_or("??"));
+            }
+        }
+
+        // TODO 5a: parse file to "supported file" struct
+
+        let formatted_time_opt: Option<String> = get_modified_time(&file);
+        let device_name_opt: Option<String> = get_device_name(&file);
+
+        formatted_time_opt.map(|date|
+            sort_file_to_subdir(file, date, &cwd_path, device_name_opt));
     }
+}
 
-
-/*    new_dir_tree.iter().for_each(|(dir_name, dir_files)|{
+fn print_file_list(dir_tree: HashMap<String, Vec<DirEntry>>) {
+    dir_tree.iter().for_each(|(dir_name, dir_files)|{
         println!("{} ({})", dir_name, dir_files.len());
         for file in dir_files {
             let filename = &file.file_name();
             println!("| + {}", filename.to_str().unwrap());
         }
         // dbg!(dir_files);
-    })*/
+    })
+}
+
+/// Move the file to a subdirectory named after the file date
+/// Optionally, create additional subdir based on device name
+fn sort_file_to_subdir(file: DirEntry, date: String, cwd_path: &PathBuf, device_name_opt: Option<String>) {
+    // Create target subdir based on image date
+    let mut target_subdir_path = cwd_path
+        // TODO 1d: based on target flag to create subdir for sorted files, or sort in-place?
+        .join("imgsorted")
+        .join(&date);
+
+    // attach device name subdir path
+    if let Some(device_name) = device_name_opt {
+        // TODO 4a - replace device name with custom name from config
+        target_subdir_path.push(&device_name);
+    }
+
+    println!("subdir = {:?}, path_cwd = {:?}", &target_subdir_path, cwd_path);
+
+    create_subdir_if_required(&target_subdir_path, cwd_path);
+
+    // attach file path
+    // TODO 5: create new path variable?
+    target_subdir_path.push(&file.file_name());
+
+    // copy file
+    // TODO 6a: move instead of copy
+    copy_file_if_not_exists(&file, &target_subdir_path, cwd_path);
 }
 
 fn copy_file_if_not_exists(file: &DirEntry, target_subdir: &PathBuf, path_cwd: &PathBuf) {
@@ -97,7 +123,7 @@ fn copy_file_if_not_exists(file: &DirEntry, target_subdir: &PathBuf, path_cwd: &
 
 fn create_subdir_if_required(target_subdir: &PathBuf, path_cwd: &PathBuf) {
     if target_subdir.exists() {
-        // TODO maybe log it exists?
+        // TODO 2f: handle dir already exists, maybe just log it?
         // println!("target dir exists: {}: {}",
         //          &target_subdir.strip_prefix(&path_cwd).unwrap().display(),
         //          &target_subdir.exists());
@@ -114,7 +140,7 @@ fn create_subdir_if_required(target_subdir: &PathBuf, path_cwd: &PathBuf) {
                          target_subdir.strip_prefix(&path_cwd).unwrap().display());
             },
             Err(e) =>
-            // TODO handle dir creation fail
+            // TODO 2f: handle dir creation fail
                 println!("Failed to create subdirectory {}: {:?}",
                          target_subdir.strip_prefix(&path_cwd).unwrap().display(),
                          e.kind())
@@ -142,8 +168,10 @@ fn get_modified_time(file: &DirEntry) -> Option<String> {
 fn get_device_name(file: &DirEntry) -> Option<String> {
     let file_name = file.path();
 
-    // TODO parse_file produces warnings to stderr
-    match rexif::parse_file(&file_name) {
+    // Normally we'd simply call `rexif::parse_file`,
+    // but this prints pointless warnings to stderr
+    // match rexif::parse_file(&file_name) {
+    match read_exif_file(&file_name) {
 
         Ok(exif) => {
             let model = &exif.entries.iter()
@@ -171,4 +199,16 @@ fn get_device_name(file: &DirEntry) -> Option<String> {
         }
     }
 
+}
+
+/// Replicate implementation of `rexif::parse_file` and `rexif::read_file`
+/// to bypass `rexif::parse_buffer` which prints warnings to stderr
+fn read_exif_file<P: AsRef<Path>>(file_name: P) -> ExifResult {
+    // let file_name = file_entry.path();
+    let mut file = File::open(file_name).unwrap();
+    &file.seek(SeekFrom::Start(0)).unwrap();
+    let mut contents: Vec<u8> = Vec::new();
+    &file.read_to_end(&mut contents);
+    let (res, _) = rexif::parse_buffer_quiet(&contents);
+    res
 }
