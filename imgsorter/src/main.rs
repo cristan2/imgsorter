@@ -6,8 +6,15 @@ use std::collections::HashMap;
 use rexif::{ExifEntry, ExifTag, ExifResult};
 use std::io::{Read, Seek, SeekFrom};
 
-const DBG_ON: bool = false;
+const DBG_ON: bool = true;
 const NO_DATE: &'static str = "no date";
+
+#[derive(Debug)]
+pub enum FileType {
+    Unknown,
+    Image,
+    Video,
+}
 
 fn main() -> Result<(), std::io::Error> {
 
@@ -32,38 +39,46 @@ fn main() -> Result<(), std::io::Error> {
 
         if DBG_ON {
             /* Print whole entry */
-            println!("---------------");
+            println!("===============");
             dbg!(&dir_entry);
             println!("---------------");
         }
 
+        let file_name = dir_entry.file_name();
         let dir_entry_metadata: Metadata = dir_entry.metadata()?;
 
         if (dir_entry_metadata.is_dir()) {
-            println!("{:?} is a directory, ignoring", dir_entry.file_name());
+            println!("{:?} is a directory, ignoring", &file_name);
         } else {
-            if DBG_ON {
-                /* Print extensions */
-                let n_path = &dir_entry.path();
-                if let Some(n) = n_path.extension() {
-                    let ext = n.to_str().unwrap_or("");
-                    println!("Ext: '{}'", ext);
-                } else {
-                    println!("No extension for : '{}'", n_path.to_str().unwrap_or("??"));
-                }
-            }
 
-            // TODO 2b: process only supported files (images and videos)
-            // TODO 5a: parse file to "supported file" struct
-
+            let extension_opt: Option<String> = get_extension(&dir_entry);
+            let file_type = get_file_type(&extension_opt);
             let formatted_time_opt: Option<String> = get_modified_time(&dir_entry_metadata);
             let device_name_opt: Option<String> = get_device_name(&dir_entry);
 
-            match formatted_time_opt {
-                Some(date) =>
-                    sort_file_to_subdir(dir_entry, date, &cwd_path, device_name_opt),
-                None =>
-                    sort_file_to_subdir(dir_entry, NO_DATE.to_string(), &cwd_path, device_name_opt)
+            // TODO 5a: parse file to "supported file" struct
+
+            if DBG_ON {
+                if let Some(ext) = extension_opt {
+                    println!("File {:?} has extension '{}'", &file_name, ext);
+                    println!("File type for extension {:?} is {:?}", &ext, &file_type);
+                } else {
+                    println!("No extension for : '{}'", &dir_entry.path().to_str().unwrap_or("??"));
+                }
+            }
+
+            // Copy images and videos to subdirs based on modified date
+            // TODO 6a: move instead of copy
+            match file_type {
+                FileType::Image | FileType::Video =>
+                    match formatted_time_opt {
+                        Some(date) =>
+                            sort_file_to_subdir(dir_entry, date, &cwd_path, device_name_opt),
+                        None =>
+                            sort_file_to_subdir(dir_entry, NO_DATE.to_string(), &cwd_path, device_name_opt)
+                    },
+                FileType::Unknown =>
+                    println!("Skipping unknown file {:?}", &file_name)
             }
         }
     }
@@ -97,7 +112,10 @@ fn sort_file_to_subdir(file: DirEntry, date: String, cwd_path: &PathBuf, device_
         target_subdir_path.push(&device_name);
     }
 
-    println!("subdir = {:?}, path_cwd = {:?}", &target_subdir_path, cwd_path);
+    if DBG_ON {
+        println!("Current dir = {:?}", cwd_path);
+        println!("Target subdir = {:?}", &target_subdir_path);
+    }
 
     create_subdir_if_required(&target_subdir_path, cwd_path);
 
@@ -167,6 +185,32 @@ fn get_modified_time(file_metadata: &Metadata) -> Option<String> {
     })
 }
 
+fn get_extension(file: &DirEntry) -> Option<String> {
+    file.path()
+        .extension()
+        .map_or(None, |os| {
+            os.to_str().map_or(None, |s|
+                Some(String::from(s)))
+        })
+}
+
+fn get_file_type(extension_opt: &Option<String>) -> FileType {
+    match extension_opt {
+        Some(extension) => {
+            match extension.to_lowercase().as_str() {
+                "jpg" | "jpeg" | "png" | "tiff" =>
+                    FileType::Image,
+                "mp4" | "mov" | "3gp" =>
+                    FileType::Video,
+                _ =>
+                    FileType::Unknown
+            }
+        }
+        None =>
+            FileType::Unknown,
+    }
+}
+
 fn get_device_name(file: &DirEntry) -> Option<String> {
     let file_name = file.path();
 
@@ -196,7 +240,7 @@ fn get_device_name(file: &DirEntry) -> Option<String> {
 
         Err(e) => {
             // dbg!(e);
-            println!("Error in {:?}: {}", &file_name, e.to_string());
+            println!("Can not read EXIF for {:?}: {}", &file_name, e.to_string());
             None
         }
     }

@@ -7,9 +7,9 @@
 
 [ ] 2 - File handling
     [x] a - subdirs by device name
-    [ ] b - filter supported files
-    [ ] c - handle video - mp4, etc.
-    [ ] d - handle unknown files
+    [x] b - filter supported files
+    [x] c - handle video - mp4, etc.
+    [x] d - handle unknown files
     [ ] e - copy/move file only if it's file
     [ ] f - handle dir creation fail / dir already exists
 
