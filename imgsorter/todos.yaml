@@ -34,3 +34,4 @@
 
 [ ] 7 - Nice to have
     [ ] undo ?
+    [ ] maybe don't read file list into memory

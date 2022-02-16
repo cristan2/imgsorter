@@ -1,12 +1,13 @@
 use std::path::{PathBuf, Path};
 use std::{fs, env};
 use chrono::{DateTime, Utc};
-use std::fs::{DirEntry, DirBuilder, File};
+use std::fs::{DirEntry, DirBuilder, File, Metadata};
 use std::collections::HashMap;
 use rexif::{ExifEntry, ExifTag, ExifResult};
 use std::io::{Read, Seek, SeekFrom};
 
 const DBG_ON: bool = false;
+const NO_DATE: &'static str = "no date";
 
 fn main() -> Result<(), std::io::Error> {
 
@@ -19,51 +20,52 @@ fn main() -> Result<(), std::io::Error> {
     // let path_cwd = Path::new(".")
     let cwd_path: PathBuf = cwd.join("test_pics");
 
-    // filter out subdirectories from current dir
-    // TODO 2b: filter files, images
-    let all_files = fs::read_dir(&cwd_path)?
+    // Read dir contents and filter out error results
+    let dir_contents = fs::read_dir(&cwd_path)?
         .into_iter()
-        .filter(|entry| entry.is_ok())
-        .map(|entry| entry.unwrap())
-        .filter(|entry|entry.metadata().is_ok())
-        .filter(|entry| {
-            let metadata = &entry.metadata().unwrap();
-            metadata.is_file()
-        })
+        .filter_map(|entry| entry.ok())
         .collect::<Vec<DirEntry>>();
 
     // TODO 3a: add printout no of files
     // iterate files, read modified date and create subdirs
-    for file in all_files {
+    for dir_entry in dir_contents {
 
         if DBG_ON {
             /* Print whole entry */
             println!("---------------");
-            dbg!(&file);
+            dbg!(&dir_entry);
             println!("---------------");
         }
 
-        // TODO 5: unwrap here?
-        // let file: DirEntry = entry.unwrap();
+        let dir_entry_metadata: Metadata = dir_entry.metadata()?;
 
-        if DBG_ON {
-            /* Print extensions */
-            let n_path = &file.path();
-            if let Some(n) = n_path.extension() {
-                let ext = n.to_str().unwrap_or("");
-                println!("Ext: '{}'", ext);
-            } else {
-                println!("No extension for : '{}'", n_path.to_str().unwrap_or("??"));
+        if (dir_entry_metadata.is_dir()) {
+            println!("{:?} is a directory, ignoring", dir_entry.file_name());
+        } else {
+            if DBG_ON {
+                /* Print extensions */
+                let n_path = &dir_entry.path();
+                if let Some(n) = n_path.extension() {
+                    let ext = n.to_str().unwrap_or("");
+                    println!("Ext: '{}'", ext);
+                } else {
+                    println!("No extension for : '{}'", n_path.to_str().unwrap_or("??"));
+                }
+            }
+
+            // TODO 2b: process only supported files (images and videos)
+            // TODO 5a: parse file to "supported file" struct
+
+            let formatted_time_opt: Option<String> = get_modified_time(&dir_entry_metadata);
+            let device_name_opt: Option<String> = get_device_name(&dir_entry);
+
+            match formatted_time_opt {
+                Some(date) =>
+                    sort_file_to_subdir(dir_entry, date, &cwd_path, device_name_opt),
+                None =>
+                    sort_file_to_subdir(dir_entry, NO_DATE.to_string(), &cwd_path, device_name_opt)
             }
         }
-
-        // TODO 5a: parse file to "supported file" struct
-
-        let formatted_time_opt: Option<String> = get_modified_time(&file);
-        let device_name_opt: Option<String> = get_device_name(&file);
-
-        formatted_time_opt.map(|date|
-            sort_file_to_subdir(file, date, &cwd_path, device_name_opt));
     }
 
     Ok(())
@@ -87,7 +89,7 @@ fn sort_file_to_subdir(file: DirEntry, date: String, cwd_path: &PathBuf, device_
     let mut target_subdir_path = cwd_path
         // TODO 1d: based on target flag to create subdir for sorted files, or sort in-place?
         .join("imgsorted")
-        .join(&date);
+        .join(date);
 
     // attach device name subdir path
     if let Some(device_name) = device_name_opt {
@@ -157,21 +159,12 @@ fn create_subdir_if_required(target_subdir: &PathBuf, path_cwd: &PathBuf) {
     };
 }
 
-fn get_modified_time(file: &DirEntry) -> Option<String> {
-    let modified_time = if let Ok(metadata) = file.metadata() {
-        match metadata.modified() {
-            Ok(created) => {
-                let datetime: DateTime<Utc> = created.into(); // 2021-06-05T16:26:22.756168300Z
-                Some(datetime.format("%Y.%m.%d").to_string())
-            },
-            Err(_) =>
-                None
-        }
-    } else {
-        None
-    };
-
-    modified_time
+/// Read metadata and return file modified time in YYYY-MM-DD format
+fn get_modified_time(file_metadata: &Metadata) -> Option<String> {
+    file_metadata.modified().map_or(None, |system_time| {
+        let datetime: DateTime<Utc> = system_time.into(); // 2021-06-05T16:26:22.756168300Z
+        Some(datetime.format("%Y.%m.%d").to_string())
+    })
 }
 
 fn get_device_name(file: &DirEntry) -> Option<String> {
