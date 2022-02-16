@@ -28,7 +28,8 @@
     [ ] a - change copy to rename
     [ ] b - cleanup
     [ ] c - fix warnings
-    [ ] d - fix eroare "Access is denied." daca rulezi a doua oara si target files exista
+    [x] d - fix eroare "Access is denied." daca rulezi a doua oara si target files exista 
+          - eroare cand target dir exista si se incearca citire metadate
     [ ] e - run with debug - optional debug printouts
 
 [ ] 7 - Nice to have

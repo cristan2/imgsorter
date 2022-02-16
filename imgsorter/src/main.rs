@@ -6,10 +6,11 @@ use std::collections::HashMap;
 use rexif::{ExifEntry, ExifTag, ExifResult};
 use std::io::{Read, Seek, SeekFrom};
 
-const DBG_ON: bool = true;
+const DBG_ON: bool = false;
 
-fn main() {
+fn main() -> Result<(), std::io::Error> {
 
+    // TODO 5: unwrap here?
     let cwd = env::current_dir().unwrap();
 
     println!("current working directory = {}", cwd.display());
@@ -18,26 +19,32 @@ fn main() {
     // let path_cwd = Path::new(".")
     let cwd_path: PathBuf = cwd.join("test_pics");
 
+    // filter out subdirectories from current dir
     // TODO 2b: filter files, images
-    let all_files = fs::read_dir(&cwd_path).unwrap();
-
-    // let img_list = all_files.filter(|f| {
-    //     *f.unwrap().file_type()
-    // })
+    let all_files = fs::read_dir(&cwd_path)?
+        .into_iter()
+        .filter(|entry| entry.is_ok())
+        .map(|entry| entry.unwrap())
+        .filter(|entry|entry.metadata().is_ok())
+        .filter(|entry| {
+            let metadata = &entry.metadata().unwrap();
+            metadata.is_file()
+        })
+        .collect::<Vec<DirEntry>>();
 
     // TODO 3a: add printout no of files
-    // iterate files, read modified date and create dirs
-    for entry in all_files {
+    // iterate files, read modified date and create subdirs
+    for file in all_files {
 
         if DBG_ON {
             /* Print whole entry */
             println!("---------------");
-            dbg!(&entry);
+            dbg!(&file);
             println!("---------------");
         }
 
         // TODO 5: unwrap here?
-        let file: DirEntry = entry.unwrap();
+        // let file: DirEntry = entry.unwrap();
 
         if DBG_ON {
             /* Print extensions */
@@ -58,6 +65,8 @@ fn main() {
         formatted_time_opt.map(|date|
             sort_file_to_subdir(file, date, &cwd_path, device_name_opt));
     }
+
+    Ok(())
 }
 
 fn print_file_list(dir_tree: HashMap<String, Vec<DirEntry>>) {
@@ -198,7 +207,6 @@ fn get_device_name(file: &DirEntry) -> Option<String> {
             None
         }
     }
-
 }
 
 /// Replicate implementation of `rexif::parse_file` and `rexif::read_file`
