@@ -20,12 +20,15 @@ fn main() -> Result<(), std::io::Error> {
 
     // TODO 5: unwrap here?
     let cwd = env::current_dir().unwrap();
-
     println!("current working directory = {}", cwd.display());
 
     // TODO 1a: temporary citim din ./test_pics, normal ar trebui sa fie argument sau doar current dir
     // let path_cwd = Path::new(".")
     let cwd_path: PathBuf = cwd.join("test_pics");
+
+    // Create target subdir based on image date
+    // TODO 1d: based on target flag to create subdir for sorted files, or sort in-place?
+    let target_dir_path = cwd_path.join("imgsorted");
 
     // Read dir contents and filter out error results
     let dir_contents = fs::read_dir(&cwd_path)?
@@ -47,7 +50,7 @@ fn main() -> Result<(), std::io::Error> {
         let file_name = dir_entry.file_name();
         let dir_entry_metadata: Metadata = dir_entry.metadata()?;
 
-        if (dir_entry_metadata.is_dir()) {
+        if dir_entry_metadata.is_dir() {
             println!("{:?} is a directory, ignoring", &file_name);
         } else {
 
@@ -70,13 +73,17 @@ fn main() -> Result<(), std::io::Error> {
             // Copy images and videos to subdirs based on modified date
             // TODO 6a: move instead of copy
             match file_type {
-                FileType::Image | FileType::Video =>
-                    match formatted_time_opt {
+                FileType::Image | FileType::Video => {
+
+                    let mut target_subdir = match formatted_time_opt {
                         Some(date) =>
-                            sort_file_to_subdir(dir_entry, date, &cwd_path, device_name_opt),
+                            target_dir_path.join(date),
                         None =>
-                            sort_file_to_subdir(dir_entry, NO_DATE.to_string(), &cwd_path, device_name_opt)
-                    },
+                            target_dir_path.join(NO_DATE.to_string())
+                    };
+
+                    sort_file_to_subdir(dir_entry, &mut target_subdir, &cwd_path, device_name_opt)
+                },
                 FileType::Unknown =>
                     println!("Skipping unknown file {:?}", &file_name)
             }
@@ -99,33 +106,29 @@ fn print_file_list(dir_tree: HashMap<String, Vec<DirEntry>>) {
 
 /// Move the file to a subdirectory named after the file date
 /// Optionally, create additional subdir based on device name
-fn sort_file_to_subdir(file: DirEntry, date: String, cwd_path: &PathBuf, device_name_opt: Option<String>) {
-    // Create target subdir based on image date
-    let mut target_subdir_path = cwd_path
-        // TODO 1d: based on target flag to create subdir for sorted files, or sort in-place?
-        .join("imgsorted")
-        .join(date);
+fn sort_file_to_subdir(file: DirEntry, target_subdir: &mut PathBuf, cwd_path: &PathBuf, device_name_opt: Option<String>) {
 
     // attach device name subdir path
     if let Some(device_name) = device_name_opt {
         // TODO 4a - replace device name with custom name from config
-        target_subdir_path.push(&device_name);
+        target_subdir.push(&device_name);
     }
 
     if DBG_ON {
         println!("Current dir = {:?}", cwd_path);
-        println!("Target subdir = {:?}", &target_subdir_path);
+        println!("Target subdir = {:?}", target_subdir);
     }
 
-    create_subdir_if_required(&target_subdir_path, cwd_path);
+    // create target subdir
+    create_subdir_if_required(target_subdir, cwd_path);
 
     // attach file path
     // TODO 5: create new path variable?
-    target_subdir_path.push(&file.file_name());
+    target_subdir.push(&file.file_name());
 
     // copy file
     // TODO 6a: move instead of copy
-    copy_file_if_not_exists(&file, &target_subdir_path, cwd_path);
+    copy_file_if_not_exists(&file, target_subdir, cwd_path);
 }
 
 fn copy_file_if_not_exists(file: &DirEntry, target_subdir: &PathBuf, path_cwd: &PathBuf) {
@@ -150,6 +153,7 @@ fn copy_file_if_not_exists(file: &DirEntry, target_subdir: &PathBuf, path_cwd: &
              file_copy_status);
 }
 
+// TODO 6b: path_cwd is only required for printlns
 fn create_subdir_if_required(target_subdir: &PathBuf, path_cwd: &PathBuf) {
     if target_subdir.exists() {
         // TODO 2f: handle dir already exists, maybe just log it?
@@ -169,7 +173,7 @@ fn create_subdir_if_required(target_subdir: &PathBuf, path_cwd: &PathBuf) {
                          target_subdir.strip_prefix(&path_cwd).unwrap().display());
             },
             Err(e) =>
-            // TODO 2f: handle dir creation fail
+                // TODO 2f: handle dir creation fail
                 println!("Failed to create subdirectory {}: {:?}",
                          target_subdir.strip_prefix(&path_cwd).unwrap().display(),
                          e.kind())
@@ -194,6 +198,8 @@ fn get_extension(file: &DirEntry) -> Option<String> {
         })
 }
 
+/// Determine the type of file based on the file extension
+/// Return one of Image|Video|Unknown enum types
 fn get_file_type(extension_opt: &Option<String>) -> FileType {
     match extension_opt {
         Some(extension) => {

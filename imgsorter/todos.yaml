@@ -10,7 +10,7 @@
     [x] b - filter supported files
     [x] c - handle video - mp4, etc.
     [x] d - handle unknown files
-    [ ] e - copy/move file only if it's file
+    [ ] e - copy/move file only if it's supported file
     [ ] f - handle dir creation fail / dir already exists
 
 [ ] 3 - Stats
@@ -23,6 +23,7 @@
 
 [ ] 5 - Optimize code
     [ ] a - struct to model "supported file" with required metadata (file name, device info, date, etc)
+    [ ] b - separate module for "file utils"
 
 [ ] 6 - Misc / bugs
     [ ] a - change copy to rename
