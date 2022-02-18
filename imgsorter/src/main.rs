@@ -46,16 +46,16 @@ impl FileStats {
         }
     }
 
-    pub fn files_total(&mut self) { self.files_total += 1}
-    pub fn img_moved(&mut self) { self.img_moved += 1}
-    pub fn img_skipped(&mut self) { self.img_skipped += 1}
-    pub fn vid_moved(&mut self) { self.vid_moved += 1}
-    pub fn vid_skipped(&mut self) { self.vid_skipped += 1}
-    pub fn unknown_skipped(&mut self) { self.unknown_skipped += 1}
-    pub fn dirs_skipped(&mut self) { self.dirs_skipped += 1}
-    pub fn dirs_created(&mut self) { self.dirs_created += 1}
-    pub fn error_file_move(&mut self) { self.error_file_move += 1}
-    pub fn error_dir_creation(&mut self) { self.error_dir_creation += 1}
+    pub fn inc_files_total(&mut self) { self.files_total += 1 }
+    pub fn inc_img_moved(&mut self) { self.img_moved += 1 }
+    pub fn inc_img_skipped(&mut self) { self.img_skipped += 1 }
+    pub fn inc_vid_moved(&mut self) { self.vid_moved += 1 }
+    pub fn inc_vid_skipped(&mut self) { self.vid_skipped += 1 }
+    pub fn inc_unknown_skipped(&mut self) { self.unknown_skipped += 1 }
+    pub fn inc_dirs_skipped(&mut self) { self.dirs_skipped += 1 }
+    pub fn inc_dirs_created(&mut self) { self.dirs_created += 1 }
+    pub fn inc_error_file_move(&mut self) { self.error_file_move += 1 }
+    pub fn inc_error_dir_creation(&mut self) { self.error_dir_creation += 1 }
 }
 
 #[derive(Debug)]
@@ -135,7 +135,7 @@ fn main() -> Result<(), std::io::Error> {
     // Iterate files, read modified date and create subdirs
     for dir_entry in dir_contents {
 
-        stats.files_total();
+        stats.inc_files_total();
 
         let current_file: &SupportedFile = &SupportedFile::new(&dir_entry);
 
@@ -150,7 +150,7 @@ fn main() -> Result<(), std::io::Error> {
 
         if current_file.is_dir() {
             println!("Skipping directory {:?}",current_file.file_name);
-            stats.dirs_skipped();
+            stats.inc_dirs_skipped();
         } else {
 
             // Copy images and videos to subdirs based on modified date
@@ -161,7 +161,7 @@ fn main() -> Result<(), std::io::Error> {
                     sort_file_to_subdir(current_file, &mut target_subdir, &cwd_path, &mut stats)
                 },
                 FileType::Unknown => {
-                    stats.unknown_skipped();
+                    stats.inc_unknown_skipped();
                     println!("Skipping unknown file {:?}", current_file.get_file_name_ref())
                 }
             }
@@ -229,8 +229,8 @@ fn copy_file_if_not_exists(
 
         // Record stats for skipped files
         match file.file_type {
-            FileType::Image   => stats.img_skipped(),
-            FileType::Video   => stats.vid_skipped(),
+            FileType::Image   => stats.inc_img_skipped(),
+            FileType::Video   => stats.inc_vid_skipped(),
             // don't record any stats for this, shouldn't get one here anyway
             FileType::Unknown => ()
         }
@@ -242,8 +242,8 @@ fn copy_file_if_not_exists(
             Ok(_) => {
                 // Record stats for copied file
                 match file.file_type {
-                    FileType::Image   => stats.img_moved(),
-                    FileType::Video   => stats.vid_moved(),
+                    FileType::Image   => stats.inc_img_moved(),
+                    FileType::Video   => stats.inc_vid_moved(),
                     // don't record any stats for this, shouldn't get one here anyway
                     FileType::Unknown =>()
                 }
@@ -252,7 +252,7 @@ fn copy_file_if_not_exists(
             Err(err) => {
                 println!("File copy error: {:?}: ERROR {:?}", file.get_file_path_ref(), err);
                 // TODO 5c: log error info
-                stats.error_file_move();
+                stats.inc_error_file_move();
                 "ERROR"
             }
         }
@@ -283,13 +283,13 @@ fn create_subdir_if_required(target_subdir: &PathBuf, path_cwd: &PathBuf, stats:
 
         match subdir_creation {
             Ok(_) => {
-                stats.dirs_created();
+                stats.inc_dirs_created();
                 println!("> created subdirectory {}",
                          target_subdir.strip_prefix(&path_cwd).unwrap().display());
             },
             Err(e) => {
                 // TODO 2f: handle dir creation fail
-                stats.error_dir_creation();
+                stats.inc_error_dir_creation();
                 println!("Failed to create subdirectory {}: {:?}",
                          target_subdir.strip_prefix(&path_cwd).unwrap().display(),
                          e.kind())
