@@ -22,10 +22,11 @@
     [ ] a - config file - rename device with custom name (i.e. personal name instead of camera name)
 
 [ ] 5 - Optimize code
-    [ ] a - struct to model "supported file" with required metadata (file name, device info, date, etc)
+    [x] a - struct to model "supported file" with required metadata (file name, device info, date, etc)
     [ ] b - separate module for "file utils"
     [ ] c - logging
     [ ] d - better error handling
+    [ ] e - better name for SupportedFile (or maybe don't accept Unknown file types)
 
 [ ] 6 - Misc / bugs
     [ ] a - change copy to rename

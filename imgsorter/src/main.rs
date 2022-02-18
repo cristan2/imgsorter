@@ -1,5 +1,6 @@
 use std::path::{PathBuf, Path};
 use std::{fs, env};
+use std::ffi::OsString;
 use chrono::{DateTime, Utc};
 use std::fs::{DirEntry, DirBuilder, File, Metadata};
 use rexif::{ExifEntry, ExifTag, ExifResult};
@@ -57,6 +58,57 @@ impl FileStats {
     pub fn error_dir_creation(&mut self) { self.error_dir_creation += 1}
 }
 
+#[derive(Debug)]
+pub struct SupportedFile {
+    file_name: OsString,
+    file_path: PathBuf,
+    file_type: FileType,
+    extension: Option<String>,
+    // file modified date in YYYY-MM-DD format
+    date_str: String,
+    metadata: Metadata,
+    device_name: Option<String>
+}
+
+// TODO 5e: find better name
+impl SupportedFile {
+    pub fn new(dir_entry: &DirEntry) -> SupportedFile {
+        let _extension = get_extension(dir_entry);
+        let _metadata = dir_entry.metadata().unwrap();
+        let _modified_time = get_modified_time(&_metadata);
+
+        SupportedFile {
+            file_name: dir_entry.file_name(),
+            file_path: dir_entry.path(),
+            file_type: get_file_type(&_extension),
+            extension: _extension,
+            date_str:_modified_time.unwrap_or(NO_DATE.to_string()),
+            metadata: _metadata,
+            device_name: get_device_name(dir_entry)
+        }
+    }
+
+    pub fn is_dir(&self) -> bool {
+        self.metadata.is_dir()
+    }
+
+    pub fn get_file_name_ref(&self) -> &OsString {
+        &self.file_name
+    }
+
+    pub fn get_file_path_ref(&self) -> &PathBuf {
+        &self.file_path
+    }
+
+    pub fn get_date_str_ref(&self) -> &String {
+        &self.date_str
+    }
+
+    pub fn get_device_name_ref(&self) -> &Option<String> {
+        &self.device_name
+    }
+}
+
 fn main() -> Result<(), std::io::Error> {
 
     let mut stats = FileStats::new();
@@ -85,48 +137,32 @@ fn main() -> Result<(), std::io::Error> {
 
         stats.files_total();
 
+        let current_file: &SupportedFile = &SupportedFile::new(&dir_entry);
+
         if DBG_ON {
             /* Print whole entry */
             println!("===============");
             dbg!(&dir_entry);
             println!("---------------");
+            dbg!(current_file);
+            println!("---------------");
         }
 
-        let file_name = dir_entry.file_name();
-        let dir_entry_metadata: Metadata = dir_entry.metadata()?;
-
-        if dir_entry_metadata.is_dir() {
-            println!("Skipping directory {:?}", &file_name);
+        if current_file.is_dir() {
+            println!("Skipping directory {:?}",current_file.file_name);
             stats.dirs_skipped();
         } else {
 
-            let extension_opt: Option<String> = get_extension(&dir_entry);
-            let file_type = get_file_type(&extension_opt);
-            let formatted_time_opt: Option<String> = get_modified_time(&dir_entry_metadata);
-            let device_name_opt: Option<String> = get_device_name(&dir_entry);
-
-            // TODO 5a: parse file to "supported file" struct
-
-            if DBG_ON {
-                if let Some(ext) = extension_opt {
-                    println!("File {:?} has extension '{}'", &file_name, ext);
-                    println!("File type for extension {:?} is {:?}", &ext, &file_type);
-                } else {
-                    println!("No extension for : '{}'", &dir_entry.path().to_str().unwrap_or("??"));
-                }
-            }
-
             // Copy images and videos to subdirs based on modified date
             // TODO 6a: move instead of copy
-            match file_type {
+            match current_file.file_type {
                 FileType::Image | FileType::Video => {
-                    let mut target_subdir = target_dir_path
-                        .join(formatted_time_opt.unwrap_or(NO_DATE.to_string()));
-                    sort_file_to_subdir(dir_entry, &mut target_subdir, &cwd_path, device_name_opt, file_type, &mut stats)
+                    let mut target_subdir = target_dir_path.join(current_file.get_date_str_ref());
+                    sort_file_to_subdir(current_file, &mut target_subdir, &cwd_path, &mut stats)
                 },
                 FileType::Unknown => {
                     stats.unknown_skipped();
-                    println!("Skipping unknown file {:?}", &file_name)
+                    println!("Skipping unknown file {:?}", current_file.get_file_name_ref())
                 }
             }
         }
@@ -153,16 +189,14 @@ fn main() -> Result<(), std::io::Error> {
 /// Move the file to a subdirectory named after the file date
 /// Optionally, create additional subdir based on device name
 fn sort_file_to_subdir(
-    file: DirEntry,
+    file: &SupportedFile,
     target_subdir: &mut PathBuf,
     cwd_path: &PathBuf,
-    device_name_opt: Option<String>,
-    file_type: FileType,
     stats: &mut FileStats
 ) {
 
     // attach device name subdir path
-    if let Some(device_name) = device_name_opt {
+    if let Some(device_name) = file.get_device_name_ref() {
         // TODO 4a - replace device name with custom name from config
         target_subdir.push(&device_name);
     }
@@ -177,25 +211,24 @@ fn sort_file_to_subdir(
 
     // attach file path
     // TODO 5: create new path variable?
-    target_subdir.push(&file.file_name());
+    target_subdir.push(file.get_file_name_ref());
 
     // copy file
     // TODO 6a: move instead of copy
-    copy_file_if_not_exists(&file, target_subdir, cwd_path, file_type, stats);
+    copy_file_if_not_exists(file, target_subdir, cwd_path, stats);
 }
 
 fn copy_file_if_not_exists(
-    file: &DirEntry,
+    file: &SupportedFile,
     destination_path: &PathBuf,
     path_cwd: &PathBuf,
-    file_type: FileType,
     stats: &mut FileStats
 ) {
     let file_copy_status = if destination_path.exists() {
         // println!("File already exists, skipping: {:?}", &file.file_name());
 
         // Record stats for skipped files
-        match file_type {
+        match file.file_type {
             FileType::Image   => stats.img_skipped(),
             FileType::Video   => stats.vid_skipped(),
             // don't record any stats for this, shouldn't get one here anyway
@@ -204,19 +237,20 @@ fn copy_file_if_not_exists(
         "already exists"
 
     } else {
-        match fs::copy(file.path(), destination_path) {
+        let copy_result = fs::copy(file.get_file_path_ref(), destination_path);
+        match copy_result {
             Ok(_) => {
                 // Record stats for copied file
-                match file_type {
+                match file.file_type {
                     FileType::Image   => stats.img_moved(),
                     FileType::Video   => stats.vid_moved(),
                     // don't record any stats for this, shouldn't get one here anyway
                     FileType::Unknown =>()
                 }
-                "ok"
+                "OK"
             },
             Err(err) => {
-                println!("File copy error: {:?}: ERROR {:?}", &file.file_name(), err);
+                println!("File copy error: {:?}: ERROR {:?}", file.get_file_path_ref(), err);
                 // TODO 5c: log error info
                 stats.error_file_move();
                 "ERROR"
@@ -227,7 +261,7 @@ fn copy_file_if_not_exists(
     // TODO 3a/5c: maybe only log this?
     println!("Copying {} -> {} ... {}",
              // &file.file_name().to_str().unwrap(),
-             file.path().strip_prefix(path_cwd).unwrap().display(),
+             file.get_file_path_ref().strip_prefix(path_cwd).unwrap().display(),
              // &new_file_path.to_str().unwrap()),
              destination_path.strip_prefix(path_cwd).unwrap().display(),
              file_copy_status);
@@ -301,6 +335,13 @@ fn get_file_type(extension_opt: &Option<String>) -> FileType {
 }
 
 fn get_device_name(file: &DirEntry) -> Option<String> {
+
+    // TODO 5d: handle this unwrap
+    // Return early if this is not a file, there's no device name to read
+    if file.metadata().unwrap().is_dir() {
+        return None
+    }
+
     let file_name = file.path();
 
     // Normally we'd simply call `rexif::parse_file`,
@@ -340,6 +381,7 @@ fn get_device_name(file: &DirEntry) -> Option<String> {
 /// to bypass `rexif::parse_buffer` which prints warnings to stderr
 fn read_exif_file<P: AsRef<Path>>(file_name: P) -> ExifResult {
     // let file_name = file_entry.path();
+    // TODO 5d: handle these unwraps
     let mut file = File::open(file_name).unwrap();
     let _ = &file.seek(SeekFrom::Start(0)).unwrap();
     let mut contents: Vec<u8> = Vec::new();
