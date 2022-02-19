@@ -7,7 +7,9 @@ use rexif::{ExifEntry, ExifTag, ExifResult};
 use std::io::{Read, Seek, SeekFrom};
 
 const DBG_ON: bool = false;
-const NO_DATE: &'static str = "no date";
+const NO_DATE_STR: &'static str = "no date";
+const DEFAULT_TARGET_SUBDIR: &'static str = "imgsorted";
+const DEFAULT_MIN_COUNT: i32 = 1;
 
 #[derive(Debug)]
 pub enum FileType {
@@ -82,7 +84,7 @@ impl SupportedFile {
             file_path: dir_entry.path(),
             file_type: get_file_type(&_extension),
             extension: _extension,
-            date_str:_modified_time.unwrap_or(NO_DATE.to_string()),
+            date_str:_modified_time.unwrap_or(NO_DATE_STR.to_string()),
             metadata: _metadata,
             device_name: get_device_name(dir_entry)
         }
@@ -109,15 +111,116 @@ impl SupportedFile {
     }
 }
 
+#[derive(Debug)]
+pub struct CliArgs {
+    /// The directory where the images to be sorted are located.
+    /// If not provided, the current working dir will be used
+    source_path: PathBuf,
+
+    /// The directory where the images to be sorted will be moved.
+    /// If not provided, the current working dir will be used.
+    /// Additionally, a subdir may be set via `set_target_subdir` where
+    /// all the sorted files and their date directories will be created
+    target_path: PathBuf,
+
+    /// The minimum number of files with the same date necessary
+    /// for a dedicated subdir to be created and the files moved
+    min_files_per_dir: i32,
+
+    /// The current working directory
+    cwd: PathBuf
+}
+
+impl CliArgs {
+
+    /// Simple constructor using defaults: the CWD is the source
+    /// directory and subdir will be created for the target paths
+    fn new() -> Result<CliArgs, std::io::Error> {
+
+        let cwd = env::current_dir()?;
+
+        Ok(
+            CliArgs {
+                source_path: cwd.clone(),
+                target_path: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
+                min_files_per_dir: DEFAULT_MIN_COUNT,
+                cwd
+            })
+    }
+
+    fn new_with_options(
+        // Full path from where to read images to be sorted
+        source: Option<String>,
+        // Subdir inside the CWD from where to read images to be sorted
+        // Note: if `source` is provided, this is ignored
+        cwd_source_subdir: Option<String>,
+        // Full path where the sorted images will be moved
+        target: Option<String>,
+        // Subdir inside the CWD where the sorted images will be moved
+        // Note: if `target` is provided, this is ignored
+        cwd_target_subdir: Option<String>,
+        min_files: Option<i32>,
+    ) -> Result<CliArgs, std::io::Error> {
+
+        fn create_path(provided_path: Option<String>, path_subdir: Option<String>, cwd: &PathBuf) -> PathBuf {
+            match provided_path {
+                // if a full path has been provided, use that
+                Some(path) =>
+                    PathBuf::from(path),
+                // otherwise, use the cwd...
+                None => {
+                    // but create a subdir if one was provided
+                    match path_subdir {
+                        Some(subdir) =>
+                            cwd.join(subdir),
+                        None =>
+                            cwd.clone()
+                    }
+                }
+            }
+        }
+
+        let cwd = env::current_dir()?;
+
+        Ok(
+            CliArgs {
+                source_path: create_path(source, cwd_source_subdir, &cwd),
+                target_path: create_path(
+                    target,
+                    cwd_target_subdir.or(Some(String::from(DEFAULT_TARGET_SUBDIR))),
+                    &cwd),
+                min_files_per_dir: min_files.unwrap_or(DEFAULT_MIN_COUNT),
+                cwd
+            }
+        )
+    }
+
+    fn set_source_subdir(mut self, subdir: &str) -> CliArgs {
+        self.source_path.push(subdir);
+        self
+    }
+
+    fn set_target_subdir(mut self, subdir: &str) -> CliArgs {
+        self.target_path.push(subdir);
+        self
+    }
+}
+
 fn main() -> Result<(), std::io::Error> {
 
     let mut stats = FileStats::new();
 
-    // TODO 5: unwrap here?
-    let cwd = env::current_dir().unwrap();
+    let args = CliArgs::new()?
+        // TODO 1a: temporar citim din ./test_pics
+        .set_source_subdir("test_pics");
+
+    if DBG_ON {
+        dbg!(args);
+    }
+
+    let cwd = env::current_dir()?;
     println!("Current working directory is {}", cwd.display());
 
-    // TODO 1a: temporary citim din ./test_pics, normal ar trebui sa fie argument sau doar current dir
     // let path_cwd = Path::new(".")
     let cwd_path: PathBuf = cwd.join("test_pics");
 
