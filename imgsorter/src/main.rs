@@ -334,11 +334,25 @@ fn main() -> Result<(), std::io::Error> {
         }
 
         // Copy images and videos to subdirs based on modified date
+
+        // Build final target path for this file
         match current_file.file_type {
             FileType::Image | FileType::Video => {
+
                 // Attach file's date as a new subdirectory to the current target path
-                let target_subdir = &args.target_dir.join(current_file.get_date_str_ref());
-                sort_file_to_subdir(current_file, target_subdir, &args, &mut stats)
+                let mut destination_path = args.target_dir.clone().join(current_file.get_date_str_ref());
+
+                // Attach device name as a new subdirectory to the current target path
+                if let Some(device_name) = current_file.get_device_name_ref() {
+                    // TODO 4a - replace device name with custom name from config
+                    destination_path.push(device_name)
+                }
+
+                // create destination subdir
+                create_subdir_if_required(&destination_path, &args, &mut stats);
+
+                // copy file
+                copy_file_if_not_exists(current_file, &mut destination_path, &args, &mut stats);
             },
             FileType::Unknown => {
                 stats.inc_unknown_skipped();
@@ -390,49 +404,16 @@ fn ask_for_confirmation() -> bool {
 //     })
 // }
 
-/// Move the file to a subdirectory named after the file date
-/// Optionally, create additional subdir based on device name
-fn sort_file_to_subdir(
-    file: &SupportedFile,
-    date_subdir: &PathBuf,
-    args: &CliArgs,
-    stats: &mut FileStats
-) {
-
-    // Attach device name as a new subdirectory to the current target path
-    let mut target_subdir: PathBuf = match file.get_device_name_ref() {
-        Some(device_name) =>
-            // TODO 4a - replace device name with custom name from config
-            date_subdir.join(&device_name),
-        None =>
-            date_subdir.clone()
-    };
-
-    if DBG_ON {
-        println!("File = {:?}", file.file_name);
-        println!("Source dir = {:?}", args.source_dir);
-        println!("Date dir = {:?}", date_subdir);
-        println!("Target subdir = {:?}", target_subdir);
-    }
-
-    // create target subdir
-    create_subdir_if_required(&target_subdir, args, stats);
-
-    // attach filename to the directory path
-    // TODO 5: create new path variable?
-    target_subdir.push(file.get_file_name_ref());
-
-    // copy file
-    // TODO 6a: move instead of copy
-    copy_file_if_not_exists(file, &target_subdir, args, stats);
-}
-
 fn copy_file_if_not_exists(
     file: &SupportedFile,
-    destination_path: &PathBuf,
+    destination_path: &mut PathBuf,
     args: &CliArgs,
     stats: &mut FileStats
 ) {
+
+    // attach filename to the directory path
+    destination_path.push(file.get_file_name_ref());
+
     let file_copy_status = if destination_path.exists() {
         if DBG_ON {
             println!("> target file exists: {}",
@@ -450,7 +431,7 @@ fn copy_file_if_not_exists(
 
     } else {
 
-        let copy_result = fs::copy(file.get_file_path_ref(), destination_path);
+        let copy_result = fs::copy(file.get_file_path_ref(), &destination_path);
 
         match copy_result {
             Ok(_) => {
@@ -521,7 +502,7 @@ fn create_subdir_if_required(
         match subdir_creation {
             Ok(_) => {
                 stats.inc_dirs_created();
-                println!("> created subdirectory {}",
+                println!("[Created subdirectory {}]",
                          target_subdir.strip_prefix(&args.target_dir).unwrap().display());
             },
             Err(e) => {
