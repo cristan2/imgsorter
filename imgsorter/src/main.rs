@@ -274,7 +274,27 @@ fn main() -> Result<(), std::io::Error> {
     // Read dir contents and filter out error results
     let dir_contents = fs::read_dir(&args.source_dir)?
         .into_iter()
+        // filter only ok files
         .filter_map(|entry| entry.ok())
+        // filter out any directories
+        .filter(|entry| {
+            match entry.metadata() {
+                Ok(metadata) => {
+                    if metadata.is_dir() {
+                        if DBG_ON { println!("Skipping directory {:?}", entry.file_name()) }
+                        stats.inc_dirs_skipped();
+                        false
+                    } else {
+                        true
+                    }
+                }
+                Err(_) => {
+                    println!("Could not read metadata for {:?}", entry);
+                    false
+                }
+
+            }
+        })
         // TODO 7b: we could skip collecting now, since we'll just iterate the collection later anyway
         .collect::<Vec<DirEntry>>();
 
@@ -313,22 +333,16 @@ fn main() -> Result<(), std::io::Error> {
             println!("---------------");
         }
 
-        if current_file.is_dir() {
-            println!("Skipping directory {:?}",current_file.file_name);
-            stats.inc_dirs_skipped();
-        } else {
-
-            // Copy images and videos to subdirs based on modified date
-            match current_file.file_type {
-                FileType::Image | FileType::Video => {
-                    // Attach file's date as a new subdirectory to the current target path
-                    let target_subdir = &args.target_dir.join(current_file.get_date_str_ref());
-                    sort_file_to_subdir(current_file, target_subdir, &args, &mut stats)
-                },
-                FileType::Unknown => {
-                    stats.inc_unknown_skipped();
-                    println!("Skipping unknown file {:?}", current_file.get_file_name_ref())
-                }
+        // Copy images and videos to subdirs based on modified date
+        match current_file.file_type {
+            FileType::Image | FileType::Video => {
+                // Attach file's date as a new subdirectory to the current target path
+                let target_subdir = &args.target_dir.join(current_file.get_date_str_ref());
+                sort_file_to_subdir(current_file, target_subdir, &args, &mut stats)
+            },
+            FileType::Unknown => {
+                stats.inc_unknown_skipped();
+                println!("Skipping unknown file {:?}", current_file.get_file_name_ref())
             }
         }
     }
@@ -450,9 +464,9 @@ fn copy_file_if_not_exists(
                         Ok(_) =>
                             String::from(" (source file removed)"),
                         Err(e) => {
+                            if DBG_ON { eprintln!("File delete error: {:?}: ERROR {:?}", file.get_file_path_ref(), e) };
                             stats.inc_error_file_delete();
-                            eprintln!("File delete error: {:?}: ERROR {:?}", file.get_file_path_ref(), e);
-                            String::from(" (error removing source)")
+                            String::from(format!(" (error removing source: {:?})", e.description()))
                         }
                     }
                 } else {
