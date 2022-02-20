@@ -1,5 +1,5 @@
 use std::path::{PathBuf, Path};
-use std::{fs, env};
+use std::{fs, env, io};
 use std::ffi::OsString;
 use chrono::{DateTime, Utc};
 use std::fs::{DirEntry, DirBuilder, File, Metadata};
@@ -7,9 +7,11 @@ use rexif::{ExifEntry, ExifTag, ExifResult};
 use std::io::{Read, Seek, SeekFrom};
 
 const DBG_ON: bool = false;
-const NO_DATE_STR: &'static str = "no date";
+const DEFAULT_NO_DATE_STR: &'static str = "no date";
 const DEFAULT_TARGET_SUBDIR: &'static str = "imgsorted";
 const DEFAULT_MIN_COUNT: i32 = 1;
+const DEFAULT_COPY: bool = true;
+const DEFAULT_SILENT: bool = false;
 
 #[derive(Debug)]
 pub enum FileType {
@@ -84,7 +86,7 @@ impl SupportedFile {
             file_path: dir_entry.path(),
             file_type: get_file_type(&_extension),
             extension: _extension,
-            date_str:_modified_time.unwrap_or(NO_DATE_STR.to_string()),
+            date_str:_modified_time.unwrap_or(DEFAULT_NO_DATE_STR.to_string()),
             metadata: _metadata,
             device_name: get_device_name(dir_entry)
         }
@@ -119,8 +121,9 @@ pub struct CliArgs {
 
     /// The directory where the images to be sorted will be moved.
     /// If not provided, the current working dir will be used.
-    /// Additionally, a subdir may be set via `set_target_subdir` where
-    /// all the sorted files and their date directories will be created
+    /// Optionally, a subdir may be set via `set_target_subdir`
+    /// where all the sorted files and their date directories
+    /// will be created, instead of directly placed in the target_dir
     target_dir: PathBuf,
 
     /// The minimum number of files with the same date necessary
@@ -128,7 +131,13 @@ pub struct CliArgs {
     min_files_per_dir: i32,
 
     /// The current working directory
-    cwd: PathBuf
+    cwd: PathBuf,
+
+    /// Whether to ask for confirmation before processing files
+    silent: bool,
+
+    /// Whether files are copied instead of moved to the sorted subdirs
+    copy_not_move: bool
 }
 
 impl CliArgs {
@@ -144,7 +153,9 @@ impl CliArgs {
                 source_dir: cwd.clone(),
                 target_dir: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
                 min_files_per_dir: DEFAULT_MIN_COUNT,
-                cwd
+                cwd,
+                silent: true,
+                copy_not_move: true
             })
     }
 
@@ -160,6 +171,8 @@ impl CliArgs {
         // Note: if `target` is provided, this is ignored
         cwd_target_subdir: Option<String>,
         min_files: Option<i32>,
+        silent: Option<bool>,
+        copy_not_move: Option<bool>
     ) -> Result<CliArgs, std::io::Error> {
 
         fn create_path(provided_path: Option<String>, path_subdir: Option<String>, cwd: &PathBuf) -> PathBuf {
@@ -190,7 +203,9 @@ impl CliArgs {
                     cwd_target_subdir.or(Some(String::from(DEFAULT_TARGET_SUBDIR))),
                     &cwd),
                 min_files_per_dir: min_files.unwrap_or(DEFAULT_MIN_COUNT),
-                cwd
+                cwd,
+                silent: silent.unwrap_or(DEFAULT_SILENT),
+                copy_not_move: copy_not_move.unwrap_or(DEFAULT_COPY)
             }
         )
     }
@@ -204,6 +219,11 @@ impl CliArgs {
         self.target_dir.push(subdir);
         self
     }
+
+    fn set_silent(mut self, silent: bool) -> CliArgs {
+        self.silent = silent;
+        self
+    }
 }
 
 fn main() -> Result<(), std::io::Error> {
@@ -212,17 +232,12 @@ fn main() -> Result<(), std::io::Error> {
 
     let args = CliArgs::new()?
         // TODO 1a: temporar citim din ./test_pics
-        .set_source_subdir("test_pics");
+        .set_source_subdir("test_pics")
+        .set_silent(false);
 
     if DBG_ON {
         dbg!(&args);
     }
-
-    println!("====================================================================");
-    println!("Current working directory is {}", &args.cwd.display());
-    println!("Source directory is {}", &args.source_dir.display());
-    println!("Target directory is {}", &args.target_dir.display());
-    println!("====================================================================");
 
     // Read dir contents and filter out error results
     let dir_contents = fs::read_dir(&args.source_dir)?
@@ -230,6 +245,25 @@ fn main() -> Result<(), std::io::Error> {
         .filter_map(|entry| entry.ok())
         // TODO 7b: we could skip collecting now, since we'll just iterate the collection later anyway
         .collect::<Vec<DirEntry>>();
+
+    println!("===========================================================================");
+    let copy_status = if args.copy_not_move {"copied:"} else {"moved: "};
+    println!("Current working directory is: {}", &args.cwd.display());
+    println!("Source directory is:          {}", &args.source_dir.display());
+    println!("Target directory is:          {}", &args.target_dir.display());
+    println!("Files to be {}           {}", copy_status, dir_contents.len());
+    // TODO 1f: print options for this run
+    println!("===========================================================================");
+
+    // Proceed only if user confirms, otherwise exit
+    if !args.silent {
+        if !ask_for_confirmation() {
+            println!("Cancelled by user, exiting.");
+            return Ok(());
+        }
+    } else {
+        println! ("silent mode is enabled, proceeding without confirmation")
+    }
 
     // Iterate files, read modified date and create subdirs
     for dir_entry in dir_contents {
@@ -274,6 +308,31 @@ fn main() -> Result<(), std::io::Error> {
     Ok(())
 }
 
+fn ask_for_confirmation() -> bool {
+    println!("OK to proceed? Press 'y' or 'yes' to continue or 'n' or 'no' to cancel, then press Enter...");
+    loop {
+        let mut user_input = String::new();
+        match io::stdin().read_line(&mut user_input) {
+            Ok(input) =>
+                if DBG_ON {
+                    println!("User input: '{:?}'", input)
+                },
+            Err(err) => {
+                    eprintln!("Error reading user input: {:?}", err);
+                    return false;
+                }
+        }
+        match user_input.trim().to_lowercase().as_str() {
+            "n" | "no" =>
+                return false,
+            "y" | "yes" =>
+                return true,
+            _ =>
+                println!("...press 'y/yes' or 'n/no', then Enter")
+        }
+    }
+}
+
 // TODO 6c: unused, do we need this?
 // fn print_file_list(dir_tree: HashMap<String, Vec<DirEntry>>) {
 //     dir_tree.iter().for_each(|(dir_name, dir_files)|{
@@ -305,6 +364,7 @@ fn sort_file_to_subdir(
     };
 
     if DBG_ON {
+        println!("File = {:?}", file.file_name);
         println!("Source dir = {:?}", args.source_dir);
         println!("Date dir = {:?}", date_subdir);
         println!("Target subdir = {:?}", target_subdir);

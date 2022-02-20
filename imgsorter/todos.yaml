@@ -4,6 +4,7 @@
     [ ] c - arg flag for logfile
     [ ] d - arg flag for target dir
     [x] e - defaults for CLI options
+    [ ] f - print CLI options before confirmation
 
 [ ] 2 - File handling
     [x] a - subdirs by device name
@@ -42,3 +43,4 @@
     [ ] a - undo ?
     [ ] b - maybe don't read file list into memory
     [ ] c - search recursively into existing subdirs (but skip "imgsorted" target subdir)
+    [ ] better confirmation
