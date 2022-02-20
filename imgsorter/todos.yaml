@@ -3,7 +3,7 @@
     [ ] b - arg for min count for move
     [ ] c - arg flag for logfile
     [ ] d - arg flag for target dir
-    [ ] e - defaults for CLI options
+    [x] e - defaults for CLI options
 
 [ ] 2 - File handling
     [x] a - subdirs by device name
@@ -35,7 +35,10 @@
     [x] d - fix eroare "Access is denied." daca rulezi a doua oara si target files exista 
           - eroare cand target dir exista si se incearca citire metadate
     [x] e - run with debug - optional debug printouts
+    [ ] create_subdir_if_required shouldn't rely on CWD to strip prefix
+    [ ] only create device name subdirs if there's more than one
 
 [ ] 7 - Nice to have
     [ ] a - undo ?
     [ ] b - maybe don't read file list into memory
+    [ ] c - search recursively into existing subdirs (but skip "imgsorted" target subdir)

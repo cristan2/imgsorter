@@ -115,13 +115,13 @@ impl SupportedFile {
 pub struct CliArgs {
     /// The directory where the images to be sorted are located.
     /// If not provided, the current working dir will be used
-    source_path: PathBuf,
+    source_dir: PathBuf,
 
     /// The directory where the images to be sorted will be moved.
     /// If not provided, the current working dir will be used.
     /// Additionally, a subdir may be set via `set_target_subdir` where
     /// all the sorted files and their date directories will be created
-    target_path: PathBuf,
+    target_dir: PathBuf,
 
     /// The minimum number of files with the same date necessary
     /// for a dedicated subdir to be created and the files moved
@@ -141,8 +141,8 @@ impl CliArgs {
 
         Ok(
             CliArgs {
-                source_path: cwd.clone(),
-                target_path: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
+                source_dir: cwd.clone(),
+                target_dir: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
                 min_files_per_dir: DEFAULT_MIN_COUNT,
                 cwd
             })
@@ -184,8 +184,8 @@ impl CliArgs {
 
         Ok(
             CliArgs {
-                source_path: create_path(source, cwd_source_subdir, &cwd),
-                target_path: create_path(
+                source_dir: create_path(source, cwd_source_subdir, &cwd),
+                target_dir: create_path(
                     target,
                     cwd_target_subdir.or(Some(String::from(DEFAULT_TARGET_SUBDIR))),
                     &cwd),
@@ -196,12 +196,12 @@ impl CliArgs {
     }
 
     fn set_source_subdir(mut self, subdir: &str) -> CliArgs {
-        self.source_path.push(subdir);
+        self.source_dir.push(subdir);
         self
     }
 
     fn set_target_subdir(mut self, subdir: &str) -> CliArgs {
-        self.target_path.push(subdir);
+        self.target_dir.push(subdir);
         self
     }
 }
@@ -215,21 +215,17 @@ fn main() -> Result<(), std::io::Error> {
         .set_source_subdir("test_pics");
 
     if DBG_ON {
-        dbg!(args);
+        dbg!(&args);
     }
 
-    let cwd = env::current_dir()?;
-    println!("Current working directory is {}", cwd.display());
-
-    // let path_cwd = Path::new(".")
-    let cwd_path: PathBuf = cwd.join("test_pics");
-
-    // Create target subdir based on image date
-    // TODO 1d: based on target flag to create subdir for sorted files, or sort in-place?
-    let target_dir_path = cwd_path.join("imgsorted");
+    println!("====================================================================");
+    println!("Current working directory is {}", &args.cwd.display());
+    println!("Source directory is {}", &args.source_dir.display());
+    println!("Target directory is {}", &args.target_dir.display());
+    println!("====================================================================");
 
     // Read dir contents and filter out error results
-    let dir_contents = fs::read_dir(&cwd_path)?
+    let dir_contents = fs::read_dir(&args.source_dir)?
         .into_iter()
         .filter_map(|entry| entry.ok())
         // TODO 7b: we could skip collecting now, since we'll just iterate the collection later anyway
@@ -260,8 +256,9 @@ fn main() -> Result<(), std::io::Error> {
             // TODO 6a: move instead of copy
             match current_file.file_type {
                 FileType::Image | FileType::Video => {
-                    let mut target_subdir = target_dir_path.join(current_file.get_date_str_ref());
-                    sort_file_to_subdir(current_file, &mut target_subdir, &cwd_path, &mut stats)
+                    // Attach file's date as a new subdirectory to the current target path
+                    let target_subdir = &args.target_dir.join(current_file.get_date_str_ref());
+                    sort_file_to_subdir(current_file, target_subdir, &args, &mut stats)
                 },
                 FileType::Unknown => {
                     stats.inc_unknown_skipped();
@@ -293,38 +290,42 @@ fn main() -> Result<(), std::io::Error> {
 /// Optionally, create additional subdir based on device name
 fn sort_file_to_subdir(
     file: &SupportedFile,
-    target_subdir: &mut PathBuf,
-    cwd_path: &PathBuf,
+    date_subdir: &PathBuf,
+    args: &CliArgs,
     stats: &mut FileStats
 ) {
 
-    // attach device name subdir path
-    if let Some(device_name) = file.get_device_name_ref() {
-        // TODO 4a - replace device name with custom name from config
-        target_subdir.push(&device_name);
-    }
+    // Attach device name as a new subdirectory to the current target path
+    let mut target_subdir: PathBuf = match file.get_device_name_ref() {
+        Some(device_name) =>
+            // TODO 4a - replace device name with custom name from config
+            date_subdir.join(&device_name),
+        None =>
+            date_subdir.clone()
+    };
 
     if DBG_ON {
-        println!("Current dir = {:?}", cwd_path);
+        println!("Source dir = {:?}", args.source_dir);
+        println!("Date dir = {:?}", date_subdir);
         println!("Target subdir = {:?}", target_subdir);
     }
 
     // create target subdir
-    create_subdir_if_required(target_subdir, cwd_path, stats);
+    create_subdir_if_required(&target_subdir, args, stats);
 
-    // attach file path
+    // attach filename to the directory path
     // TODO 5: create new path variable?
     target_subdir.push(file.get_file_name_ref());
 
     // copy file
     // TODO 6a: move instead of copy
-    copy_file_if_not_exists(file, target_subdir, cwd_path, stats);
+    copy_file_if_not_exists(file, &target_subdir, args, stats);
 }
 
 fn copy_file_if_not_exists(
     file: &SupportedFile,
     destination_path: &PathBuf,
-    path_cwd: &PathBuf,
+    args: &CliArgs,
     stats: &mut FileStats
 ) {
     let file_copy_status = if destination_path.exists() {
@@ -364,20 +365,22 @@ fn copy_file_if_not_exists(
     // TODO 3a/5c: maybe only log this?
     println!("Copying {} -> {} ... {}",
              // &file.file_name().to_str().unwrap(),
-             file.get_file_path_ref().strip_prefix(path_cwd).unwrap().display(),
+             file.get_file_path_ref().strip_prefix(&args.source_dir).unwrap().display(),
              // &new_file_path.to_str().unwrap()),
-             destination_path.strip_prefix(path_cwd).unwrap().display(),
+             destination_path.strip_prefix(&args.target_dir).unwrap().display(),
              file_copy_status);
 }
 
-// TODO 6b: path_cwd is only required for printlns
-fn create_subdir_if_required(target_subdir: &PathBuf, path_cwd: &PathBuf, stats: &mut FileStats) {
+fn create_subdir_if_required(
+    target_subdir: &PathBuf,
+    args: &CliArgs,
+    stats: &mut FileStats
+) {
     if target_subdir.exists() {
-        // TODO 5c: log dir already exists
-        // println!("target dir exists: {}: {}",
-        //          &target_subdir.strip_prefix(&path_cwd).unwrap().display(),
-        //          &target_subdir.exists());
-        // "already exists"
+        if DBG_ON {
+            println!("> target subdir exists: {}",
+                     &target_subdir.strip_prefix(&args.target_dir).unwrap().display());
+        }
     } else {
         let subdir_creation = DirBuilder::new()
             // create subdirs if necessary; don't return Err if file exists
@@ -388,13 +391,13 @@ fn create_subdir_if_required(target_subdir: &PathBuf, path_cwd: &PathBuf, stats:
             Ok(_) => {
                 stats.inc_dirs_created();
                 println!("> created subdirectory {}",
-                         target_subdir.strip_prefix(&path_cwd).unwrap().display());
+                         target_subdir.strip_prefix(&args.target_dir).unwrap().display());
             },
             Err(e) => {
                 // TODO 2f: handle dir creation fail
                 stats.inc_error_dir_creation();
                 println!("Failed to create subdirectory {}: {:?}",
-                         target_subdir.strip_prefix(&path_cwd).unwrap().display(),
+                         target_subdir.strip_prefix(&args.target_dir).unwrap().display(),
                          e.kind())
             }
         }
