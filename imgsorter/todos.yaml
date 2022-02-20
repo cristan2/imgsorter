@@ -7,7 +7,7 @@
     [ ] f - print CLI options before confirmation
     [ ] g - skip files without EXIF (videos, images from other programs, etc.)?
 
-[ ] 2 - File handling
+[x] 2 - File handling
     [x] a - subdirs by device name
     [x] b - filter supported files
     [x] c - handle video - mp4, etc.
@@ -31,7 +31,7 @@
     [ ] e - better name for SupportedFile (or maybe don't accept Unknown file types)
 
 [ ] 6 - Misc / bugs
-    [ ] a - change copy to rename
+    [x] a - change copy to rename
     [ ] b - cleanup
     [x] c - fix warnings
     [x] d - fix eroare "Access is denied." daca rulezi a doua oara si target files exista 
@@ -46,3 +46,4 @@
     [ ] c - search recursively into existing subdirs (but skip "imgsorted" target subdir)
     [ ] better confirmation
     [ ] how to treat existing files - skip, overwrite, rename
+    [ ] after move, leave a txt file in place named "where are my photos" which explains where they were moved (process summary); have option to disable this

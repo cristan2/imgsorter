@@ -32,7 +32,8 @@ pub struct FileStats {
     unknown_skipped: i32,
     dirs_skipped: i32,
     dirs_created: i32,
-    error_file_move: i32,
+    error_file_copy: i32,
+    error_file_delete: i32,
     error_dir_creation: i32,
 }
 
@@ -49,7 +50,8 @@ impl FileStats {
             unknown_skipped: 0,
             dirs_skipped: 0,
             dirs_created: 0,
-            error_file_move: 0,
+            error_file_copy: 0,
+            error_file_delete: 0,
             error_dir_creation: 0,
         }
     }
@@ -64,7 +66,8 @@ impl FileStats {
     pub fn inc_unknown_skipped(&mut self) { self.unknown_skipped += 1 }
     pub fn inc_dirs_skipped(&mut self) { self.dirs_skipped += 1 }
     pub fn inc_dirs_created(&mut self) { self.dirs_created += 1 }
-    pub fn inc_error_file_move(&mut self) { self.error_file_move += 1 }
+    pub fn inc_error_file_copy(&mut self) { self.error_file_copy += 1 }
+    pub fn inc_error_file_delete(&mut self) { self.error_file_delete += 1 }
     pub fn inc_error_dir_creation(&mut self) { self.error_dir_creation += 1 }
 }
 
@@ -74,7 +77,7 @@ pub struct SupportedFile {
     file_path: PathBuf,
     file_type: FileType,
     extension: Option<String>,
-    // file modified date in YYYY-MM-DD format
+    // file's modified date in YYYY-MM-DD format
     date_str: String,
     metadata: Metadata,
     device_name: Option<String>
@@ -246,6 +249,11 @@ impl CliArgs {
         self.silent = silent;
         self
     }
+
+    fn set_move(mut self, move_file: bool) -> CliArgs {
+        self.copy_not_move = !move_file;
+        self
+    }
 }
 
 fn main() -> Result<(), std::io::Error> {
@@ -254,8 +262,10 @@ fn main() -> Result<(), std::io::Error> {
 
     let args = CliArgs::new()?
         // TODO 1a: temporar citim din ./test_pics
-        .set_source_subdir("test_pics")
-        .set_silent(false);
+        // .append_source_subdir("test_pics")
+        .set_source_dir(r"D:\Temp\New folder test remove")
+        .set_silent(false)
+        .set_move(false);
 
     if DBG_ON {
         dbg!(&args);
@@ -309,7 +319,6 @@ fn main() -> Result<(), std::io::Error> {
         } else {
 
             // Copy images and videos to subdirs based on modified date
-            // TODO 6a: move instead of copy
             match current_file.file_type {
                 FileType::Image | FileType::Video => {
                     // Attach file's date as a new subdirectory to the current target path
@@ -411,7 +420,10 @@ fn copy_file_if_not_exists(
     stats: &mut FileStats
 ) {
     let file_copy_status = if destination_path.exists() {
-        // println!("File already exists, skipping: {:?}", &file.file_name());
+        if DBG_ON {
+            println!("> target file exists: {}",
+                     &destination_path.strip_prefix(&args.target_dir).unwrap().display());
+        }
 
         // Record stats for skipped files
         match file.file_type {
@@ -420,12 +432,33 @@ fn copy_file_if_not_exists(
             // don't record any stats for this, shouldn't get one here anyway
             FileType::Unknown => ()
         }
-        "already exists"
+        String::from("already exists")
 
     } else {
+
         let copy_result = fs::copy(file.get_file_path_ref(), destination_path);
+
         match copy_result {
             Ok(_) => {
+
+                // If this is a MOVE, delete the source file after a successful copy
+                let delete_result_str = if !args.copy_not_move {
+
+                    let delete_result = fs::remove_file(file.get_file_path_ref());
+
+                    match delete_result {
+                        Ok(_) =>
+                            String::from(" (source file removed)"),
+                        Err(e) => {
+                            stats.inc_error_file_delete();
+                            eprintln!("File delete error: {:?}: ERROR {:?}", file.get_file_path_ref(), e);
+                            String::from(" (error removing source)")
+                        }
+                    }
+                } else {
+                    String::from("")
+                };
+
                 // Record stats for copied file
                 match file.file_type {
                     FileType::Image   =>
@@ -435,13 +468,13 @@ fn copy_file_if_not_exists(
                     // don't record any stats for this, shouldn't get one here anyway
                     FileType::Unknown =>()
                 }
-                "OK"
+                String::from(format!("OK{}", delete_result_str))
             },
             Err(err) => {
-                println!("File copy error: {:?}: ERROR {:?}", file.get_file_path_ref(), err);
+                eprintln!("File copy error: {:?}: ERROR {:?}", file.get_file_path_ref(), err);
                 // TODO 5c: log error info
-                stats.inc_error_file_move();
-                "ERROR"
+                stats.inc_error_file_copy();
+                String::from("ERROR")
             }
         }
     };
