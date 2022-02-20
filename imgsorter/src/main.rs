@@ -24,8 +24,10 @@ pub enum FileType {
 pub struct FileStats {
     files_total: i32,
     img_moved: i32,
+    img_copied: i32,
     img_skipped: i32,
     vid_moved: i32,
+    vid_copied: i32,
     vid_skipped: i32,
     unknown_skipped: i32,
     dirs_skipped: i32,
@@ -39,8 +41,10 @@ impl FileStats {
         FileStats {
             files_total: 0,
             img_moved: 0,
+            img_copied: 0,
             img_skipped: 0,
             vid_moved: 0,
+            vid_copied: 0,
             vid_skipped: 0,
             unknown_skipped: 0,
             dirs_skipped: 0,
@@ -52,8 +56,10 @@ impl FileStats {
 
     pub fn inc_files_total(&mut self) { self.files_total += 1 }
     pub fn inc_img_moved(&mut self) { self.img_moved += 1 }
+    pub fn inc_img_copied(&mut self) { self.img_copied += 1 }
     pub fn inc_img_skipped(&mut self) { self.img_skipped += 1 }
     pub fn inc_vid_moved(&mut self) { self.vid_moved += 1 }
+    pub fn inc_vid_copied(&mut self) { self.vid_copied += 1 }
     pub fn inc_vid_skipped(&mut self) { self.vid_skipped += 1 }
     pub fn inc_unknown_skipped(&mut self) { self.unknown_skipped += 1 }
     pub fn inc_dirs_skipped(&mut self) { self.dirs_skipped += 1 }
@@ -210,12 +216,28 @@ impl CliArgs {
         )
     }
 
-    fn set_source_subdir(mut self, subdir: &str) -> CliArgs {
+    /// Change the source directory. This will also change the target
+    /// directory to a subdir in the same directory. To set a different
+    /// target directory, use [set_target_dir]
+    fn set_source_dir(mut self, subdir: &str) -> CliArgs {
+        let new_path = PathBuf::from(subdir);
+        self.target_dir = new_path.clone().join(DEFAULT_TARGET_SUBDIR);
+        self.source_dir = new_path;
+        self
+    }
+
+    fn set_target_dir(mut self, subdir: &str) -> CliArgs {
+        let new_path = PathBuf::from(subdir);
+        self.target_dir = new_path.join(DEFAULT_TARGET_SUBDIR);
+        self
+    }
+
+    fn append_source_subdir(mut self, subdir: &str) -> CliArgs {
         self.source_dir.push(subdir);
         self
     }
 
-    fn set_target_subdir(mut self, subdir: &str) -> CliArgs {
+    fn append_target_subdir(mut self, subdir: &str) -> CliArgs {
         self.target_dir.push(subdir);
         self
     }
@@ -406,8 +428,10 @@ fn copy_file_if_not_exists(
             Ok(_) => {
                 // Record stats for copied file
                 match file.file_type {
-                    FileType::Image   => stats.inc_img_moved(),
-                    FileType::Video   => stats.inc_vid_moved(),
+                    FileType::Image   =>
+                        if (args.copy_not_move) { stats.inc_img_copied() } else { stats.inc_img_moved() },
+                    FileType::Video   =>
+                        if (args.copy_not_move) { stats.inc_vid_copied() } else { stats.inc_vid_moved() },
                     // don't record any stats for this, shouldn't get one here anyway
                     FileType::Unknown =>()
                 }
