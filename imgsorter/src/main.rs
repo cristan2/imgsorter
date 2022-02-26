@@ -1,7 +1,6 @@
 use std::path::{PathBuf, Path};
 use std::{fs, env, io};
-use std::collections::{HashMap, HashSet};
-use std::error::Error;
+use std::collections::HashMap;
 use std::ffi::OsString;
 use chrono::{DateTime, Utc};
 use std::fs::{DirEntry, DirBuilder, File, Metadata};
@@ -274,23 +273,6 @@ impl CliArgs {
         self.copy_not_move = do_copy_not_move_file;
         self
     }
-
-    fn set_dry_run(mut self, do_dry_run: bool) -> CliArgs {
-        self.dry_run = do_dry_run;
-        self
-    }
-
-    fn get_target_dir_ref(&self) -> &PathBuf {
-        &self.target_dir
-    }
-
-    fn is_dry_run(&self) -> &bool {
-        &self.dry_run
-    }
-
-    fn is_silent(&self) -> &bool {
-        &self.silent
-    }
 }
 
 fn main() -> Result<(), std::io::Error> {
@@ -350,7 +332,7 @@ fn main() -> Result<(), std::io::Error> {
     // Proceed only if user confirms, otherwise exit
     if args.silent {
         println! ("> Silent mode is enabled. Proceeding without user confirmation.");
-        if (args.dry_run) {
+        if args.dry_run {
             println!("> This is a dry run. No folders will be created. No files will be copied or moved.");
         }
     } else {
@@ -589,7 +571,7 @@ fn copy_file_if_not_exists(
                         Err(e) => {
                             if DBG_ON { eprintln!("File delete error: {:?}: ERROR {:?}", file.get_file_path_ref(), e) };
                             stats.inc_error_file_delete();
-                            String::from(format!(" \x1b[93m(error removing source: {:?})\x1b[0m", e.description()))
+                            String::from(format!(" \x1b[93m(error removing source: {:?})\x1b[0m", e.to_string()))
                         }
                     }
                 } else {
@@ -599,9 +581,9 @@ fn copy_file_if_not_exists(
                 // Record stats for copied file
                 match file.file_type {
                     FileType::Image   =>
-                        if (args.copy_not_move) { stats.inc_img_copied() } else { stats.inc_img_moved() },
+                        if args.copy_not_move { stats.inc_img_copied() } else { stats.inc_img_moved() },
                     FileType::Video   =>
-                        if (args.copy_not_move) { stats.inc_vid_copied() } else { stats.inc_vid_moved() },
+                        if args.copy_not_move { stats.inc_vid_copied() } else { stats.inc_vid_moved() },
                     // don't record any stats for this, shouldn't get one here anyway
                     FileType::Unknown =>()
                 }
