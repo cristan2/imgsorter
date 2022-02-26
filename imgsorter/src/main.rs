@@ -16,6 +16,9 @@ const DEFAULT_COPY: bool = true;
 const DEFAULT_SILENT: bool = false;
 const DEFAULT_DRY_RUN: bool = false;
 
+type DeviceTree = HashMap<Option<String>, Vec<SupportedFile>>;
+type DateDeviceTree = HashMap<String, DeviceTree>;
+
 #[derive(Debug)]
 pub enum FileType {
     Unknown,
@@ -313,7 +316,7 @@ fn main() -> Result<(), std::io::Error> {
         // filter only ok files
         .filter_map(|entry| entry.ok())
 
-        // filter out any directories
+        // filter out any source subdirectories
         // TODO 7c - allow option to recursively walk subdirs
         .filter(|entry| {
             match entry.metadata() {
@@ -333,7 +336,6 @@ fn main() -> Result<(), std::io::Error> {
 
             }
         })
-        // TODO 7b: we could skip collecting now, since we'll just iterate the collection later anyway
         .collect::<Vec<DirEntry>>();
 
     println!("===========================================================================");
@@ -374,33 +376,56 @@ fn main() -> Result<(), std::io::Error> {
     println!("---------------------------------------------------------------------------");
     println!();
 
-    // Create a map of maps to represent the directory tree:
-    // ```target_dir
-    //  └─ date_dir         // all_devices_for_this_date
-    //  │   └─ device_dir   // all_files_for_this_device
-    //  │   └─ device_dir
-    //  └─ date_dir
-    // ```
-    // The keys of these maps are either the date representation or the device name
+    // Iterate files, read modified date and create subdirs
+    // Copy images and videos to subdirs based on modified date
+    let mut new_dir_tree = parse_dir_contents(dir_contents, &mut stats);
+
+    println!();
+    println!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
+    println!();
+
+    // Iterate files and either copy/move to subdirs as necessary
+    // or do a dry run to simulate a copy/move pass
+    process_dir_files(&mut new_dir_tree, &args, &mut stats);
+
+    // Print final stats
+    println!();
+    dbg!(&stats);
+
+    Ok(())
+}
+
+/// Read directory and parse contents into supported data models
+/// Return a map of maps to represent the directory tree as below.
+/// The map keys are either the date representation or the device name
+/// ```
+/// [target_dir]          // top-level HashMap
+///  └─ [date_dir]        // top-level key of type String
+///  │   └─ [device_dir]  // inner HashMap; key of type Option<String>
+///  │   │   └─ file.ext  // Vec of supported files
+///  │   │   └─ file.ext
+///  │   └─ device_dir
+///  └─ date_dir
+/// ```
+fn parse_dir_contents(
+    dir_contents: Vec<DirEntry>,
+    stats: &mut FileStats
+) -> DateDeviceTree {
+
     let mut new_dir_tree: HashMap<
         String,
         HashMap<
             Option<String>,
             Vec<SupportedFile>>> = HashMap::new();
 
-    // Iterate files, read modified date and create subdirs
-    // Copy images and videos to subdirs based on modified date
     for dir_entry in dir_contents {
-
         stats.inc_files_total();
 
         let current_file: SupportedFile = SupportedFile::new(dir_entry);
 
         // Build final target path for this file
         match current_file.file_type {
-
             FileType::Image | FileType::Video => {
-
                 let file_date = current_file.date_str.clone();
                 let file_device = current_file.device_name.clone();
 
@@ -423,14 +448,11 @@ fn main() -> Result<(), std::io::Error> {
         }
     }
 
-    println!();
-    println!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
-    println!();
+    return new_dir_tree;
+}
 
-    // Iterate HashMap and copy/move files as necessary
-    // Or do a test run if args.dry_run is enabled
+fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stats: &mut FileStats) {
     for (date_dir_name, devices_files_and_paths) in new_dir_tree {
-
         let device_count_for_date = devices_files_and_paths.keys().len();
 
         let files_count = devices_files_and_paths.iter()
@@ -444,7 +466,6 @@ fn main() -> Result<(), std::io::Error> {
         }
 
         for (key_device_name_opt, val_files_and_paths) in devices_files_and_paths {
-
             let do_create_device_subdirs = device_count_for_date > 1 && key_device_name_opt.is_some();
 
             // If there's more than one device, create a subdir, otherwise ignore devices
@@ -483,12 +504,6 @@ fn main() -> Result<(), std::io::Error> {
             }
         } // end loop outer map
     }
-
-    // Print final stats
-    println!();
-    dbg!(&stats);
-
-    Ok(())
 }
 
 fn ask_for_confirmation() -> ConfirmationType {

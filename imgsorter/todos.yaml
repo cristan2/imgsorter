@@ -16,6 +16,8 @@
     [x] e - copy/move file only if it's supported file
     [x] f - handle dir creation fail / dir already exists
     [ ] source recursive
+    [ ] prefer date taken over date modified
+    [ ] EXIF for video data
 
 [ ] 3 - Stats
     [ ] a - show in progress statistics
@@ -28,7 +30,7 @@
 [ ] 5 - Optimize code
     [x] a - struct to model "supported file" with required metadata (file name, device info, date, etc)
     [ ] b - separate module for "file utils"
-    [ ] c - logging
+    [ ] c - logging (replace debug printouts)
     [ ] d - better error handling
     [ ] e - better name for SupportedFile (or maybe don't accept Unknown file types)
     [ ] f - universal line terminators
