@@ -1,11 +1,15 @@
 use std::path::{PathBuf, Path};
 use std::{fs, env, io};
 use std::collections::HashMap;
+use std::error::Error;
 use std::ffi::OsString;
 use chrono::{DateTime, Utc};
 use std::fs::{DirEntry, DirBuilder, File, Metadata};
 use rexif::{ExifEntry, ExifTag, ExifResult};
 use std::io::{Read, Seek, SeekFrom};
+use imgsorter::utils;
+
+use imgsorter::utils::*;
 
 const DBG_ON: bool = false;
 const DEFAULT_NO_DATE_STR: &'static str = "no date";
@@ -282,7 +286,7 @@ fn main() -> Result<(), std::io::Error> {
     let mut args = CliArgs::new()?
         // TODO 1a: temporar citim din ./test_pics
         // .append_source_subdir("test_pics")
-        .set_source_dir(r"D:\Temp\New folder test remove")
+        .set_source_dir(r"D:\Temp\New folder test remove - Copy")
         .set_silent(false)
         .set_copy_not_move(false);
         // Uncomment for faster dev
@@ -363,7 +367,8 @@ fn main() -> Result<(), std::io::Error> {
     let mut new_dir_tree = parse_dir_contents(dir_contents, &mut stats);
 
     println!();
-    println!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
+    let start_status = format!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
+    println!("{}", ColoredString::bold_white(start_status.as_str()));
     println!();
 
     // Iterate files and either copy/move to subdirs as necessary
@@ -489,8 +494,13 @@ fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stat
 }
 
 fn ask_for_confirmation() -> ConfirmationType {
-    // TODO 5f: replace '\n'
-    println!("OK to proceed? Type one of the options then press Enter:\n• 'y' or 'yes' to continue\n• 'n' or 'no' to cancel\n• 'd' or 'dry' to do a dry run");
+    println!("{}",
+             // TODO 5f: replace '\n' with system newlines
+             ColoredString::magenta(
+                 "OK to proceed? Type one of the options then press Enter:\n\
+                 • 'y' or 'yes' to continue\n\
+                 • 'n' or 'no' to cancel\n\
+                 • 'd' or 'dry' to do a dry run"));
     loop {
         let mut user_input = String::new();
         match io::stdin().read_line(&mut user_input) {
@@ -571,7 +581,8 @@ fn copy_file_if_not_exists(
                         Err(e) => {
                             if DBG_ON { eprintln!("File delete error: {:?}: ERROR {:?}", file.get_file_path_ref(), e) };
                             stats.inc_error_file_delete();
-                            String::from(format!(" \x1b[93m(error removing source: {:?})\x1b[0m", e.to_string()))
+                            ColoredString::red(
+                                format!(" (error removing source: {:?})", e.description()).as_str())
                         }
                     }
                 } else {
@@ -587,13 +598,15 @@ fn copy_file_if_not_exists(
                     // don't record any stats for this, shouldn't get one here anyway
                     FileType::Unknown =>()
                 }
-                String::from(format!("OK{}", delete_result_str))
+                format!("{}{}",
+                        ColoredString::green("OK"),
+                        delete_result_str)
             },
             Err(err) => {
                 eprintln!("File copy error: {:?}: ERROR {:?}", file.get_file_path_ref(), err);
                 // TODO 5c: log error info
                 stats.inc_error_file_copy();
-                String::from("ERROR")
+                ColoredString::red("ERROR")
             }
         }
     };
