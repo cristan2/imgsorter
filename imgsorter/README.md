@@ -38,9 +38,9 @@ Output:
 ## Supported files
 * Images: jpg, png, tiff, nef, crw
 * Video: mp4, mov, 3gp
-* EXIF data: jpg, png, tiff only
+* EXIF data: jpg, png, tiff
 
-## Notes/limitations:
+## Notes/limitations
 * Options can not be set interactively at the moment.
 * File date is based on "modified date" file property
 * Device name is based on EXIF data for image files;

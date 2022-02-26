@@ -667,7 +667,7 @@ fn get_file_type(extension_opt: &Option<String>) -> FileType {
     match extension_opt {
         Some(extension) => {
             match extension.to_lowercase().as_str() {
-                "jpg" | "jpeg" | "png" | "tiff" =>
+                "jpg" | "jpeg" | "png" | "tiff" | "crw"| "nef" =>
                     FileType::Image,
                 "mp4" | "mov" | "3gp" =>
                     FileType::Video,
