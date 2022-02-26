@@ -3,6 +3,7 @@ use std::{fs, env, io};
 use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::OsString;
+use std::fmt::Formatter;
 use chrono::{DateTime, Utc};
 use std::fs::{DirEntry, DirBuilder, File, Metadata};
 use rexif::{ExifEntry, ExifTag, ExifResult};
@@ -48,9 +49,16 @@ pub struct FileStats {
     unknown_skipped: i32,
     dirs_skipped: i32,
     dirs_created: i32,
-    error_file_copy: i32,
+    error_file_create: i32,
     error_file_delete: i32,
-    error_dir_creation: i32,
+    error_dir_create: i32,
+}
+
+pub enum OutputColor {
+    Error,
+    Warning,
+    Neutral,
+    Good
 }
 
 impl FileStats {
@@ -66,9 +74,9 @@ impl FileStats {
             unknown_skipped: 0,
             dirs_skipped: 0,
             dirs_created: 0,
-            error_file_copy: 0,
+            error_file_create: 0,
             error_file_delete: 0,
-            error_dir_creation: 0,
+            error_dir_create: 0,
         }
     }
 
@@ -82,9 +90,72 @@ impl FileStats {
     pub fn inc_unknown_skipped(&mut self) { self.unknown_skipped += 1 }
     pub fn inc_dirs_skipped(&mut self) { self.dirs_skipped += 1 }
     pub fn inc_dirs_created(&mut self) { self.dirs_created += 1 }
-    pub fn inc_error_file_copy(&mut self) { self.error_file_copy += 1 }
+    pub fn inc_error_file_create(&mut self) { self.error_file_create += 1 }
     pub fn inc_error_file_delete(&mut self) { self.error_file_delete += 1 }
-    pub fn inc_error_dir_creation(&mut self) { self.error_dir_creation += 1 }
+    pub fn inc_error_dir_create(&mut self) { self.error_dir_create += 1 }
+
+    pub fn color_if_non_zero(err_stat: i32, level: OutputColor) -> String {
+        if err_stat > 0 {
+            match level {
+                OutputColor::Error =>
+                    ColoredString::red(err_stat.to_string().as_str()),
+                OutputColor::Warning =>
+                    ColoredString::orange(err_stat.to_string().as_str()),
+                OutputColor::Neutral =>
+                    ColoredString::bold_white(err_stat.to_string().as_str()),
+                OutputColor::Good =>
+                    ColoredString::green(err_stat.to_string().as_str()),
+            }
+        } else {
+            String::from(err_stat.to_string())
+        }
+    }
+
+    pub fn print_stats(&self, args: &CliArgs) {
+        let general_stats = format!("
+Final statistics
+-----------------------------
+Total files:             {total}
+-----------------------------
+Images moved:            {img_move}
+Images copied:           {img_copy}
+Images skipped:          {img_skip}
+Videos moved:            {vid_move}
+Videos copied:           {vid_copy}
+Videos skipped:          {vid_skip}
+Directories created:     {dir_create}
+Directories skipped:     {d_skip}
+Unknown files skipped:   {f_skip}
+-----------------------------
+File create errors:      {fc_err}
+File delete errors:      {fd_err}
+Directory create errors: {dc_err}
+-----------------------------",
+               total=FileStats::color_if_non_zero(self.files_total, OutputColor::Neutral),
+               img_move=FileStats::color_if_non_zero(self.img_moved, OutputColor::Neutral),
+               img_copy=FileStats::color_if_non_zero(self.img_copied, OutputColor::Neutral),
+               img_skip=FileStats::color_if_non_zero(self.img_skipped, OutputColor::Warning),
+               vid_move=FileStats::color_if_non_zero(self.vid_moved,OutputColor::Neutral),
+               vid_copy=FileStats::color_if_non_zero(self.vid_copied,OutputColor::Neutral),
+               vid_skip=FileStats::color_if_non_zero(self.vid_skipped, OutputColor::Warning),
+               dir_create=FileStats::color_if_non_zero(self.dirs_created, OutputColor::Neutral),
+               d_skip=FileStats::color_if_non_zero(self.dirs_skipped, OutputColor::Warning),
+               f_skip=FileStats::color_if_non_zero(self.unknown_skipped, OutputColor::Warning),
+               fc_err=FileStats::color_if_non_zero(self.error_file_create, OutputColor::Error),
+               fd_err=FileStats::color_if_non_zero(self.error_file_delete, OutputColor::Error),
+               dc_err=FileStats::color_if_non_zero(self.error_dir_create, OutputColor::Error),
+        );
+
+        println!("{}", general_stats);
+
+        if self.error_file_create > 0 {
+            println!("> Some files could not be created in the target path")
+        }
+
+        if !args.copy_not_move && self.error_file_delete > 0  {
+            println!("> Some files were copied but the source files could not be removed")
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -324,13 +395,17 @@ fn main() -> Result<(), std::io::Error> {
         })
         .collect::<Vec<DirEntry>>();
 
+    let copy_status = if args.copy_not_move {
+        ColoredString::orange("copied:")
+    } else {
+        ColoredString::red("moved: ")
+    };
+    // TODO 1f: print options for this run?
     println!("===========================================================================");
-    let copy_status = if args.copy_not_move {"copied:"} else {"moved: "};
     println!("Current working directory is: {}", &args.cwd.display());
     println!("Source directory is:          {}", &args.source_dir.display());
     println!("Target directory is:          {}", &args.target_dir.display());
     println!("Files to be {}           {}", copy_status, dir_contents.len());
-    // TODO 1f: print options for this run?
     println!("===========================================================================");
 
     // Proceed only if user confirms, otherwise exit
@@ -377,7 +452,7 @@ fn main() -> Result<(), std::io::Error> {
 
     // Print final stats
     println!();
-    dbg!(&stats);
+    stats.print_stats(&args);
 
     Ok(())
 }
@@ -561,51 +636,59 @@ fn copy_file_if_not_exists(
             // don't record any stats for this, shouldn't get one here anyway
             FileType::Unknown => ()
         }
-        String::from("already exists")
+        ColoredString::orange("already exists")
 
     } else {
 
         let copy_result = fs::copy(file.get_file_path_ref(), &destination_path);
 
         match copy_result {
+
+            // File creation was successful
             Ok(_) => {
 
-                // If this is a MOVE, delete the source file after a successful copy
-                let delete_result_str = if !args.copy_not_move {
+                // If this is a MOVE, delete the source file after a successful copy and append status
+                let (delete_failed, delete_result_str) = if !args.copy_not_move {
 
                     let delete_result = fs::remove_file(file.get_file_path_ref());
 
                     match delete_result {
                         Ok(_) =>
-                            String::from(" (source file removed)"),
+                            (Some(false), String::from(" (source file removed)")),
                         Err(e) => {
                             if DBG_ON { eprintln!("File delete error: {:?}: ERROR {:?}", file.get_file_path_ref(), e) };
                             stats.inc_error_file_delete();
-                            ColoredString::red(
-                                format!(" (error removing source: {:?})", e.description()).as_str())
+                            (Some(true), ColoredString::red(
+                                format!(" (error removing source: {:?})", e.description()).as_str()))
                         }
                     }
+                // This is just a COPY operation, there's no delete result
                 } else {
-                    String::from("")
+                    (None, String::from(""))
                 };
 
-                // Record stats for copied file
+                // Record stats for copied or moved files. Pay special attention to cases when the operation
+                // is a move, the target file was created, but the source file was not deleted
+                // If operation is a move, the delete_failed is *defined* and *true* if the deletion failed
                 match file.file_type {
                     FileType::Image   =>
-                        if args.copy_not_move { stats.inc_img_copied() } else { stats.inc_img_moved() },
+                        if args.copy_not_move || delete_failed.unwrap_or(false) { stats.inc_img_copied() } else { stats.inc_img_moved() },
                     FileType::Video   =>
-                        if args.copy_not_move { stats.inc_vid_copied() } else { stats.inc_vid_moved() },
+                        if args.copy_not_move || delete_failed.unwrap_or(false) { stats.inc_vid_copied() } else { stats.inc_vid_moved() },
                     // don't record any stats for this, shouldn't get one here anyway
                     FileType::Unknown =>()
                 }
+
                 format!("{}{}",
                         ColoredString::green("OK"),
                         delete_result_str)
             },
+
+            // Could not create target file, log error and don't even attempt to delete source
             Err(err) => {
                 eprintln!("File copy error: {:?}: ERROR {:?}", file.get_file_path_ref(), err);
                 // TODO 5c: log error info
-                stats.inc_error_file_copy();
+                stats.inc_error_file_create();
                 ColoredString::red("ERROR")
             }
         }
@@ -640,12 +723,14 @@ fn create_subdir_if_required(
             Ok(_) => {
                 stats.inc_dirs_created();
                 println!();
-                println!("[Created subdirectory {}]",
-                         target_subdir.strip_prefix(&args.target_dir).unwrap().display());
+                println!("{}",
+                         ColoredString::bold_white(
+                             format!("[Created subdirectory {}]",
+                            target_subdir.strip_prefix(&args.target_dir).unwrap().display()).as_str()));
             },
             Err(e) => {
                 // TODO 2f: handle dir creation fail
-                stats.inc_error_dir_creation();
+                stats.inc_error_dir_create();
                 println!("Failed to create subdirectory {}: {:?}",
                          target_subdir.strip_prefix(&args.target_dir).unwrap().display(),
                          e.kind())
