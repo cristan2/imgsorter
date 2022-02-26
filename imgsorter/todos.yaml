@@ -1,10 +1,11 @@
-[ ] 1 - CLI
+[ ] 1 - CLI / config file args
+    [ ] CLI or config file?
     [ ] a - arg for paths
     [ ] b - arg for min count for move
     [ ] c - arg flag for logfile
     [ ] d - arg flag for target dir
-    [x] e - defaults for CLI options
-    [ ] f - print CLI options before confirmation
+    [x] e - defaults for options
+    [ ] f - print options before confirmation
     [ ] g - skip files without EXIF (videos, images from other programs, etc.)?
 
 [x] 2 - File handling
@@ -14,6 +15,7 @@
     [x] d - handle unknown files
     [x] e - copy/move file only if it's supported file
     [x] f - handle dir creation fail / dir already exists
+    [ ] source recursive
 
 [ ] 3 - Stats
     [ ] a - show in progress statistics
@@ -29,6 +31,7 @@
     [ ] c - logging
     [ ] d - better error handling
     [ ] e - better name for SupportedFile (or maybe don't accept Unknown file types)
+    [ ] f - universal line terminators
 
 [ ] 6 - Misc / bugs
     [x] a - change copy to rename
@@ -39,6 +42,7 @@
     [x] e - run with debug - optional debug printouts
     [ ] create_subdir_if_required shouldn't rely on CWD to strip prefix
     [ ] only create device name subdirs if there's more than one
+    [ ] string padding for dry run
 
 [ ] 7 - Nice to have
     [ ] a - undo ?
@@ -47,3 +51,4 @@
     [ ] better confirmation
     [ ] how to treat existing files - skip, overwrite, rename
     [ ] after move, leave a txt file in place named "where are my photos" which explains where they were moved (process summary); have option to disable this
+    [ ] colored text https://stackoverflow.com/questions/69981449/how-do-i-print-colored-text-to-the-terminal-in-rust

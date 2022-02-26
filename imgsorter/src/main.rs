@@ -1,5 +1,7 @@
 use std::path::{PathBuf, Path};
 use std::{fs, env, io};
+use std::collections::{HashMap, HashSet};
+use std::error::Error;
 use std::ffi::OsString;
 use chrono::{DateTime, Utc};
 use std::fs::{DirEntry, DirBuilder, File, Metadata};
@@ -12,12 +14,20 @@ const DEFAULT_TARGET_SUBDIR: &'static str = "imgsorted";
 const DEFAULT_MIN_COUNT: i32 = 1;
 const DEFAULT_COPY: bool = true;
 const DEFAULT_SILENT: bool = false;
+const DEFAULT_DRY_RUN: bool = false;
 
 #[derive(Debug)]
 pub enum FileType {
     Unknown,
     Image,
     Video,
+}
+
+pub enum ConfirmationType {
+    Proceed,
+    DryRun,
+    Cancel,
+    Error,
 }
 
 #[derive(Debug)]
@@ -85,8 +95,8 @@ pub struct SupportedFile {
 
 // TODO 5e: find better name
 impl SupportedFile {
-    pub fn new(dir_entry: &DirEntry) -> SupportedFile {
-        let _extension = get_extension(dir_entry);
+    pub fn new(dir_entry: DirEntry) -> SupportedFile {
+        let _extension = get_extension(&dir_entry);
         let _metadata = dir_entry.metadata().unwrap();
         let _modified_time = get_modified_time(&_metadata);
 
@@ -97,7 +107,7 @@ impl SupportedFile {
             extension: _extension,
             date_str:_modified_time.unwrap_or(DEFAULT_NO_DATE_STR.to_string()),
             metadata: _metadata,
-            device_name: get_device_name(dir_entry)
+            device_name: get_device_name(&dir_entry)
         }
     }
 
@@ -146,7 +156,11 @@ pub struct CliArgs {
     silent: bool,
 
     /// Whether files are copied instead of moved to the sorted subdirs
-    copy_not_move: bool
+    copy_not_move: bool,
+
+    /// Whether names of newly created date subdirectories
+    /// will include the count of devices and files it contains
+    dry_run: bool
 }
 
 impl CliArgs {
@@ -163,8 +177,9 @@ impl CliArgs {
                 target_dir: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
                 min_files_per_dir: DEFAULT_MIN_COUNT,
                 cwd,
-                silent: true,
-                copy_not_move: true
+                silent: DEFAULT_SILENT,
+                copy_not_move: DEFAULT_COPY,
+                dry_run: DEFAULT_DRY_RUN
             })
     }
 
@@ -181,7 +196,8 @@ impl CliArgs {
         cwd_target_subdir: Option<String>,
         min_files: Option<i32>,
         silent: Option<bool>,
-        copy_not_move: Option<bool>
+        copy_not_move: Option<bool>,
+        dry_run: Option<bool>
     ) -> Result<CliArgs, std::io::Error> {
 
         fn create_path(provided_path: Option<String>, path_subdir: Option<String>, cwd: &PathBuf) -> PathBuf {
@@ -214,7 +230,8 @@ impl CliArgs {
                 min_files_per_dir: min_files.unwrap_or(DEFAULT_MIN_COUNT),
                 cwd,
                 silent: silent.unwrap_or(DEFAULT_SILENT),
-                copy_not_move: copy_not_move.unwrap_or(DEFAULT_COPY)
+                copy_not_move: copy_not_move.unwrap_or(DEFAULT_COPY),
+                dry_run: dry_run.unwrap_or(DEFAULT_DRY_RUN),
             }
         )
     }
@@ -245,14 +262,31 @@ impl CliArgs {
         self
     }
 
-    fn set_silent(mut self, silent: bool) -> CliArgs {
-        self.silent = silent;
+    fn set_silent(mut self, do_proces_silent: bool) -> CliArgs {
+        self.silent = do_proces_silent;
         self
     }
 
-    fn set_move(mut self, move_file: bool) -> CliArgs {
-        self.copy_not_move = !move_file;
+    fn set_copy_not_move(mut self, do_copy_not_move_file: bool) -> CliArgs {
+        self.copy_not_move = do_copy_not_move_file;
         self
+    }
+
+    fn set_dry_run(mut self, do_dry_run: bool) -> CliArgs {
+        self.dry_run = do_dry_run;
+        self
+    }
+
+    fn get_target_dir_ref(&self) -> &PathBuf {
+        &self.target_dir
+    }
+
+    fn is_dry_run(&self) -> &bool {
+        &self.dry_run
+    }
+
+    fn is_silent(&self) -> &bool {
+        &self.silent
     }
 }
 
@@ -260,12 +294,14 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut stats = FileStats::new();
 
-    let args = CliArgs::new()?
+    let mut args = CliArgs::new()?
         // TODO 1a: temporar citim din ./test_pics
         // .append_source_subdir("test_pics")
         .set_source_dir(r"D:\Temp\New folder test remove")
         .set_silent(false)
-        .set_move(false);
+        .set_copy_not_move(false);
+        // Uncomment for faster dev
+        // .set_dry_run(true);
 
     if DBG_ON {
         dbg!(&args);
@@ -276,7 +312,9 @@ fn main() -> Result<(), std::io::Error> {
         .into_iter()
         // filter only ok files
         .filter_map(|entry| entry.ok())
+
         // filter out any directories
+        // TODO 7c - allow option to recursively walk subdirs
         .filter(|entry| {
             match entry.metadata() {
                 Ok(metadata) => {
@@ -304,41 +342,79 @@ fn main() -> Result<(), std::io::Error> {
     println!("Source directory is:          {}", &args.source_dir.display());
     println!("Target directory is:          {}", &args.target_dir.display());
     println!("Files to be {}           {}", copy_status, dir_contents.len());
-    // TODO 1f: print options for this run
+    // TODO 1f: print options for this run?
     println!("===========================================================================");
 
     // Proceed only if user confirms, otherwise exit
-    if !args.silent {
-        if !ask_for_confirmation() {
-            println!("Cancelled by user, exiting.");
-            return Ok(());
+    if args.silent {
+        println! ("> Silent mode is enabled. Proceeding without user confirmation.");
+        if (args.dry_run) {
+            println!("> This is a dry run. No folders will be created. No files will be copied or moved.");
         }
     } else {
-        println! ("silent mode is enabled, proceeding without confirmation")
+        match ask_for_confirmation() {
+            ConfirmationType::Cancel => {
+                println!("Cancelled by user, exiting.");
+                return Ok(());
+            },
+            ConfirmationType::Error => {
+                println!("Error confirming, exiting.");
+                return Ok(());
+            }
+            ConfirmationType::DryRun => {
+                println!("This is a dry run. No folders will be created. No files will be copied or moved.");
+                args.dry_run = true;
+                ()
+            }
+            ConfirmationType::Proceed =>
+                ()
+        }
     }
 
+    println!("---------------------------------------------------------------------------");
+    println!();
+
+    // Create a map of maps to represent the directory tree:
+    // ```target_dir
+    //  └─ date_dir         // all_devices_for_this_date
+    //  │   └─ device_dir   // all_files_for_this_device
+    //  │   └─ device_dir
+    //  └─ date_dir
+    // ```
+    // The keys of these maps are either the date representation or the device name
+    let mut new_dir_tree: HashMap<
+        String,
+        HashMap<
+            Option<String>,
+            Vec<SupportedFile>>> = HashMap::new();
+
     // Iterate files, read modified date and create subdirs
+    // Copy images and videos to subdirs based on modified date
     for dir_entry in dir_contents {
 
         stats.inc_files_total();
 
-        let current_file: &SupportedFile = &SupportedFile::new(&dir_entry);
+        let current_file: SupportedFile = SupportedFile::new(dir_entry);
 
-        if DBG_ON {
-            /* Print whole entry */
-            println!("===============");
-            dbg!(&dir_entry);
-            println!("---------------");
-            dbg!(current_file);
-            println!("---------------");
-        }
-
-        // Copy images and videos to subdirs based on modified date
+        // Build final target path for this file
         match current_file.file_type {
+
             FileType::Image | FileType::Video => {
+
+                let file_date = current_file.date_str.clone();
+                let file_device = current_file.device_name.clone();
+
                 // Attach file's date as a new subdirectory to the current target path
-                let target_subdir = &args.target_dir.join(current_file.get_date_str_ref());
-                sort_file_to_subdir(current_file, target_subdir, &args, &mut stats)
+                let all_devices_for_this_date = new_dir_tree
+                    .entry(file_date)
+                    .or_insert(HashMap::new());
+
+                let all_files_for_this_device = all_devices_for_this_date
+                    .entry(file_device)
+                    .or_insert(Vec::new());
+
+                // all_files_for_this_device.push((current_file, destination_path_incl_date));
+                all_files_for_this_device.push(current_file);
             },
             FileType::Unknown => {
                 stats.inc_unknown_skipped();
@@ -347,14 +423,77 @@ fn main() -> Result<(), std::io::Error> {
         }
     }
 
+    println!();
+    println!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
+    println!();
+
+    // Iterate HashMap and copy/move files as necessary
+    // Or do a test run if args.dry_run is enabled
+    for (date_dir_name, devices_files_and_paths) in new_dir_tree {
+
+        let device_count_for_date = devices_files_and_paths.keys().len();
+
+        let files_count = devices_files_and_paths.iter()
+            .fold(0, |accum, (_, files_and_paths)| accum + files_and_paths.len());
+
+        // let is_dry_run = &args.is_dry_run().clone();
+        let is_dry_run = args.dry_run;
+
+        if is_dry_run {
+            println!("\n• [{}] ({:?} devices, {:?} files)", date_dir_name, device_count_for_date, files_count)
+        }
+
+        for (key_device_name_opt, val_files_and_paths) in devices_files_and_paths {
+
+            let do_create_device_subdirs = device_count_for_date > 1 && key_device_name_opt.is_some();
+
+            // If there's more than one device, create a subdir, otherwise ignore devices
+            // if device_count_for_date > 1 && device_name_opt.is_some() {
+            if is_dry_run && do_create_device_subdirs {
+                println!("   └─ [{}]", key_device_name_opt.clone().unwrap());
+            }
+
+            for file in val_files_and_paths {
+
+                // Attach file's date as a new subdirectory to the target path
+                let mut destination_path = args.target_dir.clone().join(&date_dir_name);
+
+                if do_create_device_subdirs {
+                    // Attach device name as a new subdirectory to the current target path
+                    // We could just use the key_device_name_opt, since it's the same value,
+                    // but let's just go directly to source just in case
+                    let file_device_name_opt = file.get_device_name_ref().clone();
+
+                    // This is safe to unwrap, since we've already checked the device is_some
+                    destination_path.push(file_device_name_opt.unwrap());
+
+                    if is_dry_run {
+                        println!("   |   └─ {} ===> {}", &file.file_name.to_str().unwrap(), destination_path.display())
+                    }
+                } else {
+                    if is_dry_run {
+                        println!("   └─ {} =========> {}", &file.file_name.to_str().unwrap(), destination_path.display())
+                    }
+                }
+
+                if !is_dry_run {
+                    create_subdir_if_required(&destination_path, &args, &mut stats);
+                    copy_file_if_not_exists(&file, &mut destination_path, &args, &mut stats);
+                }
+            }
+        } // end loop outer map
+    }
+
     // Print final stats
+    println!();
     dbg!(&stats);
 
     Ok(())
 }
 
-fn ask_for_confirmation() -> bool {
-    println!("OK to proceed? Press 'y' or 'yes' to continue or 'n' or 'no' to cancel, then press Enter...");
+fn ask_for_confirmation() -> ConfirmationType {
+    // TODO 5f: replace '\n'
+    println!("OK to proceed? Type one of the options then press Enter:\n• 'y' or 'yes' to continue\n• 'n' or 'no' to cancel\n• 'd' or 'dry' to do a dry run");
     loop {
         let mut user_input = String::new();
         match io::stdin().read_line(&mut user_input) {
@@ -364,16 +503,18 @@ fn ask_for_confirmation() -> bool {
                 },
             Err(err) => {
                     eprintln!("Error reading user input: {:?}", err);
-                    return false;
+                    return ConfirmationType::Error
                 }
         }
         match user_input.trim().to_lowercase().as_str() {
             "n" | "no" =>
-                return false,
+                return ConfirmationType::Cancel,
             "y" | "yes" =>
-                return true,
+                return ConfirmationType::Proceed,
+            "d" | "dry" =>
+                return ConfirmationType::DryRun,
             _ =>
-                println!("...press 'y/yes' or 'n/no', then Enter")
+                println!("...press one of 'y/yes', 'n/no' or 'd/dry', then Enter")
         }
     }
 }
@@ -390,49 +531,16 @@ fn ask_for_confirmation() -> bool {
 //     })
 // }
 
-/// Move the file to a subdirectory named after the file date
-/// Optionally, create additional subdir based on device name
-fn sort_file_to_subdir(
-    file: &SupportedFile,
-    date_subdir: &PathBuf,
-    args: &CliArgs,
-    stats: &mut FileStats
-) {
-
-    // Attach device name as a new subdirectory to the current target path
-    let mut target_subdir: PathBuf = match file.get_device_name_ref() {
-        Some(device_name) =>
-            // TODO 4a - replace device name with custom name from config
-            date_subdir.join(&device_name),
-        None =>
-            date_subdir.clone()
-    };
-
-    if DBG_ON {
-        println!("File = {:?}", file.file_name);
-        println!("Source dir = {:?}", args.source_dir);
-        println!("Date dir = {:?}", date_subdir);
-        println!("Target subdir = {:?}", target_subdir);
-    }
-
-    // create target subdir
-    create_subdir_if_required(&target_subdir, args, stats);
-
-    // attach filename to the directory path
-    // TODO 5: create new path variable?
-    target_subdir.push(file.get_file_name_ref());
-
-    // copy file
-    // TODO 6a: move instead of copy
-    copy_file_if_not_exists(file, &target_subdir, args, stats);
-}
-
 fn copy_file_if_not_exists(
     file: &SupportedFile,
-    destination_path: &PathBuf,
+    destination_path: &mut PathBuf,
     args: &CliArgs,
     stats: &mut FileStats
 ) {
+
+    // attach filename to the directory path
+    destination_path.push(file.get_file_name_ref());
+
     let file_copy_status = if destination_path.exists() {
         if DBG_ON {
             println!("> target file exists: {}",
@@ -450,7 +558,7 @@ fn copy_file_if_not_exists(
 
     } else {
 
-        let copy_result = fs::copy(file.get_file_path_ref(), destination_path);
+        let copy_result = fs::copy(file.get_file_path_ref(), &destination_path);
 
         match copy_result {
             Ok(_) => {
@@ -466,7 +574,7 @@ fn copy_file_if_not_exists(
                         Err(e) => {
                             if DBG_ON { eprintln!("File delete error: {:?}: ERROR {:?}", file.get_file_path_ref(), e) };
                             stats.inc_error_file_delete();
-                            String::from(format!(" (error removing source: {:?})", e.description()))
+                            String::from(format!(" \x1b[93m(error removing source: {:?})\x1b[0m", e.description()))
                         }
                     }
                 } else {
@@ -521,7 +629,8 @@ fn create_subdir_if_required(
         match subdir_creation {
             Ok(_) => {
                 stats.inc_dirs_created();
-                println!("> created subdirectory {}",
+                println!();
+                println!("[Created subdirectory {}]",
                          target_subdir.strip_prefix(&args.target_dir).unwrap().display());
             },
             Err(e) => {
@@ -608,7 +717,7 @@ fn get_device_name(file: &DirEntry) -> Option<String> {
         Err(e) => {
             // dbg!(e);
             // TODO 5c: log this error?
-            println!("> can not read EXIF for {:?}: {}", file.file_name(), e.to_string());
+            println!("> could not read EXIF for {:?}: {}", file.file_name(), e.to_string());
             None
         }
     }
