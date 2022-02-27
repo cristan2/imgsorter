@@ -30,7 +30,7 @@
 [ ] 5 - Optimize code
     [x] a - struct to model "supported file" with required metadata (file name, device info, date, etc)
     [ ] b - separate module for "file utils"
-    [ ] c - logging (replace debug printouts)
+    [ ] c - logging (replace debug printouts plus check every match/Err and ?)
     [ ] d - better error handling
     [ ] e - better name for SupportedFile (or maybe don't accept Unknown file types)
     [ ] f - universal line terminators

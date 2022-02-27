@@ -8,14 +8,14 @@ pub struct ColoredString;
 impl ColoredString {
 
     // Color codes:
-    // * MAGENTA = '\x1b[95m'
-    // * BLUE = '\x1b[94m'
-    // * CYAN = '\x1b[96m'
-    // * GREEN = '\x1b[92m'
-    // * ORANGE = '\x1b[93m'
-    // * RED = '\x1b[91m'
-    // * NO_COLOR = '\x1b[0m'
-    // * BOLD = '\x1b[1m'
+    // * MAGENTA   = '\x1b[95m'
+    // * BLUE      = '\x1b[94m'
+    // * CYAN      = '\x1b[96m'
+    // * GREEN     = '\x1b[92m'
+    // * ORANGE    = '\x1b[93m'
+    // * RED       = '\x1b[91m'
+    // * NO_COLOR  = '\x1b[0m'
+    // * BOLD      = '\x1b[1m'
     // * UNDERLINE = '\x1b[4m'
 
     pub fn magenta(s: &str) -> String { format!("\x1b[95m{}\x1b[0m", s) }
@@ -27,5 +27,7 @@ impl ColoredString {
     pub fn orange(s: &str) -> String { format!("\x1b[93m{}\x1b[0m", s) }
     pub fn bold_white(s: &str) -> String { format!("\x1b[1m{}\x1b[0m", s) }
     pub fn underline(s: &str) -> String { format!("\x1b[4m{}\x1b[0m", s) }
+
+    pub fn warn_arrow() -> String { Self::orange(">") }
 }
 
