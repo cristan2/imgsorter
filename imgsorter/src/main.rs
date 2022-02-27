@@ -3,12 +3,10 @@ use std::{fs, env, io};
 use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::OsString;
-use std::fmt::Formatter;
 use chrono::{DateTime, Utc};
 use std::fs::{DirEntry, DirBuilder, File, Metadata};
 use rexif::{ExifEntry, ExifTag, ExifResult};
 use std::io::{Read, Seek, SeekFrom};
-use imgsorter::utils;
 
 use imgsorter::utils::*;
 
@@ -172,7 +170,7 @@ pub struct SupportedFile {
 
 // TODO 5e: find better name
 impl SupportedFile {
-    pub fn new(dir_entry: DirEntry) -> SupportedFile {
+    pub fn parse_from(dir_entry: DirEntry) -> SupportedFile {
         let _extension = get_extension(&dir_entry);
         let _metadata = dir_entry.metadata().unwrap();
         let _modified_time = get_modified_time(&_metadata);
@@ -184,7 +182,7 @@ impl SupportedFile {
             extension: _extension,
             date_str:_modified_time.unwrap_or(DEFAULT_NO_DATE_STR.to_string()),
             metadata: _metadata,
-            device_name: get_device_name(&dir_entry)
+            device_name: read_exif_device_name(&dir_entry)
         }
     }
 
@@ -368,32 +366,7 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     // Read dir contents and filter out error results
-    let dir_contents = fs::read_dir(&args.source_dir)?
-        .into_iter()
-        // filter only ok files
-        .filter_map(|entry| entry.ok())
-
-        // filter out any source subdirectories
-        // TODO 7c - allow option to recursively walk subdirs
-        .filter(|entry| {
-            match entry.metadata() {
-                Ok(metadata) => {
-                    if metadata.is_dir() {
-                        if DBG_ON { println!("Skipping directory {:?}", entry.file_name()) }
-                        stats.inc_dirs_skipped();
-                        false
-                    } else {
-                        true
-                    }
-                }
-                Err(_) => {
-                    println!("Could not read metadata for {:?}", entry);
-                    false
-                }
-
-            }
-        })
-        .collect::<Vec<DirEntry>>();
+    let dir_contents = filter_supported_content(&mut stats, &mut args)?;
 
     let copy_status = if args.copy_not_move {
         ColoredString::orange("copied:")
@@ -408,7 +381,7 @@ fn main() -> Result<(), std::io::Error> {
     println!("Files to be {}           {}", copy_status, dir_contents.len());
     println!("===========================================================================");
 
-    // Proceed only if user confirms, otherwise exit
+    // Proceed only if silent is enabled or user confirms, otherwise exit
     if args.silent {
         println! ("> Silent mode is enabled. Proceeding without user confirmation.");
         if args.dry_run {
@@ -457,6 +430,38 @@ fn main() -> Result<(), std::io::Error> {
     Ok(())
 }
 
+/// Read contents of source dir and filter out directories or those which failed to read
+fn filter_supported_content(stats: &mut FileStats, args: &mut CliArgs) -> Result<Vec<DirEntry>, std::io::Error> {
+    Ok(
+        fs::read_dir(&args.source_dir)?
+            .into_iter()
+
+            // filter only ok files
+            .filter_map(|entry| entry.ok())
+
+            // filter out any source subdirectories
+            // TODO 7c - allow option to recursively walk subdirs
+            .filter(|entry| {
+                match entry.metadata() {
+                    Ok(metadata) => {
+                        if metadata.is_dir() {
+                            if DBG_ON { println!("Skipping directory {:?}", entry.file_name()) }
+                            stats.inc_dirs_skipped();
+                            false
+                        } else {
+                            true
+                        }
+                    }
+                    Err(_) => {
+                        println!("Could not read metadata for {:?}", entry);
+                        false
+                    }
+                }
+            })
+
+            .collect::<Vec<DirEntry>>())
+}
+
 /// Read directory and parse contents into supported data models
 /// Return a map of maps to represent the directory tree as below.
 /// The map keys are either the date representation or the device name
@@ -474,16 +479,12 @@ fn parse_dir_contents(
     stats: &mut FileStats
 ) -> DateDeviceTree {
 
-    let mut new_dir_tree: HashMap<
-        String,
-        HashMap<
-            Option<String>,
-            Vec<SupportedFile>>> = HashMap::new();
+    let mut new_dir_tree: DateDeviceTree = HashMap::new();
 
     for dir_entry in dir_contents {
         stats.inc_files_total();
 
-        let current_file: SupportedFile = SupportedFile::new(dir_entry);
+        let current_file: SupportedFile = SupportedFile::parse_from(dir_entry);
 
         // Build final target path for this file
         match current_file.file_type {
@@ -775,7 +776,7 @@ fn get_file_type(extension_opt: &Option<String>) -> FileType {
     }
 }
 
-fn get_device_name(file: &DirEntry) -> Option<String> {
+fn read_exif_device_name(file: &DirEntry) -> Option<String> {
 
     // TODO 5d: handle this unwrap
     // Return early if this is not a file, there's no device name to read
