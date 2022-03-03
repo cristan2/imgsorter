@@ -1,5 +1,6 @@
 use std::path::{PathBuf, Path};
 use std::{fs, env, io};
+use std::cmp::max;
 use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::OsString;
@@ -20,8 +21,27 @@ const DEFAULT_DRY_RUN: bool = false;
 
 const DATE_DIR_FORMAT: &'static str = "%Y.%m.%d";
 
+const FILE_TREE_ENTRY: &'static str = "   └─";
+const FILE_TREE_INDENT: &'static str = "   |";
+
 type DeviceTree = HashMap<Option<String>, Vec<SupportedFile>>;
-type DateDeviceTree = HashMap<String, DeviceTree>;
+// type DateDeviceTree = HashMap<String, DeviceTree>;
+
+struct DateDeviceTree {
+    dir_tree: HashMap<String, DeviceTree>,
+    max_filename_len: usize,
+    max_path_len: usize
+}
+
+impl DateDeviceTree {
+    fn new() -> DateDeviceTree {
+        DateDeviceTree {
+            dir_tree: HashMap::new(),
+            max_filename_len: 0,
+            max_path_len: 0,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum FileType {
@@ -372,7 +392,7 @@ fn main() -> Result<(), std::io::Error> {
         // .append_source_subdir("test_pics")
         .set_source_dir(r"D:\Temp\New folder test remove - Copy")
         .set_silent(false)
-        .set_copy_not_move(false);
+        .set_copy_not_move(true);
         // Uncomment for faster dev
         // .set_dry_run(true);
 
@@ -381,7 +401,7 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     // Read dir contents and filter out error results
-    let dir_contents = filter_supported_content(&mut stats, &mut args)?;
+    let dir_contents = read_supported_files(&mut stats, &mut args)?;
 
     let copy_status = if args.copy_not_move {
         ColoredString::orange("copied:")
@@ -427,7 +447,7 @@ fn main() -> Result<(), std::io::Error> {
 
     // Iterate files, read modified date and create subdirs
     // Copy images and videos to subdirs based on modified date
-    let mut new_dir_tree = parse_dir_contents(dir_contents, &mut stats);
+    let mut new_dir_tree = parse_dir_contents(dir_contents, /*&args, */&mut stats);
 
     println!();
     let start_status = format!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
@@ -446,7 +466,7 @@ fn main() -> Result<(), std::io::Error> {
 }
 
 /// Read contents of source dir and filter out directories or those which failed to read
-fn filter_supported_content(stats: &mut FileStats, args: &mut CliArgs) -> Result<Vec<DirEntry>, std::io::Error> {
+fn read_supported_files(stats: &mut FileStats, args: &mut CliArgs) -> Result<Vec<DirEntry>, std::io::Error> {
     Ok(
         fs::read_dir(&args.source_dir)?
             .into_iter()
@@ -491,10 +511,11 @@ fn filter_supported_content(stats: &mut FileStats, args: &mut CliArgs) -> Result
 /// ```
 fn parse_dir_contents(
     dir_contents: Vec<DirEntry>,
+    // args: &CliArgs,
     stats: &mut FileStats
 ) -> DateDeviceTree {
 
-    let mut new_dir_tree: DateDeviceTree = HashMap::new();
+    let mut new_dir_tree: DateDeviceTree = DateDeviceTree::new();
 
     for dir_entry in dir_contents {
         stats.inc_files_total();
@@ -508,7 +529,7 @@ fn parse_dir_contents(
                 let file_device = current_file.device_name.clone();
 
                 // Attach file's date as a new subdirectory to the current target path
-                let all_devices_for_this_date = new_dir_tree
+                let all_devices_for_this_date = new_dir_tree.dir_tree
                     .entry(file_date)
                     .or_insert(HashMap::new());
 
@@ -516,7 +537,30 @@ fn parse_dir_contents(
                     .entry(file_device)
                     .or_insert(Vec::new());
 
-                // all_files_for_this_device.push((current_file, destination_path_incl_date));
+                // add file to dir tree and store the string lenghts of the file name and path for padding in stdout
+                new_dir_tree.max_filename_len = max(new_dir_tree.max_filename_len, current_file.file_name.len());
+
+                let _device = current_file.device_name.clone().unwrap_or(String::from(""));
+                let _file_path = current_file.date_str.clone() + "/" + _device.as_str();
+                new_dir_tree.max_path_len = max(new_dir_tree.max_path_len, _file_path.len());
+
+                /*let _file_path = current_file.file_path.clone().into_os_string();
+                println!("f path = {:?}",_file_path);
+                println!("f prefix = {:?}",&args.target_dir);
+                match current_file.file_path.clone().strip_prefix(&args.target_dir) {
+                    Ok(_p_name_len) => {
+                        println!("f path = {:?}", _p_name_len.to_str());
+                        match _p_name_len.to_str() {
+                            Some(name) =>
+                                new_dir_tree.max_path_len = max(new_dir_tree.max_path_len, String::from(name).len()),
+                            None => ()
+                        }
+                    }
+                    Err(e) => {
+                        println!("f path = {:?}", e);
+                    }
+                }*/
+
                 all_files_for_this_device.push(current_file);
             },
             FileType::Unknown => {
@@ -529,55 +573,93 @@ fn parse_dir_contents(
     return new_dir_tree;
 }
 
-fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stats: &mut FileStats) {
-    for (date_dir_name, devices_files_and_paths) in new_dir_tree {
+fn process_dir_files(new_dir_tree: &DateDeviceTree, args: &CliArgs, mut stats: &mut FileStats) {
+
+    let is_dry_run = args.dry_run;
+
+    // println!("max filename_len = {}", new_dir_tree.max_filename_len);
+    println!("max path_len = {}", new_dir_tree.max_path_len);
+
+    for (date_dir_name, devices_files_and_paths) in &new_dir_tree.dir_tree {
         let device_count_for_date = devices_files_and_paths.keys().len();
 
         let files_count = devices_files_and_paths.iter()
             .fold(0, |accum, (_, files_and_paths)| accum + files_and_paths.len());
-
-        // let is_dry_run = &args.is_dry_run().clone();
-        let is_dry_run = args.dry_run;
 
         if is_dry_run {
             println!("\n• [{}] ({:?} devices, {:?} files)", date_dir_name, device_count_for_date, files_count)
         }
 
         for (key_device_name_opt, val_files_and_paths) in devices_files_and_paths {
+
             let do_create_device_subdirs = device_count_for_date > 1 && key_device_name_opt.is_some();
 
+            // Attach file's date as a new subdirectory to the target path
+            let mut destination_path = args.target_dir.clone().join(&date_dir_name);
+
+            let mut indent_level: usize = 0;
+
             // If there's more than one device, create a subdir, otherwise ignore devices
-            // if device_count_for_date > 1 && device_name_opt.is_some() {
-            if is_dry_run && do_create_device_subdirs {
-                println!("   └─ [{}]", key_device_name_opt.clone().unwrap());
+            if do_create_device_subdirs {
+                // This is safe to unwrap, since we've already checked the device is_some
+                let dir_name = key_device_name_opt.clone().unwrap();
+
+                // Attach device name as a new subdirectory to the current target path
+                destination_path.push(dir_name.clone());  // clone is only needed to print dir name below
+
+                indent_level += 1;
+
+                if is_dry_run {
+                    let dir_name_str = pad_dot_right_to_length(
+                        format!("[{}]", dir_name),
+                    new_dir_tree.max_path_len);  // not wide enough for dry run
+
+                    let dir_status = if destination_path.exists() {
+                        ColoredString::orange(" dir exists, will be skipped")
+                    } else {
+                        String::from(" dir will be created")
+                    };
+
+                    print_with_indent(
+                        0, dir_name_str, dir_status,
+                    )
+                }
+            }
+
+            if !is_dry_run {
+                create_subdir_if_required(&destination_path, &args, &mut stats);
             }
 
             for file in val_files_and_paths {
 
-                // Attach file's date as a new subdirectory to the target path
-                let mut destination_path = args.target_dir.clone().join(&date_dir_name);
+                let is_read_only = file.metadata.permissions().readonly();
+                let read_only_str = if !args.copy_not_move && is_read_only {
+                    ColoredString::red(" (read only)")
+                } else { String::from("") };
 
-                if do_create_device_subdirs {
-                    // Attach device name as a new subdirectory to the current target path
-                    // We could just use the key_device_name_opt, since it's the same value,
-                    // but let's just go directly to source just in case
-                    let file_device_name_opt = file.get_device_name_ref().clone();
-
-                    // This is safe to unwrap, since we've already checked the device is_some
-                    destination_path.push(file_device_name_opt.unwrap());
-
-                    if is_dry_run {
-                        println!("   |   └─ {} ===> {}", &file.file_name.to_str().unwrap(), destination_path.display())
-                    }
+                if is_dry_run {
+                    let file_status = format!("{} ===> {}", &file.file_name.to_str().unwrap(), destination_path.display());
+                    print_with_indent(
+                        indent_level, file_status, read_only_str
+                    )
                 } else {
-                    if is_dry_run {
-                        println!("   └─ {} =========> {}", &file.file_name.to_str().unwrap(), destination_path.display())
-                    }
-                }
 
-                if !is_dry_run {
-                    create_subdir_if_required(&destination_path, &args, &mut stats);
-                    copy_file_if_not_exists(&file, &mut destination_path, &args, &mut stats);
+                    // max file name len
+                    // max path len
+
+                    let file_copy_status = copy_file_if_not_exists(&file, &mut destination_path, &args, &mut stats);
+
+                    // TODO 3a/5c: maybe only log this?
+                    let _f_name = String::from(file.file_name.to_str().unwrap());
+                    // let _p_name = String::from(destination_path.strip_prefix(&args.target_dir).unwrap().to_str().unwrap());
+                    let _p_name = String::from(date_dir_name) + "/" + &key_device_name_opt.clone().unwrap_or(String::from(""));
+
+                    println!("{}  ──>  {}... {}",
+                             // file.get_file_path_ref().strip_prefix(&args.source_dir).unwrap().display(),
+                             pad_right_to_length(_f_name, new_dir_tree.max_filename_len),
+                             // destination_path.strip_prefix(&args.target_dir).unwrap().display(),
+                             pad_dot_right_to_length(_p_name,new_dir_tree.max_path_len ),
+                             file_copy_status);
                 }
             }
         } // end loop outer map
@@ -631,13 +713,14 @@ fn ask_for_confirmation() -> ConfirmationType {
 
 fn copy_file_if_not_exists(
     file: &SupportedFile,
-    destination_path: &mut PathBuf,
+    target_dir: &mut PathBuf,
     args: &CliArgs,
     stats: &mut FileStats
-) {
+) -> String {
 
     // attach filename to the directory path
-    destination_path.push(file.get_file_name_ref());
+    // destination_path.push(file.get_file_name_ref());
+    let destination_path = target_dir.join(file.get_file_name_ref());
 
     let file_copy_status = if destination_path.exists() {
         if DBG_ON {
@@ -696,7 +779,7 @@ fn copy_file_if_not_exists(
                 }
 
                 format!("{}{}",
-                        ColoredString::green("OK"),
+                        ColoredString::green("ok"),
                         delete_result_str)
             },
 
@@ -710,13 +793,13 @@ fn copy_file_if_not_exists(
         }
     };
 
-    // TODO 3a/5c: maybe only log this?
-    println!("Copying {} -> {} ... {}",
-             // &file.file_name().to_str().unwrap(),
-             file.get_file_path_ref().strip_prefix(&args.source_dir).unwrap().display(),
-             // &new_file_path.to_str().unwrap()),
-             destination_path.strip_prefix(&args.target_dir).unwrap().display(),
-             file_copy_status);
+    file_copy_status
+
+    // // TODO 3a/5c: maybe only log this?
+    // println!("Copying {} -> {} ... {}",
+    //          file.get_file_path_ref().strip_prefix(&args.source_dir).unwrap().display(),
+    //          destination_path.strip_prefix(&args.target_dir).unwrap().display(),
+    //          file_copy_status);
 }
 
 fn create_subdir_if_required(
@@ -731,7 +814,8 @@ fn create_subdir_if_required(
         }
     } else {
         let subdir_creation = DirBuilder::new()
-            // create subdirs if necessary; don't return Err if file exists
+            // create subdirs along the path as required
+            // recursive + create doesn't return Err if dir exists
             .recursive(true)
             .create(target_subdir);
 
