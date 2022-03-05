@@ -168,12 +168,16 @@ Directory create errors: {dc_err}
 
         println!("{}", general_stats);
 
-        if self.error_file_create > 0 {
-            println!("{} Some files could not be created in the target path", ColoredString::warn_arrow())
-        }
-
-        if !args.copy_not_move && self.error_file_delete > 0  {
-            println!("{} Some files were copied but the source files could not be removed", ColoredString::warn_arrow())
+        if self.files_total == self.unknown_skipped {
+            println!("{}", ColoredString::orange("No supported files found in source folder."))
+        } else {
+            if self.error_file_create > 0 {
+                println!("{} Some files could not be created in the target path", ColoredString::warn_arrow())
+            }
+    
+            if !args.copy_not_move && self.error_file_delete > 0  {
+                println!("{} Some files were copied but the source files could not be removed", ColoredString::warn_arrow())
+            }
         }
     }
 }
@@ -449,19 +453,20 @@ fn main() -> Result<(), std::io::Error> {
     // Copy images and videos to subdirs based on modified date
     let mut new_dir_tree = parse_dir_contents(dir_contents, /*&args, */&mut stats);
 
-    println!();
-    let start_status = format!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
-    println!("{}", ColoredString::bold_white(start_status.as_str()));
-    println!();
-
-    // Iterate files and either copy/move to subdirs as necessary
-    // or do a dry run to simulate a copy/move pass
-    process_dir_files(&mut new_dir_tree, &args, &mut stats);
+    if !new_dir_tree.dir_tree.is_empty() {
+        println!();
+        let start_status = format!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
+        println!("{}", ColoredString::bold_white(start_status.as_str()));
+        println!();
+    
+        // Iterate files and either copy/move to subdirs as necessary
+        // or do a dry run to simulate a copy/move pass
+        process_dir_files(&mut new_dir_tree, &args, &mut stats);
+    }
 
     // Print final stats
     println!();
-    stats.print_stats(&args);
-
+    stats.print_stats(&args);    
     Ok(())
 }
 
