@@ -38,11 +38,10 @@ pub fn pad_dot_right_to_length(str: String, pad_width: usize) -> String {
     format!("{:.<width$}", str, width=pad_width)
 }
 
-const FILE_TREE_ENTRY: &'static str = "   └──";
-// const FILE_TREE_INDENT: &'static str = "   |";
-const FILE_TREE_INDENT: &'static str = "   |";
+const FILE_TREE_ENTRY: &'static str = " └──";
+const FILE_TREE_INDENT: &'static str = " |   ";
 
-pub fn print_with_indent(indent_level: usize, file_name: String, status: String) {
+pub fn add_prefix_indent(indent_level: usize, file_name: String) -> String {
     let indents = FILE_TREE_INDENT.repeat(indent_level);
-    println!("{}{} {}{}", indents, FILE_TREE_ENTRY.to_string(), file_name, status)
+    format!("{}{} {}", indents, FILE_TREE_ENTRY.to_string(), file_name)
 }

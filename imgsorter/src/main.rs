@@ -21,9 +21,6 @@ const DEFAULT_DRY_RUN: bool = false;
 
 const DATE_DIR_FORMAT: &'static str = "%Y.%m.%d";
 
-const FILE_TREE_ENTRY: &'static str = "   └─";
-const FILE_TREE_INDENT: &'static str = "   |";
-
 type DeviceTree = HashMap<Option<String>, Vec<SupportedFile>>;
 // type DateDeviceTree = HashMap<String, DeviceTree>;
 
@@ -592,7 +589,7 @@ fn process_dir_files(new_dir_tree: &DateDeviceTree, args: &CliArgs, mut stats: &
             .fold(0, |accum, (_, files_and_paths)| accum + files_and_paths.len());
 
         if is_dry_run {
-            println!("\n• [{}] ({:?} devices, {:?} files)", date_dir_name, device_count_for_date, files_count)
+            println!("\n[{}] ({:?} devices, {:?} files)", date_dir_name, device_count_for_date, files_count)
         }
 
         for (device_name_opt, files_and_paths_vec) in devices_files_and_paths {
@@ -610,39 +607,50 @@ fn process_dir_files(new_dir_tree: &DateDeviceTree, args: &CliArgs, mut stats: &
                 let dir_name = device_name_opt.clone().unwrap();
 
                 // Attach device name as a new subdirectory to the current target path
-                destination_path.push(dir_name);
+                destination_path.push(dir_name.clone()); // we only need clone here to be able to print it out later
 
-                // increase indent for dry run printouts
-                indent_level += 1;
+                if is_dry_run {
+                    // If dry run, increase indent for subsequent files
+                    indent_level += 1;
+
+                    // Add tree indents and padding to dir name
+                    let indented_dir_name = add_prefix_indent(
+                        0, ColoredString::bold_white(format!("[{}]", dir_name).as_str()));
+
+                    let padded_dir_name = pad_dot_right_to_length(
+                        indented_dir_name,
+
+                        // TODO padding not wide enough
+                        new_dir_tree.max_path_len);
+
+                    // Check if target exists
+                    let target_dir_exists = dry_run_check_target_exists(&destination_path);
+
+                    // Print everything together
+                    println!("{} {}", padded_dir_name, target_dir_exists);
+                }
             }
 
-            // Print or create subdir
-            if is_dry_run {
-                let dir_name_str = pad_dot_right_to_length(
-                    // should be safe to unwrap as we've just pushed it to the path
-                    format!("[{}]", destination_path.file_name().unwrap().to_str().unwrap()),
-                    new_dir_tree.max_path_len);  // not wide enough for dry run
-
-                let dir_status = dry_run_get_restrictions(&destination_path, args);
-
-                print_with_indent(
-                    0, dir_name_str, dir_status,
-                )
-            } else {
+            // Create subdir
+            if !is_dry_run {
                 create_subdir_if_required(&destination_path, &args, &mut stats);
             }
 
+            // Print or copy/move all files
             for file in files_and_paths_vec {
 
                 // Attach filename to the directory path
                 let mut file_destination_path = destination_path.clone().join(file.get_file_name_ref());
 
                 if is_dry_run {
-                    let read_only_str = dry_run_get_restrictions( &file.file_path, args);
-                    let file_status = format!("{} ===> {}", &file.file_name.to_str().unwrap(), destination_path.display());
-                    print_with_indent(
-                        indent_level, file_status, read_only_str
-                    );
+
+                    // TODO add padding for printing
+
+                    let read_only_str = dry_run_check_file_restrictions(&file.file_path, &file_destination_path, args);
+                    let file_status = format!("{} ===> {}", &file.file_name.to_str().unwrap(), file_destination_path.display());
+                    let indented_filename = add_prefix_indent(indent_level, file_status, );
+                    println!("{} {}", indented_filename, read_only_str);
+
                 } else {
 
                     // max file name len
@@ -662,39 +670,52 @@ fn process_dir_files(new_dir_tree: &DateDeviceTree, args: &CliArgs, mut stats: &
                              pad_dot_right_to_length(_p_name,new_dir_tree.max_path_len ),
                              file_copy_status);
                 }
-            }
-        } // end loop outer map
+            } // end loop files
+        } // end loop device dirs
+    } // end loop date dirs
+}
+
+/// Read a directory path and return a string signalling if the path exists
+fn dry_run_check_target_exists(path: &PathBuf) -> String {
+    if path.exists() {
+        ColoredString::orange("[target folder exists, will be skipped]")
+    } else {
+        ColoredString::green("[new folder will be created]")
     }
 }
 
-/// Read a path and return a string signalling if there are any copy/move restrictions
-/// If path is a directory, will say if it exists or it can be created
-/// If path is a file, will say if it's read only and can't be moved (only copied)
-fn dry_run_get_restrictions(path: &PathBuf, args: &CliArgs) -> String {
+/// Read a path and return a string signalling copy/move restrictions:
+/// * in both cases, check if the source file exists - no copy will take place
+/// * in both cases, check if the target file exists - file will be skipped
+/// * if the is a move, check if the source file is read-only and can't be moved (only copied)
+fn dry_run_check_file_restrictions(source_path: &PathBuf, target_path: &PathBuf, args: &CliArgs) -> String {
 
-    // does not work for target dirs
-    if path.is_dir() {
-        if path.exists() {
-            ColoredString::orange(" folder exists, will be skipped")
+    if source_path.exists() {
+
+        if target_path.exists() {
+            ColoredString::orange(" (target file exists, will be skipped)")
+        } else if args.copy_not_move {
+          ColoredString::green(" (file will be copied)")
+
         } else {
-            String::from(" new folder will be created")
+            match source_path.metadata() {
+                Ok(metadata) => {
+                    let is_read_only = metadata.permissions().readonly();
+                    if !args.copy_not_move && is_read_only {
+                        ColoredString::red(" (source is read only, file will be copied)")
+                    } else {
+                        ColoredString::green(" (file will be moved)")
+                    }
+                },
+                Err(e) => {
+                    let err_status = format!(" (error reading metadata: {})", e.to_string());
+                    ColoredString::red(err_status.as_str())
+                }
+            }
         }
 
     } else {
-        match path.metadata() {
-            Ok(metadata) => {
-                let is_read_only = metadata.permissions().readonly();
-                if !args.copy_not_move && is_read_only {
-                    ColoredString::red(" (read only)")
-                } else {
-                    String::from("")
-                }
-            },
-            Err(e) => {
-                let err_status = format!(" (error reading metadata: {})", e.description());
-                ColoredString::red(err_status.as_str())
-            }
-        }
+        ColoredString::red("(source file does not exist)")
     }
 }
 
