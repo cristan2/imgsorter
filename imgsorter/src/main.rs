@@ -6,7 +6,7 @@ use std::error::Error;
 use std::ffi::OsString;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use std::fs::{DirEntry, DirBuilder, File, Metadata};
-use rexif::{ExifEntry, ExifTag, ExifResult};
+use rexif::{ExifTag, ExifResult};
 use std::io::{Read, Seek, SeekFrom};
 
 use imgsorter::utils::*;
@@ -590,69 +590,65 @@ fn process_dir_files(new_dir_tree: &DateDeviceTree, args: &CliArgs, mut stats: &
             println!("\n• [{}] ({:?} devices, {:?} files)", date_dir_name, device_count_for_date, files_count)
         }
 
-        for (key_device_name_opt, val_files_and_paths) in devices_files_and_paths {
+        for (device_name_opt, files_and_paths_vec) in devices_files_and_paths {
 
-            let do_create_device_subdirs = device_count_for_date > 1 && key_device_name_opt.is_some();
+            let do_create_device_subdirs = device_count_for_date > 1 && device_name_opt.is_some();
 
             // Attach file's date as a new subdirectory to the target path
             let mut destination_path = args.target_dir.clone().join(&date_dir_name);
 
             let mut indent_level: usize = 0;
 
-            // If there's more than one device, create a subdir, otherwise ignore devices
+            // If there's more than one device, attach device dir to destination path, otherwise ignore devices
             if do_create_device_subdirs {
                 // This is safe to unwrap, since we've already checked the device is_some
-                let dir_name = key_device_name_opt.clone().unwrap();
+                let dir_name = device_name_opt.clone().unwrap();
 
                 // Attach device name as a new subdirectory to the current target path
-                destination_path.push(dir_name.clone());  // clone is only needed to print dir name below
+                destination_path.push(dir_name);
 
+                // increase indent for dry run printouts
                 indent_level += 1;
-
-                if is_dry_run {
-                    let dir_name_str = pad_dot_right_to_length(
-                        format!("[{}]", dir_name),
-                    new_dir_tree.max_path_len);  // not wide enough for dry run
-
-                    let dir_status = if destination_path.exists() {
-                        ColoredString::orange(" dir exists, will be skipped")
-                    } else {
-                        String::from(" dir will be created")
-                    };
-
-                    print_with_indent(
-                        0, dir_name_str, dir_status,
-                    )
-                }
             }
 
-            if !is_dry_run {
+            // Print or create subdir
+            if is_dry_run {
+                let dir_name_str = pad_dot_right_to_length(
+                    // should be safe to unwrap as we've just pushed it to the path
+                    format!("[{}]", destination_path.file_name().unwrap().to_str().unwrap()),
+                    new_dir_tree.max_path_len);  // not wide enough for dry run
+
+                let dir_status = dry_run_get_restrictions(&destination_path, args);
+
+                print_with_indent(
+                    0, dir_name_str, dir_status,
+                )
+            } else {
                 create_subdir_if_required(&destination_path, &args, &mut stats);
             }
 
-            for file in val_files_and_paths {
+            for file in files_and_paths_vec {
 
-                let is_read_only = file.metadata.permissions().readonly();
-                let read_only_str = if !args.copy_not_move && is_read_only {
-                    ColoredString::red(" (read only)")
-                } else { String::from("") };
+                // Attach filename to the directory path
+                let mut file_destination_path = destination_path.clone().join(file.get_file_name_ref());
 
                 if is_dry_run {
+                    let read_only_str = dry_run_get_restrictions( &file.file_path, args);
                     let file_status = format!("{} ===> {}", &file.file_name.to_str().unwrap(), destination_path.display());
                     print_with_indent(
                         indent_level, file_status, read_only_str
-                    )
+                    );
                 } else {
 
                     // max file name len
                     // max path len
 
-                    let file_copy_status = copy_file_if_not_exists(&file, &mut destination_path, &args, &mut stats);
+                    let file_copy_status = copy_file_if_not_exists(&file, &mut file_destination_path, &args, &mut stats);
 
                     // TODO 3a/5c: maybe only log this?
                     let _f_name = String::from(file.file_name.to_str().unwrap());
                     // let _p_name = String::from(destination_path.strip_prefix(&args.target_dir).unwrap().to_str().unwrap());
-                    let _p_name = String::from(date_dir_name) + "/" + &key_device_name_opt.clone().unwrap_or(String::from(""));
+                    let _p_name = String::from(date_dir_name) + "/" + &device_name_opt.clone().unwrap_or(String::from(""));
 
                     println!("{}  ──>  {}... {}",
                              // file.get_file_path_ref().strip_prefix(&args.source_dir).unwrap().display(),
@@ -663,6 +659,37 @@ fn process_dir_files(new_dir_tree: &DateDeviceTree, args: &CliArgs, mut stats: &
                 }
             }
         } // end loop outer map
+    }
+}
+
+/// Read a path and return a string signalling if there are any copy/move restrictions
+/// If path is a directory, will say if it exists or it can be created
+/// If path is a file, will say if it's read only and can't be moved (only copied)
+fn dry_run_get_restrictions(path: &PathBuf, args: &CliArgs) -> String {
+
+    // does not work for target dirs
+    if path.is_dir() {
+        if path.exists() {
+            ColoredString::orange(" folder exists, will be skipped")
+        } else {
+            String::from(" new folder will be created")
+        }
+
+    } else {
+        match path.metadata() {
+            Ok(metadata) => {
+                let is_read_only = metadata.permissions().readonly();
+                if !args.copy_not_move && is_read_only {
+                    ColoredString::red(" (read only)")
+                } else {
+                    String::from("")
+                }
+            },
+            Err(e) => {
+                let err_status = format!(" (error reading metadata: {})", e.description());
+                ColoredString::red(err_status.as_str())
+            }
+        }
     }
 }
 
@@ -713,16 +740,12 @@ fn ask_for_confirmation() -> ConfirmationType {
 
 fn copy_file_if_not_exists(
     file: &SupportedFile,
-    target_dir: &mut PathBuf,
+    destination_path: &mut PathBuf,
     args: &CliArgs,
     stats: &mut FileStats
 ) -> String {
 
-    // attach filename to the directory path
-    // destination_path.push(file.get_file_name_ref());
-    let destination_path = target_dir.join(file.get_file_name_ref());
-
-    let file_copy_status = if destination_path.exists() {
+    if destination_path.exists() {
         if DBG_ON {
             println!("> target file exists: {}",
                      &destination_path.strip_prefix(&args.target_dir).unwrap().display());
@@ -747,7 +770,7 @@ fn copy_file_if_not_exists(
             Ok(_) => {
 
                 // If this is a MOVE, delete the source file after a successful copy and append status
-                let (delete_failed, delete_result_str) = if !args.copy_not_move {
+                let (_delete_failed_opt, delete_result_str) = if !args.copy_not_move {
 
                     let delete_result = fs::remove_file(file.get_file_path_ref());
 
@@ -771,9 +794,9 @@ fn copy_file_if_not_exists(
                 // If operation is a move, the delete_failed is *defined* and *true* if the deletion failed
                 match file.file_type {
                     FileType::Image   =>
-                        if args.copy_not_move || delete_failed.unwrap_or(false) { stats.inc_img_copied() } else { stats.inc_img_moved() },
+                        if args.copy_not_move || _delete_failed_opt.unwrap_or(false) { stats.inc_img_copied() } else { stats.inc_img_moved() },
                     FileType::Video   =>
-                        if args.copy_not_move || delete_failed.unwrap_or(false) { stats.inc_vid_copied() } else { stats.inc_vid_moved() },
+                        if args.copy_not_move || _delete_failed_opt.unwrap_or(false) { stats.inc_vid_copied() } else { stats.inc_vid_moved() },
                     // don't record any stats for this, shouldn't get one here anyway
                     FileType::Unknown =>()
                 }
@@ -791,15 +814,7 @@ fn copy_file_if_not_exists(
                 ColoredString::red("ERROR")
             }
         }
-    };
-
-    file_copy_status
-
-    // // TODO 3a/5c: maybe only log this?
-    // println!("Copying {} -> {} ... {}",
-    //          file.get_file_path_ref().strip_prefix(&args.source_dir).unwrap().display(),
-    //          destination_path.strip_prefix(&args.target_dir).unwrap().display(),
-    //          file_copy_status);
+    }
 }
 
 fn create_subdir_if_required(
