@@ -25,9 +25,11 @@
     [!] c - img count in dir name - not feasible, prone to errors; is included in dry run output only
     [ ] dry run specific statistics
     [ ] separate dirs created into "date dirs" and "device dirs"
+    [ ] stats for "could not read EXIF"
+    [ ] stats for file size
 
 [ ] 4 - Config
-    [ ] a - config file - rename device with custom name (i.e. personal name instead of camera name)
+    [ ] a - config file - rename device with custom name (i.e. personal name instead of camera name) - see 7d
     [ ] config file - instead of CLI?
 
 [ ] 5 - Optimize code
@@ -56,7 +58,9 @@
     [ ] a - undo ?
     [ ] b - maybe don't read file list into memory?
     [ ] c - search recursively into existing subdirs (but skip "imgsorted" target subdir)
+    [ ] d - additional option to read and generate list of devices - this can be filled in and re-read as config - see 4a
     [ ] better confirmation
     [ ] how to treat existing files - skip, overwrite, rename
+    [ ] how to treat files without EXIF (e.g. images received over WhatsApp)
     [ ] after move, leave a txt file in place named "where are my photos" which explains where they were moved (process summary); have option to disable this
     [x] colored text

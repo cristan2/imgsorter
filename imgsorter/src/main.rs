@@ -8,6 +8,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use std::fs::{DirEntry, DirBuilder, File, Metadata};
 use rexif::{ExifTag, ExifResult};
 use std::io::{Read, Seek, SeekFrom};
+use std::time::Instant;
 
 use imgsorter::utils::*;
 
@@ -488,6 +489,8 @@ fn main() -> Result<(), std::io::Error> {
         }
     }
 
+    let start_time = Instant::now();
+
     println!("---------------------------------------------------------------------------");
     println!();
 
@@ -508,7 +511,11 @@ fn main() -> Result<(), std::io::Error> {
 
     // Print final stats
     println!();
-    stats.print_stats(&args);    
+    stats.print_stats(&args);
+
+    let duration = start_time.elapsed();
+    println!("Finished in {}.{} sec", duration.as_secs(), duration.subsec_millis());
+
     Ok(())
 }
 
@@ -1115,7 +1122,9 @@ fn read_exif_date_and_device(file: &DirEntry) -> ExifDateDevice {
 
         Err(e) => {
             // TODO 5c: log this error?
-            println!("{} could not read EXIF for {:?}: {}", ColoredString::warn_arrow(), file.file_name(), e.to_string());
+            if DBG_ON {
+                println!("{} could not read EXIF for {:?}: {}", ColoredString::warn_arrow(), file.file_name(), e.to_string());
+            }
         }
     }
 
