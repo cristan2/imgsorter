@@ -15,17 +15,18 @@
     [x] d - handle unknown files
     [x] e - copy/move file only if it's supported file
     [x] f - handle dir creation fail / dir already exists
-    [ ] source recursive
-    [ ] prefer date taken over date modified
+    [x] prefer date taken over date modified
+    [ ] dry run/copy output - sort dirs by name
     [ ] EXIF for video data
 
 [ ] 3 - Stats
-    [ ] a - show in progress statistics
+    [x] a - show in progress statistics
     [x] b - show final statistics - x files found, x dirs created, x files moved, x files left untouched...
-    [ ] c - img count in dir name
+    [!] c - img count in dir name - not feasible, prone to errors; is included in dry run output only
 
 [ ] 4 - Config
     [ ] a - config file - rename device with custom name (i.e. personal name instead of camera name)
+    [ ] config file - instead of CLI?
 
 [ ] 5 - Optimize code
     [x] a - struct to model "supported file" with required metadata (file name, device info, date, etc)
@@ -34,6 +35,7 @@
     [ ] d - better error handling
     [ ] e - better name for SupportedFile (or maybe don't accept Unknown file types)
     [ ] f - universal line terminators
+    [ ] g - macro for padding formats which take a variable for fill char
 
 [ ] 6 - Misc / bugs
     [x] a - change copy to rename
@@ -48,9 +50,9 @@
 
 [ ] 7 - Nice to have
     [ ] a - undo ?
-    [ ] b - maybe don't read file list into memory
+    [ ] b - maybe don't read file list into memory?
     [ ] c - search recursively into existing subdirs (but skip "imgsorted" target subdir)
     [ ] better confirmation
     [ ] how to treat existing files - skip, overwrite, rename
     [ ] after move, leave a txt file in place named "where are my photos" which explains where they were moved (process summary); have option to disable this
-    [ ] colored text https://stackoverflow.com/questions/69981449/how-do-i-print-colored-text-to-the-terminal-in-rust
+    [x] colored text

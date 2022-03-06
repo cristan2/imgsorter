@@ -31,3 +31,38 @@ impl ColoredString {
     pub fn warn_arrow() -> String { Self::orange(">") }
 }
 
+pub struct RightPadding;
+
+impl RightPadding {
+    // TODO 5g - have char as argument
+    pub fn space(str: String, pad_width: usize) -> String {
+        format!("{:<width$}", str, width=pad_width)
+    }
+
+    pub fn dot(str: String, pad_width: usize) -> String {
+        format!("{:.<width$}", str, width=pad_width)
+    }
+
+    pub fn dash(str: String, pad_width: usize) -> String {
+        format!("{:-<width$}", str, width=pad_width)
+    }
+
+    pub fn em_dash(str: String, pad_width: usize) -> String {
+        format!("{:─<width$}", str, width=pad_width)
+    }
+
+    pub fn middle_dot(str: String, pad_width: usize) -> String {
+        format!("{:·<width$}", str, width=pad_width)
+    }
+}
+
+pub const SEPARATOR_STATUS: &'static str = "...";
+pub const SEPARATOR_DRY_RUN: &'static str = "--->";
+pub const SEPARATOR_COPY_MOVE: &'static str = "──>";
+pub const FILE_TREE_ENTRY: &'static str = " └── ";
+pub const FILE_TREE_INDENT: &'static str = " |   ";
+
+pub fn indent_string(indent_level: usize, file_name: String) -> String {
+    let indents = FILE_TREE_INDENT.repeat(indent_level);
+    format!("{}{}{}", indents, FILE_TREE_ENTRY.to_string(), file_name)
+}
