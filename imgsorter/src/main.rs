@@ -567,9 +567,9 @@ fn parse_dir_contents(
                     .or_insert(Vec::new());
 
                 // Store the string lengths of the file name and path for padding in stdout
-                let _filename_len = current_file.file_name.clone().len();
-                let _device_name_len = current_file.device_name.clone().map(|d|d.len()).unwrap_or(0);
-                let _date_name_str = &current_file.date_str.len();
+                let _filename_len = String::from(current_file.file_name.clone().to_str().unwrap()).chars().count();
+                let _device_name_len = current_file.device_name.clone().map(|d|d.chars().count()).unwrap_or(0);
+                let _date_name_str = &current_file.date_str.chars().count();
                 // add +1 for each path separator character
                 let total_target_path_len = _date_name_str + 1 + _device_name_len + 1 + _filename_len;
 
@@ -594,13 +594,19 @@ fn parse_dir_contents(
     return new_dir_tree;
 }
 
-fn process_dir_files(new_dir_tree: &DateDeviceTree, args: &CliArgs, mut stats: &mut FileStats) {
+fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stats: &mut FileStats) {
 
     let is_dry_run = args.dry_run;
 
-    // println!("max filename_len = {}", new_dir_tree.max_filename_len);
-    println!("max path_len = {}", new_dir_tree.max_path_len);
+    // Dry runs will output a dirtree-like structure, so add the additional
+    // indents and markings to the max length to be taken into account when padding
+    if is_dry_run {
+        new_dir_tree.max_filename_len = new_dir_tree.max_filename_len
+            + String::from(FILE_TREE_INDENT).chars().count()
+            + String::from(FILE_TREE_ENTRY).chars().count()
+    }
 
+    // Iterate each date directory to be created
     for (date_dir_name, devices_files_and_paths) in &new_dir_tree.dir_tree {
         let device_count_for_date = devices_files_and_paths.file_tree.keys().len();
 
@@ -634,13 +640,11 @@ fn process_dir_files(new_dir_tree: &DateDeviceTree, args: &CliArgs, mut stats: &
                     indent_level += 1;
 
                     // Add tree indents and padding to dir name
-                    let indented_dir_name = add_prefix_indent(
-                        0, ColoredString::bold_white(format!("[{}]", dir_name).as_str()));
+                    let indented_dir_name = indent_string(0,ColoredString::bold_white(
+                            format!("[{}]", dir_name).as_str()));
 
                     let padded_dir_name = format_right_padded_dot(
                         indented_dir_name,
-
-                        // TODO padding not wide enough
                         new_dir_tree.max_path_len);
 
                     // Check restrictions - if target exists
@@ -662,34 +666,61 @@ fn process_dir_files(new_dir_tree: &DateDeviceTree, args: &CliArgs, mut stats: &
                 // Attach filename to the directory path
                 let mut file_destination_path = destination_path.clone().join(file.get_file_name_ref());
 
-                if is_dry_run {
+                let (padded_filename, op_separator, padded_path, op_status) = {
 
-                    // TODO add padding for printing
+                    // Check files and print result in this format:
+                    //  └── DSC_0002.JPG ---> 2017.03.12\DSC_0002.JPG... file will be copied
+                    if is_dry_run {
 
-                    let read_only_str = dry_run_check_file_restrictions(&file.file_path, &file_destination_path, args);
-                    let file_status = format!("{} ===> {}", &file.file_name.to_str().unwrap(), file_destination_path.display());
-                    let indented_filename = add_prefix_indent(indent_level, file_status, );
-                    println!("{} {}", indented_filename, read_only_str);
+                        // Check restrictions - file exist or read only
+                        let file_restrictions = dry_run_check_file_restrictions(&file.file_path, &file_destination_path, args);
 
-                } else {
+                        // Create padded strings for output
 
-                    // max file name len
-                    // max path len
+                        // need this space after the filename so there's a gap until the padding starts
+                        let _filename_string = format!("{} ", &file.file_name.to_str().unwrap());
+                        let _indented_filename = indent_string(indent_level, _filename_string);
+                        let padded_filename = format_right_padded_dash(
+                            _indented_filename,
+                            // +1 because of the space added to the right of filename_string
+                            new_dir_tree.max_filename_len + 1);
 
-                    let file_copy_status = copy_file_if_not_exists(&file, &mut file_destination_path, &args, &mut stats);
+                        // TODO add padding to this, before status?
+                        let target_dir = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
 
-                    // TODO 3a/5c: maybe only log this?
-                    let _f_name = String::from(file.file_name.to_str().unwrap());
-                    // let _p_name = String::from(destination_path.strip_prefix(&args.target_dir).unwrap().to_str().unwrap());
-                    let _p_name = String::from(date_dir_name) + "/" + &device_name_opt.clone().unwrap_or(String::from(""));
+                        // Return everything to be printed
+                        (padded_filename, SEPARATOR_DRY_RUN, target_dir, file_restrictions)
 
-                    println!("{}  ──>  {}... {}",
-                             // file.get_file_path_ref().strip_prefix(&args.source_dir).unwrap().display(),
-                             format_right_padded_space(_f_name, new_dir_tree.max_filename_len),
-                             // destination_path.strip_prefix(&args.target_dir).unwrap().display(),
-                             format_right_padded_dot(_p_name, new_dir_tree.max_path_len),
-                             file_copy_status);
-                }
+                    // Copy/move files then print result in this format:
+                    // DSC_0002.JPG ───> 2017.03.12\DSC_0002.JPG... ok
+                    } else {
+
+                        // Copy/move file
+                        let file_copy_status = copy_file_if_not_exists(&file, &mut file_destination_path, &args, &mut stats);
+
+                        // Create padded strings for output
+
+                        // need this space after the filename so there's a gap until the padding starts
+                        let _filename_string = format!("{} ", &file.file_name.to_str().unwrap());
+                        let padded_filename = format_right_padded_em_dash(
+                            _filename_string,
+                            // +1 because of the space added to the right of filename_string
+                            new_dir_tree.max_filename_len + 1);
+
+                        let stripped_path = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
+                        let padded_path = format_right_padded_dot(stripped_path, new_dir_tree.max_path_len);
+
+                        // Return everything to be printed
+                        (padded_filename, SEPARATOR_COPY_MOVE, padded_path, file_copy_status)
+                    }
+                };
+
+                // Print operation status
+                println!("{file}{separator} {path}... {status}",
+                         file=padded_filename,
+                         separator=op_separator,
+                         path=padded_path,
+                         status=op_status);
             } // end loop files
         } // end loop device dirs
     } // end loop date dirs
@@ -713,29 +744,29 @@ fn dry_run_check_file_restrictions(source_path: &PathBuf, target_path: &PathBuf,
     if source_path.exists() {
 
         if target_path.exists() {
-            ColoredString::orange("(target file exists, will be skipped)")
+            ColoredString::orange("target file exists, will be skipped")
         } else if args.copy_not_move {
-          ColoredString::green("(file will be copied)")
+          ColoredString::green("file will be copied")
 
         } else {
             match source_path.metadata() {
                 Ok(metadata) => {
                     let is_read_only = metadata.permissions().readonly();
                     if !args.copy_not_move && is_read_only {
-                        ColoredString::red("(source is read only, file will be copied)")
+                        ColoredString::red("source is read only, file will be copied")
                     } else {
-                        ColoredString::green("(file will be moved)")
+                        ColoredString::green("file will be moved")
                     }
                 },
                 Err(e) => {
-                    let err_status = format!("(error reading metadata: {})", e.to_string());
+                    let err_status = format!("error reading metadata: {}", e.to_string());
                     ColoredString::red(err_status.as_str())
                 }
             }
         }
 
     } else {
-        ColoredString::red("(source file does not exist)")
+        ColoredString::red("source file does not exist")
     }
 }
 

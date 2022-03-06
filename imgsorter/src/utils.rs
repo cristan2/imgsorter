@@ -40,14 +40,24 @@ pub fn format_right_padded_dot(str: String, pad_width: usize) -> String {
     format!("{:.<width$}", str, width=pad_width)
 }
 
+pub fn format_right_padded_dash(str: String, pad_width: usize) -> String {
+    format!("{:-<width$}", str, width=pad_width)
+}
+
+pub fn format_right_padded_em_dash(str: String, pad_width: usize) -> String {
+    format!("{:─<width$}", str, width=pad_width)
+}
+
 pub fn format_right_padded_middle_dot(str: String, pad_width: usize) -> String {
     format!("{:·<width$}", str, width=pad_width)
 }
 
-pub const FILE_TREE_ENTRY: &'static str = " └──";
-const FILE_TREE_INDENT: &'static str = " |   ";
+pub const SEPARATOR_DRY_RUN: &'static str = "--->";
+pub const SEPARATOR_COPY_MOVE: &'static str = "──>";
+pub const FILE_TREE_ENTRY: &'static str = " └── ";
+pub const FILE_TREE_INDENT: &'static str = " |   ";
 
-pub fn add_prefix_indent(indent_level: usize, file_name: String) -> String {
+pub fn indent_string(indent_level: usize, file_name: String) -> String {
     let indents = FILE_TREE_INDENT.repeat(indent_level);
-    format!("{}{} {}", indents, FILE_TREE_ENTRY.to_string(), file_name)
+    format!("{}{}{}", indents, FILE_TREE_ENTRY.to_string(), file_name)
 }

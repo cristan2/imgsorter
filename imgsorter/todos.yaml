@@ -20,7 +20,7 @@
     [ ] EXIF for video data
 
 [ ] 3 - Stats
-    [ ] a - show in progress statistics
+    [x] a - show in progress statistics
     [x] b - show final statistics - x files found, x dirs created, x files moved, x files left untouched...
     [!] c - img count in dir name - not feasible, prone to errors; is included in dry run output only
 
