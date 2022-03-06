@@ -31,27 +31,32 @@ impl ColoredString {
     pub fn warn_arrow() -> String { Self::orange(">") }
 }
 
-// TODO 5g - have char as argument
-pub fn format_right_padded_space(str: String, pad_width: usize) -> String {
-    format!("{:<width$}", str, width=pad_width)
+pub struct RightPadding;
+
+impl RightPadding {
+    // TODO 5g - have char as argument
+    pub fn space(str: String, pad_width: usize) -> String {
+        format!("{:<width$}", str, width=pad_width)
+    }
+
+    pub fn dot(str: String, pad_width: usize) -> String {
+        format!("{:.<width$}", str, width=pad_width)
+    }
+
+    pub fn dash(str: String, pad_width: usize) -> String {
+        format!("{:-<width$}", str, width=pad_width)
+    }
+
+    pub fn em_dash(str: String, pad_width: usize) -> String {
+        format!("{:─<width$}", str, width=pad_width)
+    }
+
+    pub fn middle_dot(str: String, pad_width: usize) -> String {
+        format!("{:·<width$}", str, width=pad_width)
+    }
 }
 
-pub fn format_right_padded_dot(str: String, pad_width: usize) -> String {
-    format!("{:.<width$}", str, width=pad_width)
-}
-
-pub fn format_right_padded_dash(str: String, pad_width: usize) -> String {
-    format!("{:-<width$}", str, width=pad_width)
-}
-
-pub fn format_right_padded_em_dash(str: String, pad_width: usize) -> String {
-    format!("{:─<width$}", str, width=pad_width)
-}
-
-pub fn format_right_padded_middle_dot(str: String, pad_width: usize) -> String {
-    format!("{:·<width$}", str, width=pad_width)
-}
-
+pub const SEPARATOR_STATUS: &'static str = "...";
 pub const SEPARATOR_DRY_RUN: &'static str = "--->";
 pub const SEPARATOR_COPY_MOVE: &'static str = "──>";
 pub const FILE_TREE_ENTRY: &'static str = " └── ";

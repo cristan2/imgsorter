@@ -606,33 +606,75 @@ fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stat
             + String::from(FILE_TREE_ENTRY).chars().count()
     }
 
-    // Iterate each date directory to be created
+    let dir_padding_width = {
+        if is_dry_run {
+            let _total_padding_width = {
+                new_dir_tree.max_filename_len
+                    + 1 // +1 for the gap between a filename and its padding
+                    + SEPARATOR_DRY_RUN.chars().count()
+                    + new_dir_tree.max_path_len
+                    + SEPARATOR_STATUS.chars().count()
+                    + 1 // +1 for the gap between a path and its padding
+                    + 1 // +1 for the gap between a path and the operation status
+            };
+            Some(_total_padding_width)
+        } else { None }
+    };
+
+    /*****************************************************************************/
+    /* ---             Iterate each date directory to be created             --- */
+    /*****************************************************************************/
+
     for (date_dir_name, devices_files_and_paths) in &new_dir_tree.dir_tree {
         let device_count_for_date = devices_files_and_paths.file_tree.keys().len();
 
         let files_count = devices_files_and_paths.file_tree.iter()
-            .fold(0, |accum, (_, files_and_paths)| accum + files_and_paths.len());
+            .fold(0, |accum, (_, files_and_paths)|
+                accum + files_and_paths.len());
+
+        // Attach file's date as a new subdirectory to the target path
+        let date_destination_path = args.target_dir.clone().join(date_dir_name);
 
         if is_dry_run {
-            println!("\n[{}] ({:?} devices, {:?} files)", date_dir_name, device_count_for_date, files_count)
+
+            let _dir_name_with_device_status = format!("[{}] ({:?} devices, {:?} files) ",
+                                                        date_dir_name.clone(),
+                                                        device_count_for_date,
+                                                        files_count);
+
+            let padded_dir_name = RightPadding::dot(
+                _dir_name_with_device_status,
+                // safe to unwrap for dry runs
+                dir_padding_width.unwrap());
+
+            // Check restrictions - if target exists
+            let target_dir_exists = dry_run_check_target_exists(&date_destination_path);
+
+            // Print everything together
+            println!("\n{} {}", padded_dir_name, target_dir_exists);
         }
 
-        for (device_name_opt, files_and_paths_vec) in &devices_files_and_paths.file_tree {
 
-            let do_create_device_subdirs = device_count_for_date > 1 && device_name_opt.is_some();
+        /*****************************************************************************/
+        /* ---            Iterate each device directory to be created            --- */
+        /*****************************************************************************/
 
-            // Attach file's date as a new subdirectory to the target path
-            let mut destination_path = args.target_dir.clone().join(&date_dir_name);
+        for (
+            device_name_opt,
+            files_and_paths_vec
+        ) in &devices_files_and_paths.file_tree {
 
             let mut indent_level: usize = 0;
 
+            let do_create_device_subdirs = device_count_for_date > 1 && device_name_opt.is_some();
+
             // If there's more than one device, attach device dir to destination path, otherwise ignore devices
-            if do_create_device_subdirs {
+            let device_destination_path = if do_create_device_subdirs {
                 // This is safe to unwrap, since we've already checked the device is_some
                 let dir_name = device_name_opt.clone().unwrap();
 
                 // Attach device name as a new subdirectory to the current target path
-                destination_path.push(dir_name.clone()); // we only need clone here to be able to print it out later
+                let device_path = date_destination_path.join(dir_name.clone()); // we only need clone here to be able to print it out later
 
                 // Print device dir name
                 if is_dry_run {
@@ -640,33 +682,54 @@ fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stat
                     indent_level += 1;
 
                     // Add tree indents and padding to dir name
-                    let indented_dir_name = indent_string(0,ColoredString::bold_white(
-                            format!("[{}]", dir_name).as_str()));
+                    let _indented_dir_name: String = indent_string(0, format!("[{}] ", dir_name));
 
-                    let padded_dir_name = format_right_padded_dot(
-                        indented_dir_name,
-                        new_dir_tree.max_path_len);
+                    let padded_dir_name = RightPadding::dot(
+                        _indented_dir_name,
+                        // safe to unwrap for dry runs
+                        dir_padding_width.unwrap());
 
                     // Check restrictions - if target exists
-                    let target_dir_exists = dry_run_check_target_exists(&destination_path);
+                    let target_dir_exists = dry_run_check_target_exists(&device_path);
 
                     // Print everything together
                     println!("{} {}", padded_dir_name, target_dir_exists);
                 }
-            }
+
+                device_path
+            } else {
+                date_destination_path.clone()
+            };
 
             // Create subdir
             if !is_dry_run {
-                create_subdir_if_required(&destination_path, &args, &mut stats);
+                create_subdir_if_required(&device_destination_path, &args, &mut stats);
             }
 
-            // Print or copy/move all files
+            /*****************************************************************************/
+            /* --- Iterate each file in a device directory and print or copy/move it --- */
+            /*****************************************************************************/
+
             for file in files_and_paths_vec {
 
                 // Attach filename to the directory path
-                let mut file_destination_path = destination_path.clone().join(file.get_file_name_ref());
+                let mut file_destination_path = device_destination_path.clone()
+                    .join(file.get_file_name_ref());
 
-                let (padded_filename, op_separator, padded_path, op_status) = {
+                let (padded_filename,
+                    op_separator,
+                    padded_path,
+                    op_status
+                ) = {
+
+                    // need this space after the filename so there's a gap until the padding starts
+                    let _filename_string = format!("{} ", &file.file_name.to_str().unwrap());
+
+                    let _stripped_target_path = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
+                    let padded_path = RightPadding::dot(
+                        format!("{} ", _stripped_target_path),
+                        // +1 because of the space added to the right of _stripped_target_path
+                        new_dir_tree.max_path_len + 1);
 
                     // Check files and print result in this format:
                     //  └── DSC_0002.JPG ---> 2017.03.12\DSC_0002.JPG... file will be copied
@@ -675,21 +738,15 @@ fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stat
                         // Check restrictions - file exist or read only
                         let file_restrictions = dry_run_check_file_restrictions(&file.file_path, &file_destination_path, args);
 
-                        // Create padded strings for output
-
-                        // need this space after the filename so there's a gap until the padding starts
-                        let _filename_string = format!("{} ", &file.file_name.to_str().unwrap());
+                        // Add tree indents and dry run padding (normal dashes) to file name
                         let _indented_filename = indent_string(indent_level, _filename_string);
-                        let padded_filename = format_right_padded_dash(
+                        let padded_filename = RightPadding::dash(
                             _indented_filename,
                             // +1 because of the space added to the right of filename_string
                             new_dir_tree.max_filename_len + 1);
 
-                        // TODO add padding to this, before status?
-                        let target_dir = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
-
                         // Return everything to be printed
-                        (padded_filename, SEPARATOR_DRY_RUN, target_dir, file_restrictions)
+                        (padded_filename, SEPARATOR_DRY_RUN, padded_path, file_restrictions)
 
                     // Copy/move files then print result in this format:
                     // DSC_0002.JPG ───> 2017.03.12\DSC_0002.JPG... ok
@@ -698,17 +755,11 @@ fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stat
                         // Copy/move file
                         let file_copy_status = copy_file_if_not_exists(&file, &mut file_destination_path, &args, &mut stats);
 
-                        // Create padded strings for output
-
-                        // need this space after the filename so there's a gap until the padding starts
-                        let _filename_string = format!("{} ", &file.file_name.to_str().unwrap());
-                        let padded_filename = format_right_padded_em_dash(
+                        // Add copy/move padding (em dashes) to file name
+                        let padded_filename = RightPadding::em_dash(
                             _filename_string,
                             // +1 because of the space added to the right of filename_string
                             new_dir_tree.max_filename_len + 1);
-
-                        let stripped_path = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
-                        let padded_path = format_right_padded_dot(stripped_path, new_dir_tree.max_path_len);
 
                         // Return everything to be printed
                         (padded_filename, SEPARATOR_COPY_MOVE, padded_path, file_copy_status)
@@ -716,10 +767,11 @@ fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stat
                 };
 
                 // Print operation status
-                println!("{file}{separator} {path}... {status}",
+                println!("{file}{op_separator} {path}{status_separator} {status}",
                          file=padded_filename,
-                         separator=op_separator,
+                         op_separator=op_separator,
                          path=padded_path,
+                         status_separator=SEPARATOR_STATUS,
                          status=op_status);
             } // end loop files
         } // end loop device dirs
@@ -729,9 +781,9 @@ fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stat
 /// Read a directory path and return a string signalling if the path exists
 fn dry_run_check_target_exists(path: &PathBuf) -> String {
     if path.exists() {
-        ColoredString::orange("[target folder exists, will be skipped]")
+        String::from("[target folder exists, will be skipped]")
     } else {
-        ColoredString::green("[new folder will be created]")
+        String::from("[new folder will be created]")
     }
 }
 
@@ -917,13 +969,13 @@ fn create_subdir_if_required(
                 println!();
                 println!("{}",
                          ColoredString::bold_white(
-                             format!("[Created subdirectory {}]",
+                             format!("[Created folder {}]",
                             target_subdir.strip_prefix(&args.target_dir).unwrap().display()).as_str()));
             },
             Err(e) => {
                 // TODO 2f: handle dir creation fail
                 stats.inc_error_dir_create();
-                println!("Failed to create subdirectory {}: {:?}",
+                println!("Failed to create folder {}: {:?}",
                          target_subdir.strip_prefix(&args.target_dir).unwrap().display(),
                          e.kind())
             }
