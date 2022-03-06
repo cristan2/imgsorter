@@ -31,6 +31,13 @@ impl ColoredString {
     pub fn warn_arrow() -> String { Self::orange(">") }
 }
 
+pub enum OutputColor {
+    Error,
+    Warning,
+    Neutral,
+    Good
+}
+
 pub struct RightPadding;
 
 impl RightPadding {

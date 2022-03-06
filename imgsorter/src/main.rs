@@ -122,13 +122,6 @@ pub struct FileStats {
     error_dir_create: i32,
 }
 
-pub enum OutputColor {
-    Error,
-    Warning,
-    Neutral,
-    Good
-}
-
 impl FileStats {
     pub fn new() -> FileStats {
         FileStats {
@@ -140,7 +133,7 @@ impl FileStats {
             vid_copied: 0,
             vid_skipped: 0,
             unknown_skipped: 0,
-            dirs_skipped: 0,
+            dirs_ignored: 0,
             dirs_created: 0,
             error_file_create: 0,
             error_file_delete: 0,
@@ -156,7 +149,7 @@ impl FileStats {
     pub fn inc_vid_copied(&mut self) { self.vid_copied += 1 }
     pub fn inc_vid_skipped(&mut self) { self.vid_skipped += 1 }
     pub fn inc_unknown_skipped(&mut self) { self.unknown_skipped += 1 }
-    pub fn inc_dirs_skipped(&mut self) { self.dirs_skipped += 1 }
+    pub fn inc_dirs_ignored(&mut self) { self.dirs_ignored += 1 }
     pub fn inc_dirs_created(&mut self) { self.dirs_created += 1 }
     pub fn inc_error_file_create(&mut self) { self.error_file_create += 1 }
     pub fn inc_error_file_delete(&mut self) { self.error_file_delete += 1 }
@@ -191,27 +184,27 @@ Images skipped:          {img_skip}
 Videos moved:            {vid_move}
 Videos copied:           {vid_copy}
 Videos skipped:          {vid_skip}
+Directories ignored:     {dir_ignore}
 Directories created:     {dir_create}
-Directories skipped:     {d_skip}
 Unknown files skipped:   {f_skip}
 -----------------------------
 File create errors:      {fc_err}
 File delete errors:      {fd_err}
 Directory create errors: {dc_err}
 -----------------------------",
-               total=FileStats::color_if_non_zero(self.files_total, OutputColor::Neutral),
-               img_move=FileStats::color_if_non_zero(self.img_moved, OutputColor::Neutral),
-               img_copy=FileStats::color_if_non_zero(self.img_copied, OutputColor::Neutral),
-               img_skip=FileStats::color_if_non_zero(self.img_skipped, OutputColor::Warning),
-               vid_move=FileStats::color_if_non_zero(self.vid_moved,OutputColor::Neutral),
-               vid_copy=FileStats::color_if_non_zero(self.vid_copied,OutputColor::Neutral),
-               vid_skip=FileStats::color_if_non_zero(self.vid_skipped, OutputColor::Warning),
-               dir_create=FileStats::color_if_non_zero(self.dirs_created, OutputColor::Neutral),
-               d_skip=FileStats::color_if_non_zero(self.dirs_skipped, OutputColor::Warning),
-               f_skip=FileStats::color_if_non_zero(self.unknown_skipped, OutputColor::Warning),
-               fc_err=FileStats::color_if_non_zero(self.error_file_create, OutputColor::Error),
-               fd_err=FileStats::color_if_non_zero(self.error_file_delete, OutputColor::Error),
-               dc_err=FileStats::color_if_non_zero(self.error_dir_create, OutputColor::Error),
+                            total=FileStats::color_if_non_zero(self.files_total, OutputColor::Neutral),
+                            img_move=FileStats::color_if_non_zero(self.img_moved, OutputColor::Neutral),
+                            img_copy=FileStats::color_if_non_zero(self.img_copied, OutputColor::Neutral),
+                            img_skip=FileStats::color_if_non_zero(self.img_skipped, OutputColor::Warning),
+                            vid_move=FileStats::color_if_non_zero(self.vid_moved,OutputColor::Neutral),
+                            vid_copy=FileStats::color_if_non_zero(self.vid_copied,OutputColor::Neutral),
+                            vid_skip=FileStats::color_if_non_zero(self.vid_skipped, OutputColor::Warning),
+                            dir_create=FileStats::color_if_non_zero(self.dirs_created, OutputColor::Neutral),
+                            dir_ignore=FileStats::color_if_non_zero(self.dirs_ignored, OutputColor::Warning),
+                            f_skip=FileStats::color_if_non_zero(self.unknown_skipped, OutputColor::Warning),
+                            fc_err=FileStats::color_if_non_zero(self.error_file_create, OutputColor::Error),
+                            fd_err=FileStats::color_if_non_zero(self.error_file_delete, OutputColor::Error),
+                            dc_err=FileStats::color_if_non_zero(self.error_dir_create, OutputColor::Error),
         );
 
         println!("{}", general_stats);
@@ -452,6 +445,7 @@ fn main() -> Result<(), std::io::Error> {
         dbg!(&args);
     }
 
+    // TODO 6f: handle path not exists
     // Read dir contents and filter out error results
     let dir_contents = read_supported_files(&mut stats, &mut args)?;
 
@@ -534,7 +528,7 @@ fn read_supported_files(stats: &mut FileStats, args: &mut CliArgs) -> Result<Vec
                     Ok(metadata) => {
                         if metadata.is_dir() {
                             if DBG_ON { println!("Skipping directory {:?}", entry.file_name()) }
-                            stats.inc_dirs_skipped();
+                            stats.inc_dirs_ignored();
                             false
                         } else {
                             true

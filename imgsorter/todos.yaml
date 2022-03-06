@@ -1,7 +1,7 @@
 [ ] 1 - CLI / config file args
     [ ] CLI or config file?
     [ ] a - arg for paths
-    [ ] b - arg for min count for move
+    [ ] b - arg for min file count required to create date dir (i.e. avoid 1-image dirs)
     [ ] c - arg flag for logfile
     [ ] d - arg flag for target dir
     [x] e - defaults for options
@@ -23,6 +23,8 @@
     [x] a - show in progress statistics
     [x] b - show final statistics - x files found, x dirs created, x files moved, x files left untouched...
     [!] c - img count in dir name - not feasible, prone to errors; is included in dry run output only
+    [ ] dry run specific statistics
+    [ ] separate dirs created into "date dirs" and "device dirs"
 
 [ ] 4 - Config
     [ ] a - config file - rename device with custom name (i.e. personal name instead of camera name)
@@ -32,7 +34,7 @@
     [x] a - struct to model "supported file" with required metadata (file name, device info, date, etc)
     [ ] b - separate module for "file utils"
     [ ] c - logging (replace debug printouts plus check every match/Err and ?)
-    [ ] d - better error handling
+    [ ] d - better error handling (e.g. check all `.unwrap()`s)
     [ ] e - better name for SupportedFile (or maybe don't accept Unknown file types)
     [ ] f - universal line terminators
     [ ] g - macro for padding formats which take a variable for fill char
@@ -44,10 +46,11 @@
     [x] d - fix eroare "Access is denied." daca rulezi a doua oara si target files exista 
           - eroare cand target dir exista si se incearca citire metadate
     [x] e - run with debug - optional debug printouts
-    [ ] create_subdir_if_required shouldn't rely on CWD to strip prefix
+    [ ] f - handle source path not exists
+    [x] create_subdir_if_required shouldn't rely on CWD to strip prefix
     [x] only create device name subdirs if there's more than one
     [ ] option to always create device name subdirs even if there's only one
-    [ ] string padding for dry run
+    [x] string padding for dry run
 
 [ ] 7 - Nice to have
     [ ] a - undo ?
