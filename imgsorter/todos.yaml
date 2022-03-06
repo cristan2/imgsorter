@@ -45,7 +45,8 @@
           - eroare cand target dir exista si se incearca citire metadate
     [x] e - run with debug - optional debug printouts
     [ ] create_subdir_if_required shouldn't rely on CWD to strip prefix
-    [ ] only create device name subdirs if there's more than one
+    [x] only create device name subdirs if there's more than one
+    [ ] option to always create device name subdirs even if there's only one
     [ ] string padding for dry run
 
 [ ] 7 - Nice to have

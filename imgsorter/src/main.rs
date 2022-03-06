@@ -25,14 +25,14 @@ const DATE_DIR_FORMAT: &'static str = "%Y.%m.%d";
 /// a string representation of a device holding a Vec of files
 struct DeviceTree {
     file_tree: BTreeMap<Option<String>, Vec<SupportedFile>>,
-    max_path_len: usize
+    max_dir_path_len: usize
 }
 
 impl DeviceTree {
     fn new() -> DeviceTree {
         DeviceTree {
             file_tree: BTreeMap::new(),
-            max_path_len: 0,
+            max_dir_path_len: 0,
         }
     }
 }
@@ -66,17 +66,28 @@ impl DateDeviceTree {
         }
     }
 
-    // The max path length can only be computed after the tree has been filled with devices and files
+    // Find the maximum length of the path string that may be present in the output
+    // This can only be computed after the tree has been filled with devices and files
     // because of the requirement to only create device subdirs if there are at least 2 devices
+    // Resulting value covers two cases:
+    // - there's at least one date dir with >1 devices subdirs: compute path length to include `date/device_name/file_name`
+    // - there's no date dir with >1 devices: compute path length to include `date/file_name`
     fn compute_max_path_len(&mut self) {
-        let max_val = &self.dir_tree.iter()
+        let max_date_dir_path_len = &self.dir_tree.iter()
             // filter only date dirs with at least 2 devices
             .filter(|(_, device_tree)| device_tree.file_tree.keys().clone().len() > 1 )
             // now search all devices for the max path len
-            .map(|(_, device_tree)| device_tree.max_path_len)
-            .max().clone();
+            .map(|(_, device_tree)| device_tree.max_dir_path_len)
+            .max();
 
-        self.max_path_len = max_val.clone().unwrap_or(0);
+        if max_date_dir_path_len.is_some() {
+            // add +1 for the length of the separator between dirs and filename
+            self.max_path_len = max_date_dir_path_len.clone().unwrap() + 1 + &self.max_filename_len;
+        } else {
+            // add +10 for the length of date dirs, e.g. 2016.12.29
+            // add +1 for the length of the separator between date and filename
+            self.max_path_len = 10 + 1 + &self.max_filename_len;
+        }
     }
 }
 
@@ -104,7 +115,7 @@ pub struct FileStats {
     vid_copied: i32,
     vid_skipped: i32,
     unknown_skipped: i32,
-    dirs_skipped: i32,
+    dirs_ignored: i32,
     dirs_created: i32,
     error_file_create: i32,
     error_file_delete: i32,
@@ -572,10 +583,10 @@ fn parse_dir_contents(
                 let _device_name_len = current_file.device_name.clone().map(|d|d.chars().count()).unwrap_or(0);
                 let _date_name_str = &current_file.date_str.chars().count();
                 // add +1 for each path separator character
-                let total_target_path_len = _date_name_str + 1 + _device_name_len + 1 + _filename_len;
+                let total_target_path_len = _date_name_str + 1 + _device_name_len;
 
                 new_dir_tree.max_filename_len = max(new_dir_tree.max_filename_len, _filename_len);
-                all_devices_for_this_date.max_path_len = max(all_devices_for_this_date.max_path_len, total_target_path_len);
+                all_devices_for_this_date.max_dir_path_len = max(all_devices_for_this_date.max_dir_path_len, total_target_path_len);
 
                 // Add file to dir tree
                 all_files_for_this_device.push(current_file);
@@ -611,12 +622,12 @@ fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stat
         if is_dry_run {
             let _total_padding_width = {
                 new_dir_tree.max_filename_len
-                    + 1 // +1 for the gap between a filename and its padding
+                    + 1 // add +1 for the gap between a filename and its padding
                     + SEPARATOR_DRY_RUN.chars().count()
                     + new_dir_tree.max_path_len
                     + SEPARATOR_STATUS.chars().count()
-                    + 1 // +1 for the gap between a path and its padding
-                    + 1 // +1 for the gap between a path and the operation status
+                    + 1 // add +1 for the gap between a path and its padding
+                    + 1 // add +1 for the gap between a path and the operation status
             };
             Some(_total_padding_width)
         } else { None }
@@ -729,7 +740,7 @@ fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stat
                     let _stripped_target_path = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
                     let padded_path = RightPadding::dot(
                         format!("{} ", _stripped_target_path),
-                        // +1 because of the space added to the right of _stripped_target_path
+                        // add +1 for the space added to the right of _stripped_target_path
                         new_dir_tree.max_path_len + 1);
 
                     // Check files and print result in this format:
@@ -743,7 +754,7 @@ fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stat
                         let _indented_filename = indent_string(indent_level, _filename_string);
                         let padded_filename = RightPadding::dash(
                             _indented_filename,
-                            // +1 because of the space added to the right of filename_string
+                            // add +1 for the space added to the right of filename_string
                             new_dir_tree.max_filename_len + 1);
 
                         // Return everything to be printed
@@ -762,7 +773,7 @@ fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stat
                         // Add copy/move padding (em dashes) to file name
                         let padded_filename = RightPadding::em_dash(
                             _filename_string,
-                            // +1 because of the space added to the right of filename_string
+                            // add +1 for the space added to the right of filename_string
                             new_dir_tree.max_filename_len + 1);
 
                         // Return everything to be printed

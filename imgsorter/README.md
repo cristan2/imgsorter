@@ -47,4 +47,5 @@ Output:
 * If EXIF is not present or the file or device is not supported, target is the root of the date file
 * No device name can be determined for video files at the moment
 * Only the files in the root of the source directory are read at the moment. Any subdirectories will be ignored.
+* Multiple runs on different source dirs with the *same* target dir may result in mixed images from several devices placed in the same folder
 * Unsupported files are ignored
