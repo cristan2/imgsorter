@@ -31,14 +31,20 @@ impl ColoredString {
     pub fn warn_arrow() -> String { Self::orange(">") }
 }
 
-pub fn pad_right_to_length(str: String, pad_width: usize) -> String {
+// TODO 5g - have char as argument
+pub fn format_right_padded_space(str: String, pad_width: usize) -> String {
     format!("{:<width$}", str, width=pad_width)
 }
-pub fn pad_dot_right_to_length(str: String, pad_width: usize) -> String {
+
+pub fn format_right_padded_dot(str: String, pad_width: usize) -> String {
     format!("{:.<width$}", str, width=pad_width)
 }
 
-const FILE_TREE_ENTRY: &'static str = " └──";
+pub fn format_right_padded_middle_dot(str: String, pad_width: usize) -> String {
+    format!("{:·<width$}", str, width=pad_width)
+}
+
+pub const FILE_TREE_ENTRY: &'static str = " └──";
 const FILE_TREE_INDENT: &'static str = " |   ";
 
 pub fn add_prefix_indent(indent_level: usize, file_name: String) -> String {
