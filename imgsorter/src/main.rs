@@ -1,7 +1,7 @@
 use std::path::{PathBuf, Path};
 use std::{fs, env, io};
 use std::cmp::max;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::ffi::OsString;
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -24,14 +24,14 @@ const DATE_DIR_FORMAT: &'static str = "%Y.%m.%d";
 /// Convenience alias over a map meant to represent
 /// a string representation of a device holding a Vec of files
 struct DeviceTree {
-    file_tree: HashMap<Option<String>, Vec<SupportedFile>>,
+    file_tree: BTreeMap<Option<String>, Vec<SupportedFile>>,
     max_path_len: usize
 }
 
 impl DeviceTree {
     fn new() -> DeviceTree {
         DeviceTree {
-            file_tree: HashMap::new(),
+            file_tree: BTreeMap::new(),
             max_path_len: 0,
         }
     }
@@ -40,18 +40,19 @@ impl DeviceTree {
 /// A wrapper over a map of maps to represent the directory tree as described below.
 /// The outer map keys is the date representation
 /// The inner map keys is an Optional device name
+/// Use BTreeMap's to have the keys sorted
 /// ```
-/// [target_dir]          // top-level HashMap
+/// [target_dir]          // top-level map
 ///  └─ [date_dir]        // top-level key of type String
-///  │   └─ [device_dir]  // inner HashMap; key of type Option<String>
-///  │   │   └─ file.ext  // inner HashMap; value is Vec of supported files
+///  │   └─ [device_dir]  // inner map; key of type Option<String>
+///  │   │   └─ file.ext  // inner map; value is Vec of supported files
 ///  │   │   └─ file.ext
 ///  │   └─ device_dir
 ///  └─ date_dir
 /// ```
 /// Additionally, the struct
 struct DateDeviceTree {
-    dir_tree: HashMap<String, DeviceTree>,
+    dir_tree: BTreeMap<String, DeviceTree>,
     max_filename_len: usize,
     max_path_len: usize
 }
@@ -59,7 +60,7 @@ struct DateDeviceTree {
 impl DateDeviceTree {
     fn new() -> DateDeviceTree {
         DateDeviceTree {
-            dir_tree: HashMap::new(),
+            dir_tree: BTreeMap::new(),
             max_filename_len: 0,
             max_path_len: 0,
         }
@@ -701,7 +702,7 @@ fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stat
                 date_destination_path.clone()
             };
 
-            // Create subdir
+            // Create subdir path
             if !is_dry_run {
                 create_subdir_if_required(&device_destination_path, &args, &mut stats);
             }
@@ -753,7 +754,10 @@ fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stat
                     } else {
 
                         // Copy/move file
-                        let file_copy_status = copy_file_if_not_exists(&file, &mut file_destination_path, &args, &mut stats);
+                        let file_copy_status = copy_file_if_not_exists(
+                            &file,
+                            &mut file_destination_path,
+                            &args, &mut stats);
 
                         // Add copy/move padding (em dashes) to file name
                         let padded_filename = RightPadding::em_dash(

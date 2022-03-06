@@ -16,7 +16,7 @@
     [x] e - copy/move file only if it's supported file
     [x] f - handle dir creation fail / dir already exists
     [x] prefer date taken over date modified
-    [ ] dry run/copy output - sort dirs by name
+    [x] dry run/copy output - sort dirs by name (see https://stackoverflow.com/questions/59799388/sort-hashmap-data-by-keys)
     [ ] EXIF for video data
 
 [ ] 3 - Stats
