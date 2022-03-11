@@ -62,5 +62,6 @@
     [ ] better confirmation
     [ ] how to treat existing files - skip, overwrite, rename
     [ ] how to treat files without EXIF (e.g. images received over WhatsApp)
+    [ ] colored separator arrows
     [ ] after move, leave a txt file in place named "where are my photos" which explains where they were moved (process summary); have option to disable this
     [x] colored text

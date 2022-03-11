@@ -1,3 +1,6 @@
+use std::collections::hash_set::Iter;
+use std::collections::HashSet;
+use std::iter::Cloned;
 
 pub struct ColoredString;
 
@@ -72,4 +75,48 @@ pub const FILE_TREE_INDENT: &'static str = " |   ";
 pub fn indent_string(indent_level: usize, file_name: String) -> String {
     let indents = FILE_TREE_INDENT.repeat(indent_level);
     format!("{}{}{}", indents, FILE_TREE_ENTRY.to_string(), file_name)
+}
+
+
+pub fn check_sets() {
+    let a: HashSet<_> = ["unu", "doi", "trei"].iter().cloned().map(|s|String::from(s)).collect();
+    let b: HashSet<_> = ["trei", "patru", "cinci"].iter().cloned().map(|s|String::from(s)).collect();
+    let c: HashSet<_> = ["unu", "trei", "patru", "cinci", "sase"].iter().cloned().map(|s|String::from(s)).collect();
+    let d: HashSet<_> = ["unu", "sase", "sapte"].iter().cloned().map(|s|String::from(s)).collect();
+    let e: HashSet<_> = ["unu", "sase", "sapte"].iter().cloned().map(|s|String::from(s)).collect();
+
+    let dirs: Vec<HashSet<String>> = vec![a, b, c, d, e];
+
+    // let diff_ref: &HashSet<&String> = &a.difference(&b).collect();
+
+    // let s: HashSet<&String> = b.difference(&a).collect();
+    // let d: HashSet<&String> = c.difference(&a).collect();
+
+    dirs.iter().enumerate().for_each( |(ix, set)| println!("{:?} -> {:?}", ix, set));
+
+    fn difference_to_index(current_index: usize, all_dirs: &Vec<HashSet<String>>) -> HashSet<String> {
+        let start_dir = all_dirs[current_index].clone();
+        let slice = &all_dirs[0..current_index];
+        slice.iter()
+            .fold(start_dir, |acc: HashSet<String>, current_dir| {
+                // println!("accum = {:?}, \ncurr_dir = {:?}", &acc, &current_dir);
+
+                let diff: HashSet<String> = acc
+                    .difference(current_dir)
+                    .map(|d| d.clone())
+                    .collect::<HashSet<_>>();
+
+                diff
+            })
+    }
+
+    let reduced_sets = dirs.iter().enumerate()
+        .map( |(curr_ix, _) |
+            difference_to_index(curr_ix, &dirs) )
+        .collect::<Vec<_>>();
+
+    println!("==================");
+    // dbg!(reduced_sets);
+
+    reduced_sets.iter().enumerate().for_each( |(ix, set)| println!("{:?} -> {:?}", ix, set))
 }
