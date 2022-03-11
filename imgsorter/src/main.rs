@@ -245,11 +245,12 @@ pub struct SupportedFile {
     date_str: String,
     metadata: Metadata,
     device_name: Option<String>,
+    source_dir_index: usize
 }
 
 // TODO 5e: find better name
 impl SupportedFile {
-    pub fn parse_from(dir_entry: DirEntry) -> SupportedFile {
+    pub fn parse_from(dir_entry: DirEntry, source_index: usize) -> SupportedFile {
         let _extension = get_extension(&dir_entry);
         let _metadata = dir_entry.metadata().unwrap();
 
@@ -269,7 +270,8 @@ impl SupportedFile {
             extension: _extension,
             date_str: _image_date,
             metadata: _metadata,
-            device_name: _exif_data.camera_model
+            device_name: _exif_data.camera_model,
+            source_dir_index: source_index
         }
     }
 
@@ -458,12 +460,12 @@ fn main() -> Result<(), std::io::Error> {
         // .set_source_dir(r"D:\Temp\New folder test remove - Copy")
         // .set_source_dir(r"D:\Poze\! Mobil\Test pics")
         .set_source_dirs(vec![
-            r"D:\Temp\New folder test remove - Copy",
-            r"D:\Temp\New folder test remove - Copy 2",
-            r"D:\Temp\New folder test remove - Copy 2 - Copy",
+            r"D:\Cristi\rust-utils\imgsorter\test_pics copy",
+            r"D:\Cristi\rust-utils\imgsorter\test_pics copy 2",
+            r"D:\Cristi\rust-utils\imgsorter\test_pics copy 3",
             // r"Non-existent"
         ])
-        .set_target_dir(r"D:\Temp\New folder test remove - Copy")
+        // .set_target_dir(r"D:\Temp\New folder test remove - Copy")
         .set_silent(false)
         .set_copy_not_move(true);
         // Uncomment for faster dev
@@ -565,32 +567,31 @@ fn main() -> Result<(), std::io::Error> {
     // TODO chiar e folositor?
     // TODO De fapt nu e - e suficient sa tinem minte fiecare fisier dintr-un device dir pe masura ce procesam
     // TODO fiecare fisier nou din acel device dir va fi comparat cu cele de dinainte - daca il mai gaseste, inseamna ca a fost copiat deja
-    let source_file_names: Option<Vec<HashSet<OsString>>> = if args.dry_run {
+    let source_unique_files: Option<Vec<HashSet<OsString>>> = if args.dry_run {
         let _sets_of_files = source_dir_contents.iter().map(|src_dir|
             src_dir.iter()
                 .map(|src_entry|src_entry.file_name())
                 .collect::<HashSet<_>>())
             .collect::<Vec<_>>();
 
-
-        // let unique_files = _sets_of_files
-        //     .into_iter()
-        //     .enumerate()
-        //     .map(|(curr_index, current_set)|{
-        //         current_set.difference(_sets_of_files[0])
-        //     })
-        //
-        // for ix in 0.._sets_of_files.len() {
-        //
-        // }
+            _sets_of_files.iter().enumerate().for_each( |(ix, set)| println!("{:?} -> {:?}", ix, set));
 
 
-        Some(_sets_of_files)
+        let unique_files = _sets_of_files
+            .iter().enumerate()
+            .map( |(curr_ix, _) |
+                unique_sets(curr_ix, &_sets_of_files) )
+            .collect::<Vec<_>>();
+
+        unique_files.iter().enumerate().for_each( |(ix, set)| println!("{:?} -> {:?}", ix, set));
+
+
+        Some(unique_files)
     } else {
         None
     };
 
-    dbg!(source_file_names);
+    // dbg!(source_file_names);
 
 
 
@@ -608,7 +609,7 @@ fn main() -> Result<(), std::io::Error> {
     
         // Iterate files and either copy/move to subdirs as necessary
         // or do a dry run to simulate a copy/move pass
-        write_target_dir_files(&mut target_dir_tree, &args, &mut stats);
+        write_target_dir_files(&mut target_dir_tree, source_unique_files, &args, &mut stats);
     }
 
     // Print final stats
@@ -674,7 +675,7 @@ fn parse_dir_contents(
         for dir_entry in source_dir {
             stats.inc_files_total();
 
-            let current_file: SupportedFile = SupportedFile::parse_from(dir_entry);
+            let current_file: SupportedFile = SupportedFile::parse_from(dir_entry, source_ix);
 
             // Build final target path for this file
             match current_file.file_type {
@@ -725,6 +726,7 @@ fn parse_dir_contents(
 fn write_target_dir_files(
     new_dir_tree: &mut TargetDateDeviceTree,
     // source_dir_contents: Option<Vec<HashSet<OsString>>>,
+    source_unique_files: Option<Vec<HashSet<OsString>>>,
     args: &CliArgs,
     mut stats: &mut FileStats
 ) {
@@ -770,10 +772,6 @@ fn write_target_dir_files(
             None
         }
     };
-
-    println!("dir_padding_width = {:?}", dir_padding_width);
-    println!("max_target_path_len = {:?}", new_dir_tree.max_target_path_len);
-
 
 
     /*****************************************************************************/
@@ -896,7 +894,7 @@ fn write_target_dir_files(
                     if is_dry_run {
 
                         // Check restrictions - file exist or read only
-                        let file_restrictions = dry_run_check_file_restrictions(&file.file_path, &file_destination_path, args);
+                        let file_restrictions = dry_run_check_file_restrictions(&file, &file_destination_path, &source_unique_files, args);
 
                         // Add tree indents and dry run padding (normal dashes) to file name
                         let _indented_filename = indent_string(indent_level, _filename_string);
@@ -922,8 +920,9 @@ fn write_target_dir_files(
                         // Add copy/move padding (em dashes) to file name
                         let padded_filename = RightPadding::em_dash(
                             _filename_string,
+                            if args.has_multiple_sources() {new_dir_tree.max_source_path_len} else {new_dir_tree.max_filename_len}
                             // add +1 for the space added to the right of filename_string
-                            new_dir_tree.max_filename_len + 1);
+                             + 1);
 
                         // Return everything to be printed
                         (padded_filename, SEPARATOR_COPY_MOVE, padded_path, file_copy_status)
@@ -955,17 +954,42 @@ fn dry_run_check_target_exists(path: &PathBuf) -> String {
 /// * in both cases, check if the source file exists - no copy will take place
 /// * in both cases, check if the target file exists - file will be skipped
 /// * if the is a move, check if the source file is read-only and can't be moved (only copied)
-fn dry_run_check_file_restrictions(source_path: &PathBuf, target_path: &PathBuf, args: &CliArgs) -> String {
+fn dry_run_check_file_restrictions(
+    //source_path: &PathBuf,
+    source_file: &SupportedFile,
+    target_path: &PathBuf,
+    source_unique_files: &Option<Vec<HashSet<OsString>>>,
+    args: &CliArgs
+) -> String {
 
-    if source_path.exists() {
+    let is_source_unique = || {
+      match source_unique_files {
+          Some(source_dir_sets) => {
+            let _dir_index: usize = source_file.source_dir_index.clone();
+            let _source_dir: &HashSet<OsString> = &source_dir_sets[_dir_index];
+            let is_unique_on_source = _source_dir.contains(&source_file.file_name);
+            // println!("(dir_ix {} dir_set {:?}", _dir_index, _source_dir);
+            // println!("(dir_ix {} f_name {:?} unique = {}", _dir_index, &source_file.file_name , is_unique_on_source);
+            is_unique_on_source
+          },
+          None =>
+            true
+      }
+    };
+
+    if source_file.file_path.exists() {
+
+        // println!("{} -> {:?}", source_file.source_dir_index, source_file.file_name);
 
         if target_path.exists() {
             ColoredString::orange("target file exists, will be skipped")
+        } else if !is_source_unique() {
+            ColoredString::orange("duplicate source file, will be skipped")
         } else if args.copy_not_move {
           ColoredString::green("file will be copied")
 
         } else {
-            match source_path.metadata() {
+            match source_file.file_path.metadata() {
                 Ok(metadata) => {
                     let is_read_only = metadata.permissions().readonly();
                     if !args.copy_not_move && is_read_only {

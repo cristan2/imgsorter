@@ -1,6 +1,7 @@
 use std::collections::hash_set::Iter;
 use std::collections::HashSet;
 use std::iter::Cloned;
+use std::ffi::OsString;
 
 pub struct ColoredString;
 
@@ -100,12 +101,12 @@ pub fn check_sets() {
         slice.iter()
             .fold(start_dir, |acc: HashSet<String>, current_dir| {
                 // println!("accum = {:?}, \ncurr_dir = {:?}", &acc, &current_dir);
-
+    
                 let diff: HashSet<String> = acc
                     .difference(current_dir)
                     .map(|d| d.clone())
                     .collect::<HashSet<_>>();
-
+    
                 diff
             })
     }
@@ -119,4 +120,20 @@ pub fn check_sets() {
     // dbg!(reduced_sets);
 
     reduced_sets.iter().enumerate().for_each( |(ix, set)| println!("{:?} -> {:?}", ix, set))
+}
+
+pub fn unique_sets(current_index: usize, all_dirs: &Vec<HashSet<OsString>>) -> HashSet<OsString> {
+    let start_dir = all_dirs[current_index].clone();
+    let slice = &all_dirs[0..current_index];
+    slice.iter()
+        .fold(start_dir, |acc: HashSet<OsString>, current_dir| {
+            // println!("accum = {:?}, \ncurr_dir = {:?}", &acc, &current_dir);
+
+            let diff: HashSet<OsString> = acc
+                .difference(current_dir)
+                .map(|d| d.clone())
+                .collect::<HashSet<_>>();
+
+            diff
+        })
 }
