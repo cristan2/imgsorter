@@ -79,61 +79,33 @@ pub fn indent_string(indent_level: usize, file_name: String) -> String {
 }
 
 
-pub fn check_sets() {
-    let a: HashSet<_> = ["unu", "doi", "trei"].iter().cloned().map(|s|String::from(s)).collect();
-    let b: HashSet<_> = ["trei", "patru", "cinci"].iter().cloned().map(|s|String::from(s)).collect();
-    let c: HashSet<_> = ["unu", "trei", "patru", "cinci", "sase"].iter().cloned().map(|s|String::from(s)).collect();
-    let d: HashSet<_> = ["unu", "sase", "sapte"].iter().cloned().map(|s|String::from(s)).collect();
-    let e: HashSet<_> = ["unu", "sase", "sapte"].iter().cloned().map(|s|String::from(s)).collect();
+/// For any given vec of sets of filenames, check the last set against
+/// all previous sets successively remove duplicates, thus ensuring
+/// the current set contains only the first instance of any filename
+pub fn keep_unique_across_sets(all_dirs: &[HashSet<OsString>]) -> HashSet<OsString> {
 
-    let dirs: Vec<HashSet<String>> = vec![a, b, c, d, e];
-
-    // let diff_ref: &HashSet<&String> = &a.difference(&b).collect();
-
-    // let s: HashSet<&String> = b.difference(&a).collect();
-    // let d: HashSet<&String> = c.difference(&a).collect();
-
-    dirs.iter().enumerate().for_each( |(ix, set)| println!("{:?} -> {:?}", ix, set));
-
-    fn difference_to_index(current_index: usize, all_dirs: &Vec<HashSet<String>>) -> HashSet<String> {
-        let start_dir = all_dirs[current_index].clone();
-        let slice = &all_dirs[0..current_index];
-        slice.iter()
-            .fold(start_dir, |acc: HashSet<String>, current_dir| {
-                // println!("accum = {:?}, \ncurr_dir = {:?}", &acc, &current_dir);
-    
-                let diff: HashSet<String> = acc
-                    .difference(current_dir)
-                    .map(|d| d.clone())
-                    .collect::<HashSet<_>>();
-    
-                diff
-            })
+    if all_dirs.is_empty() {
+        return HashSet::new()
     }
 
-    let reduced_sets = dirs.iter().enumerate()
-        .map( |(curr_ix, _) |
-            difference_to_index(curr_ix, &dirs) )
-        .collect::<Vec<_>>();
+    let last_index = all_dirs.len() - 1;
 
-    println!("==================");
-    // dbg!(reduced_sets);
+    let last_dir = all_dirs[last_index].clone();
+    let previous_dirs = &all_dirs[0..last_index];
 
-    reduced_sets.iter().enumerate().for_each( |(ix, set)| println!("{:?} -> {:?}", ix, set))
-}
+    // let (last_dir, previous_dirs) = &all_dirs.split_last().unwrap();
 
-pub fn unique_sets(current_index: usize, all_dirs: &Vec<HashSet<OsString>>) -> HashSet<OsString> {
-    let start_dir = all_dirs[current_index].clone();
-    let slice = &all_dirs[0..current_index];
-    slice.iter()
-        .fold(start_dir, |acc: HashSet<OsString>, current_dir| {
-            // println!("accum = {:?}, \ncurr_dir = {:?}", &acc, &current_dir);
-
-            let diff: HashSet<OsString> = acc
+    previous_dirs.iter()
+        .fold(last_dir, |accum: HashSet<OsString>, current_dir| {
+            accum
                 .difference(current_dir)
                 .map(|d| d.clone())
-                .collect::<HashSet<_>>();
-
-            diff
+                .collect::<HashSet<_>>()
         })
+}
+
+pub fn print_sets_with_index(msg: &str, set: &Vec<HashSet<OsString>>) {
+    println!("{}:", msg);
+    set.iter().enumerate()
+        .for_each(|(ix, set)| println!("{:?} -> {:?}", ix, set));
 }

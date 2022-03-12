@@ -454,18 +454,23 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut stats = FileStats::new();
 
+
+    /*****************************************************************************/
+    /* ---                     Read or set args                              --- */
+    /*****************************************************************************/
+
     let mut args = CliArgs::new()?
         // TODO 1a: temporar citim din ./test_pics
         // .append_source_subdir("test_pics")
         // .set_source_dir(r"D:\Temp\New folder test remove - Copy")
         // .set_source_dir(r"D:\Poze\! Mobil\Test pics")
         .set_source_dirs(vec![
-            r"D:\Cristi\rust-utils\imgsorter\test_pics copy",
-            r"D:\Cristi\rust-utils\imgsorter\test_pics copy 2",
-            r"D:\Cristi\rust-utils\imgsorter\test_pics copy 3",
+            r"D:\Temp\New folder test remove - Copy",
+            r"D:\Temp\New folder test remove - Copy 2",
+            r"D:\Temp\New folder test remove - Copy 2 - Copy",
             // r"Non-existent"
         ])
-        // .set_target_dir(r"D:\Temp\New folder test remove - Copy")
+        .set_target_dir(r"D:\Temp\New folder test remove - Copy")
         .set_silent(false)
         .set_copy_not_move(true);
         // Uncomment for faster dev
@@ -475,20 +480,25 @@ fn main() -> Result<(), std::io::Error> {
         dbg!(&args);
     }
 
-    check_sets();
+
+    /*****************************************************************************/
+    /* ---                        Read source files                          --- */
+    /*****************************************************************************/
 
     // TODO 6f: handle path not exists
     // Read dir contents and filter out error results
-    let source_dir_contents = args.source_dir.clone().iter()
-        .map(|src_dir|read_supported_files(src_dir, &mut stats, &mut args))
-        .filter(|result|result.is_ok())
-        // .flat_map(|result|result.unwrap())
-        // .collect::<Vec<DirEntry>>();
-        .map(|result|result.unwrap())
+    let source_contents = args.source_dir.clone().iter()
+        .filter_map(|src_dir|
+            read_supported_files(src_dir, &mut stats, &mut args).ok())
         .collect::<Vec<_>>();
 
+
+    /*****************************************************************************/
+    /* ---                 Print options before confirmation                 --- */
+    /*****************************************************************************/
+
     {
-        let total_source_files = source_dir_contents.iter()
+        let total_source_files = source_contents.iter()
             .map(|dir|dir.len()).reduce(|a, b| a+b).unwrap_or(0);
 
         let copy_status = if args.copy_not_move {
@@ -517,7 +527,6 @@ fn main() -> Result<(), std::io::Error> {
                             format!("{}{}. {}", _first_part, index, &src_path.display().to_string()) })
                         .collect::<Vec<_>>()
                         .join("\n")
-
                 }
             }
         };
@@ -564,42 +573,18 @@ fn main() -> Result<(), std::io::Error> {
     println!();
 
 
-    // TODO chiar e folositor?
-    // TODO De fapt nu e - e suficient sa tinem minte fiecare fisier dintr-un device dir pe masura ce procesam
-    // TODO fiecare fisier nou din acel device dir va fi comparat cu cele de dinainte - daca il mai gaseste, inseamna ca a fost copiat deja
-    let source_unique_files: Option<Vec<HashSet<OsString>>> = if args.dry_run {
-        let _sets_of_files = source_dir_contents.iter().map(|src_dir|
-            src_dir.iter()
-                .map(|src_entry|src_entry.file_name())
-                .collect::<HashSet<_>>())
-            .collect::<Vec<_>>();
+    /*****************************************************************************/
+    /* ---        Parse source files and copy/paste or dry run them          --- */
+    /*****************************************************************************/
 
-            _sets_of_files.iter().enumerate().for_each( |(ix, set)| println!("{:?} -> {:?}", ix, set));
-
-
-        let unique_files = _sets_of_files
-            .iter().enumerate()
-            .map( |(curr_ix, _) |
-                unique_sets(curr_ix, &_sets_of_files) )
-            .collect::<Vec<_>>();
-
-        unique_files.iter().enumerate().for_each( |(ix, set)| println!("{:?} -> {:?}", ix, set));
-
-
-        Some(unique_files)
-    } else {
-        None
-    };
-
-    // dbg!(source_file_names);
-
-
-
+    // Extract unique file names across all source directories.
+    // Useful only for dry run statuses
+    let source_unique_files = get_source_unique_files(&source_contents, &args);
 
     // TODO prefilter for Images and Videos only
     // Iterate files, read modified date and create subdirs
     // Copy images and videos to subdirs based on modified date
-    let mut target_dir_tree = parse_dir_contents(source_dir_contents, &args, &mut stats);
+    let mut target_dir_tree = parse_dir_contents(source_contents, &args, &mut stats);
 
     if !target_dir_tree.dir_tree.is_empty() {
         println!();
@@ -622,6 +607,40 @@ fn main() -> Result<(), std::io::Error> {
     Ok(())
 }
 
+/// For dry runs over multiple source dirs we want to show if there are duplicate files across all sources.
+/// This method iterates over all filenames in the source dirs, extracting a set for each dir.
+/// Then it iterates all sets, checking each one against all previous ones and keeps only
+/// unique elements, ensuring duplicate filenames are progressively removed.
+fn get_source_unique_files(
+    source_dir_contents: &Vec<Vec<DirEntry>>,
+    args: &CliArgs
+) -> Option<Vec<HashSet<OsString>>> {
+
+    // This method is only useful for dry runs, return early otherwise
+    if !args.dry_run {
+        return None
+    }
+
+    let sets_of_files = source_dir_contents.iter().map(|src_dir|
+        src_dir.iter()
+            .map(|src_entry| src_entry.file_name())
+            .collect::<HashSet<_>>())
+        .collect::<Vec<_>>();
+
+    if DBG_ON { print_sets_with_index("source file sets before filtering", &sets_of_files); }
+
+    let all_unique_files = sets_of_files
+        .iter().enumerate()
+        .map(|(curr_ix, _)|
+            // keep_unique_across_sets(&sets_of_files, curr_ix))
+            keep_unique_across_sets(&sets_of_files[0..=curr_ix]))
+        .collect::<Vec<_>>();
+
+    if DBG_ON { print_sets_with_index("source file sets after filtering", &all_unique_files); }
+
+    Option::from(all_unique_files)
+}
+
 /// Read contents of source dir and filter out directories or those which failed to read
 fn read_supported_files(
     source_dir: &PathBuf,
@@ -629,6 +648,7 @@ fn read_supported_files(
     args: &mut CliArgs
 ) -> Result<Vec<DirEntry>, std::io::Error> {
 
+    // TODO 5d: don't use Ok directly; handle all ?'s; args is unused
     Ok(
         fs::read_dir(source_dir)?
             .into_iter()
@@ -724,8 +744,9 @@ fn parse_dir_contents(
 }
 
 fn write_target_dir_files(
+    // The target tree representation of files to be copied/moved
     new_dir_tree: &mut TargetDateDeviceTree,
-    // source_dir_contents: Option<Vec<HashSet<OsString>>>,
+    // For dry runs, this represents a vector of unique files per each source dir
     source_unique_files: Option<Vec<HashSet<OsString>>>,
     args: &CliArgs,
     mut stats: &mut FileStats
@@ -733,7 +754,7 @@ fn write_target_dir_files(
 
     let is_dry_run = args.dry_run;
 
-    // Dry runs will output a dirtree-like structure, so add the additional
+    // Dry runs will output a dir-tree-like structure, so add the additional
     // indents and markings to the max length to be taken into account when padding
     if is_dry_run {
         let _extra_indents_len =
@@ -953,24 +974,23 @@ fn dry_run_check_target_exists(path: &PathBuf) -> String {
 /// Read a path and return a string signalling copy/move restrictions:
 /// * in both cases, check if the source file exists - no copy will take place
 /// * in both cases, check if the target file exists - file will be skipped
+/// * in both cases, if there are multiple source dirs, check if the file is present more than once - skip all duplicates
 /// * if the is a move, check if the source file is read-only and can't be moved (only copied)
 fn dry_run_check_file_restrictions(
-    //source_path: &PathBuf,
     source_file: &SupportedFile,
     target_path: &PathBuf,
     source_unique_files: &Option<Vec<HashSet<OsString>>>,
     args: &CliArgs
 ) -> String {
 
+    // Check the index of unique files for the source dir of this file
+    // If this set doesn't contain this file, then the file is a duplicate
     let is_source_unique = || {
       match source_unique_files {
           Some(source_dir_sets) => {
-            let _dir_index: usize = source_file.source_dir_index.clone();
-            let _source_dir: &HashSet<OsString> = &source_dir_sets[_dir_index];
-            let is_unique_on_source = _source_dir.contains(&source_file.file_name);
-            // println!("(dir_ix {} dir_set {:?}", _dir_index, _source_dir);
-            // println!("(dir_ix {} f_name {:?} unique = {}", _dir_index, &source_file.file_name , is_unique_on_source);
-            is_unique_on_source
+            let source_dir_index: usize = source_file.source_dir_index.clone();
+            let source_dir_unique_files: &HashSet<OsString> = &source_dir_sets[source_dir_index];
+            source_dir_unique_files.contains(&source_file.file_name)
           },
           None =>
             true
@@ -979,16 +999,22 @@ fn dry_run_check_file_restrictions(
 
     if source_file.file_path.exists() {
 
-        // println!("{} -> {:?}", source_file.source_dir_index, source_file.file_name);
+        // Check if the target file exists
 
-        if target_path.exists() {
-            ColoredString::orange("target file exists, will be skipped")
-        } else if !is_source_unique() {
+        // The order of checks matters - check for duplicates first, otherwise the reason
+        // for skipping it will not be accurate. If the target file actually exists,
+        // only the first of the duplicates should show as skipped for that reason.
+        if !is_source_unique() {
             ColoredString::orange("duplicate source file, will be skipped")
+        } else if target_path.exists() {
+            ColoredString::orange("target file exists, will be skipped")
         } else if args.copy_not_move {
           ColoredString::green("file will be copied")
 
         } else {
+
+            // Check if the source file can be deleted after copy
+
             match source_file.file_path.metadata() {
                 Ok(metadata) => {
                     let is_read_only = metadata.permissions().readonly();
