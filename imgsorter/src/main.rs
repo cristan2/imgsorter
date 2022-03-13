@@ -1,9 +1,10 @@
-use std::path::{PathBuf, Path};
-use std::{fs, env, io};
+use std::path::{PathBuf, Path, Display};
+use std::{fs, env, io, fmt};
 use std::cmp::max;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::ffi::OsString;
+use std::fmt::Formatter;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use std::fs::{DirEntry, DirBuilder, File, Metadata};
 use rexif::{ExifTag, ExifResult};
@@ -21,6 +22,8 @@ const DEFAULT_SILENT: bool = false;
 const DEFAULT_DRY_RUN: bool = false;
 
 const DATE_DIR_FORMAT: &'static str = "%Y.%m.%d";
+
+static ASSORTED_DIR: &str = "assorted";
 
 /// Convenience alias over a map meant to represent
 /// a string representation of a device holding a Vec of files
@@ -49,13 +52,39 @@ impl DeviceTree {
 ///  │   │   └─ file.ext  // inner map; value is Vec of supported files
 ///  │   │   └─ file.ext
 ///  │   └─ device_dir
-///  └─ date_dir
+///  └─ [assorted]
+///  │   └─ single.file
 /// ```
 /// Additionally, the struct
 struct DateDeviceTree {
     dir_tree: BTreeMap<String, DeviceTree>,
     max_filename_len: usize,
     max_path_len: usize
+}
+
+/// Just output a simple list of filenames for now
+impl fmt::Display for  DateDeviceTree {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let file_names: Vec<String> = self.dir_tree
+            .iter()
+            .map(|(date_dir, device_tree)| {
+
+                let date_files = device_tree.file_tree
+                    .iter()
+                    .flat_map(|(device_dir, files)| {
+                        let device_files = files.iter()
+                            .map(|file|
+                                format!("{:?} | {}", device_dir, file.file_path.display().to_string()))
+                            .collect::<Vec<String>>();
+                        device_files
+                    })
+                    .collect::<Vec<String>>();
+
+                format!("[{}]\n{}", date_dir, date_files.join("\n"))
+            })
+            .collect();
+        write!(f, "{}", file_names.join("\n"))
+    }
 }
 
 impl DateDeviceTree {
@@ -65,6 +94,61 @@ impl DateDeviceTree {
             max_filename_len: 0,
             max_path_len: 0,
         }
+    }
+
+    /// Iterate all files in this this map and move all files which are in a directory with
+    /// less than args.min_files_per_dir into a new separate directory called [ASSORTED_DIR].
+    ///
+    /// In practice, this should avoid creating date dirs which contain a single file. Instead,
+    /// all such one-offs will be placed together in a single directory.
+    ///
+    /// Returns a new [DateDeviceTree] object
+    fn move_assorted_singles(mut self, args: &CliArgs) -> Self {
+
+        let _has_single_device = |device_tree: &DeviceTree| {
+            device_tree.file_tree.keys().len() < 2
+        };
+
+        let _has_minimum_files = |device_tree: &DeviceTree| {
+            let all_files_count: usize = device_tree.file_tree.values()
+                .map(|files|files.len())
+                .sum();
+            all_files_count <= args.min_files_per_dir as usize
+        };
+
+        let has_assorted_files = |device_tree: &DeviceTree| {
+            _has_single_device(&device_tree) && _has_minimum_files(&device_tree)
+        };
+
+        // TODO 5h: this is inefficient, optimize to a single iteration and non-consuming method
+        let mut devices_tree: BTreeMap<String, DeviceTree> = BTreeMap::new();
+        let mut assorted_files: Vec<SupportedFile> = Vec::new();
+
+        self.dir_tree
+            .into_iter()
+            .for_each(|(device_dir, device_tree)| {
+                // Move single files from the current date dir to a separate dir,
+                // which will be joined again later under a different key
+                if has_assorted_files(&device_tree) {
+
+                    // TODO 6g handle max_len and possible file duplicates
+                    device_tree.file_tree
+                        .into_iter()
+                        .for_each(|(_, src_files)| assorted_files.extend(src_files));
+
+                // keep the existing date-device structure
+                } else {
+                    devices_tree.insert(device_dir, device_tree);
+                }
+            });
+
+        let mut assorted_files_tree = DeviceTree::new();
+        assorted_files_tree.file_tree.insert(None, assorted_files);
+        devices_tree.insert(ASSORTED_DIR.to_string(), assorted_files_tree);
+
+        self.dir_tree = devices_tree;
+
+        self
     }
 
     // Find the maximum length of the path string that may be present in the output
@@ -496,7 +580,7 @@ fn main() -> Result<(), std::io::Error> {
 
     // Iterate files, read modified date and create subdirs
     // Copy images and videos to subdirs based on modified date
-    let mut new_dir_tree = parse_dir_contents(dir_contents, &mut stats);
+    let mut new_dir_tree = parse_dir_contents(dir_contents, &args, &mut stats);
 
     if !new_dir_tree.dir_tree.is_empty() {
         println!();
@@ -554,10 +638,11 @@ fn read_supported_files(stats: &mut FileStats, args: &mut CliArgs) -> Result<Vec
 /// Read directory and parse contents into supported data models
 fn parse_dir_contents(
     dir_contents: Vec<DirEntry>,
+    args: &CliArgs,
     stats: &mut FileStats
 ) -> DateDeviceTree {
 
-    let mut new_dir_tree: DateDeviceTree = DateDeviceTree::new();
+    let mut target_dir_tree: DateDeviceTree = DateDeviceTree::new();
 
     for dir_entry in dir_contents {
         stats.inc_files_total();
@@ -570,12 +655,16 @@ fn parse_dir_contents(
                 let file_date = current_file.date_str.clone();
                 let file_device = current_file.device_name.clone();
 
+                // TODO 5i: replace these with single method in DateDeviceTree
                 // Attach file's date as a new subdirectory to the current target path
-                let all_devices_for_this_date = new_dir_tree.dir_tree
+                let all_devices_for_this_date = target_dir_tree
+                    .dir_tree
                     .entry(file_date)
                     .or_insert(DeviceTree::new());
 
-                let all_files_for_this_device = all_devices_for_this_date.file_tree
+                // TODO 5i: replace these with single method in DeviceTree
+                let all_files_for_this_device = all_devices_for_this_date
+                    .file_tree
                     .entry(file_device)
                     .or_insert(Vec::new());
 
@@ -586,7 +675,7 @@ fn parse_dir_contents(
                 // add +1 for each path separator character
                 let total_target_path_len = _date_name_str + 1 + _device_name_len;
 
-                new_dir_tree.max_filename_len = max(new_dir_tree.max_filename_len, _filename_len);
+                target_dir_tree.max_filename_len = max(target_dir_tree.max_filename_len, _filename_len);
                 all_devices_for_this_date.max_dir_path_len = max(all_devices_for_this_date.max_dir_path_len, total_target_path_len);
 
                 // Add file to dir tree
@@ -600,11 +689,14 @@ fn parse_dir_contents(
         }
     }
 
+    // This is a consuming call for now, so needs reassignment
+    target_dir_tree = target_dir_tree.move_assorted_singles(args);
+
     // The max path length can only be computed after the tree has been filled with devices and files
     // because of the requirement to only create device subdirs if there are at least 2 devices
-    new_dir_tree.compute_max_path_len();
+    target_dir_tree.compute_max_path_len();
 
-    return new_dir_tree;
+    return target_dir_tree;
 }
 
 fn process_dir_files(new_dir_tree: &mut DateDeviceTree, args: &CliArgs, mut stats: &mut FileStats) {
