@@ -40,6 +40,8 @@
     [ ] e - better name for SupportedFile (or maybe don't accept Unknown file types)
     [ ] f - universal line terminators
     [ ] g - macro for padding formats which take a variable for fill char
+    [ ] h - improve maps duplication - use drain_filter or partition or retain or something else
+    [ ] i - move map methods to *DeviceTree
 
 [ ] 6 - Misc / bugs
     [x] a - change copy to rename
@@ -49,6 +51,7 @@
           - eroare cand target dir exista si se incearca citire metadate
     [x] e - run with debug - optional debug printouts
     [ ] f - handle source path not exists
+    [ ] g - fix edge cases for moving assorted files ()
     [x] create_subdir_if_required shouldn't rely on CWD to strip prefix
     [x] only create device name subdirs if there's more than one
     [ ] option to always create device name subdirs even if there's only one
