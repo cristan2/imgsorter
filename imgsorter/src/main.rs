@@ -1079,6 +1079,12 @@ fn dry_run_check_file_restrictions(
     args: &CliArgs
 ) -> String {
 
+    // TODO 5d: Pre-filtering is not the best method to skip duplicate files.
+    // It can fail for files with the same name in different directories, taken with different devices.
+    // The alternative would be to store each file in a separate name during
+    // the copy/move process and check each it against all previous ones.
+    // If we find it, this means we're now dealing with a duplicate.
+
     // Check the index of unique files for the source dir of this file
     // If this set doesn't contain this file, then the file is a duplicate
     let is_source_unique = || {
