@@ -1,3 +1,7 @@
+use std::collections::hash_set::Iter;
+use std::collections::HashSet;
+use std::iter::Cloned;
+use std::ffi::OsString;
 
 pub struct ColoredString;
 
@@ -72,4 +76,36 @@ pub const FILE_TREE_INDENT: &'static str = " |   ";
 pub fn indent_string(indent_level: usize, file_name: String) -> String {
     let indents = FILE_TREE_INDENT.repeat(indent_level);
     format!("{}{}{}", indents, FILE_TREE_ENTRY.to_string(), file_name)
+}
+
+
+/// For any given vec of sets of filenames, check the last set against
+/// all previous sets successively remove duplicates, thus ensuring
+/// the current set contains only the first instance of any filename
+pub fn keep_unique_across_sets(all_dirs: &[HashSet<OsString>]) -> HashSet<OsString> {
+
+    if all_dirs.is_empty() {
+        return HashSet::new()
+    }
+
+    let last_index = all_dirs.len() - 1;
+
+    let last_dir = all_dirs[last_index].clone();
+    let previous_dirs = &all_dirs[0..last_index];
+
+    // let (last_dir, previous_dirs) = &all_dirs.split_last().unwrap();
+
+    previous_dirs.iter()
+        .fold(last_dir, |accum: HashSet<OsString>, current_dir| {
+            accum
+                .difference(current_dir)
+                .map(|d| d.clone())
+                .collect::<HashSet<_>>()
+        })
+}
+
+pub fn print_sets_with_index(msg: &str, set: &Vec<HashSet<OsString>>) {
+    println!("{}:", msg);
+    set.iter().enumerate()
+        .for_each(|(ix, set)| println!("{:?} -> {:?}", ix, set));
 }

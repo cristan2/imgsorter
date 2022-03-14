@@ -42,10 +42,10 @@
     [ ] g - macro for padding formats which take a variable for fill char
     [ ] h - improve maps duplication - use drain_filter or partition or retain or something else
     [ ] i - move map methods to *DeviceTree
+    [ ] k - Reimplement is_source_unique
 
 [ ] 6 - Misc / bugs
     [x] a - change copy to rename
-    [ ] b - cleanup
     [x] c - fix warnings
     [x] d - fix eroare "Access is denied." daca rulezi a doua oara si target files exista 
           - eroare cand target dir exista si se incearca citire metadate
@@ -65,5 +65,8 @@
     [ ] better confirmation
     [ ] how to treat existing files - skip, overwrite, rename
     [ ] how to treat files without EXIF (e.g. images received over WhatsApp)
+    [ ] colored separator arrows
     [ ] after move, leave a txt file in place named "where are my photos" which explains where they were moved (process summary); have option to disable this
     [x] colored text
+
+[ ] 8 - Cleanup
