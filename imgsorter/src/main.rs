@@ -5,12 +5,12 @@ use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
 use std::ffi::OsString;
 use std::fmt::Formatter;
+use std::iter::FromIterator;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use std::fs::{DirEntry, DirBuilder, File, Metadata};
 use rexif::{ExifTag, ExifResult};
 use std::io::{Read, Seek, SeekFrom};
 use std::time::Instant;
-
 use imgsorter::utils::*;
 
 const DBG_ON: bool = false;
@@ -105,16 +105,20 @@ impl TargetDateDeviceTree {
     /// all such one-offs will be placed together in a single directory.
     ///
     /// Returns a new [DateDeviceTree] object
-    fn move_assorted_singles(mut self, args: &CliArgs) -> Self {
+    fn isolate_single_images(mut self, args: &CliArgs) -> Self {
 
-        let _has_single_device = |device_tree: &DeviceTree| {
-            device_tree.file_tree.keys().len() < 2
-        };
+        let _has_single_device = |device_tree: &DeviceTree| device_tree.file_tree.keys().len() < 2;
 
         let _has_minimum_files = |device_tree: &DeviceTree| {
-            let all_files_count: usize = device_tree.file_tree.values()
-                .map(|files|files.len())
-                .sum();
+            let all_files_names  = device_tree
+                .file_tree
+                .values()
+                .flat_map(|files|
+                    files.iter().map(|f| f.file_name.clone()))
+                .collect::<Vec<_>>();
+
+            let all_files_unique: HashSet<&OsString> = HashSet::from_iter(all_files_names.iter());
+            let all_files_count = all_files_unique.len();
             all_files_count <= args.min_files_per_dir as usize
         };
 
@@ -826,7 +830,7 @@ fn parse_dir_contents(
     }
 
     // This is a consuming call for now, so needs reassignment
-    new_dir_tree = new_dir_tree.move_assorted_singles(args);
+    new_dir_tree = new_dir_tree.isolate_single_images(args);
 
     // The max path length can only be computed after the tree has been filled with devices and files
     // because of the requirement to only create device subdirs if there are at least 2 devices
