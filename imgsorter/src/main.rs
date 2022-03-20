@@ -507,16 +507,27 @@ impl CliArgs {
         self
     }
 
+    fn add_source_dir(mut self, src_dir: &str) -> CliArgs {
+        self.source_dir.push(PathBuf::from(src_dir));
+        self
+    }
+
+    fn set_source_paths(&mut self, sources: Vec<PathBuf>) {
+        self.source_dir = sources;
+    }
+
     fn set_target_dir(mut self, subdir: &str) -> CliArgs {
         let new_path = PathBuf::from(subdir);
         self.target_dir = new_path.join(DEFAULT_TARGET_SUBDIR);
         self
     }
 
-    // fn append_source_subdir(mut self, subdir: &str) -> CliArgs {
-    //     self.source_dir.push(subdir);
-    //     self
-    // }
+    fn append_source_subdir(mut self, subdir: &str) -> CliArgs {
+        if self.source_dir.len() == 1 {
+            self.source_dir[0].push(subdir);
+        }
+        self
+    }
 
     fn append_target_subdir(mut self, subdir: &str) -> CliArgs {
         self.target_dir.push(subdir);
@@ -568,6 +579,49 @@ fn main() -> Result<(), std::io::Error> {
         dbg!(&args);
     }
 
+    let recursive = true;
+
+
+    /*****************************************************************************/
+    /* ---                        Read source dirs                           --- */
+    /*****************************************************************************/
+
+    fn walk_dir(source_dir: PathBuf, vec_accum: &mut Vec<PathBuf>) -> Result<(), std::io::Error> {
+        println!("> Reading {:?}...", &source_dir);
+
+        let subdirs: Vec<DirEntry> = fs::read_dir(&source_dir)?
+            .into_iter()
+            .filter_map(|s| s.ok())
+            .filter(|entry| entry.path().is_dir())
+            .collect::<Vec<_>>();
+
+        vec_accum.push(source_dir);            
+
+        if !subdirs.is_empty() {
+            subdirs
+                .iter()
+                .for_each(|dir_entry| {
+                    let _ = walk_dir(dir_entry.path(), vec_accum); 
+                });
+        };
+
+        Ok(())
+    }
+
+    if recursive {
+
+        println! ("> Reading source directories recursively...");
+        let mut new_source_dirs = Vec::new();
+        args.source_dir.clone()
+            .into_iter()
+            .for_each(|d| {
+                walk_dir(d, &mut new_source_dirs).ok();
+            });
+
+        // println!("~~~~~~~~~~~~~");
+        // new_source_dirs.iter().for_each(|d| println!("{:?}", d));
+        args.set_source_paths(new_source_dirs);
+    }
 
     /*****************************************************************************/
     /* ---                        Read source files                          --- */
@@ -750,8 +804,8 @@ fn read_supported_files(
                 match entry.metadata() {
                     Ok(metadata) => {
                         if metadata.is_dir() {
-                            if DBG_ON { println!("Skipping directory {:?}", entry.file_name()) }
-                            stats.inc_dirs_ignored();
+                            // println!("Skipping directory {:?}", entry.file_name());
+                            // stats.inc_dirs_ignored();
                             false
                         } else {
                             true
@@ -763,8 +817,8 @@ fn read_supported_files(
                     }
                 }
             })
-
-            .collect::<Vec<DirEntry>>())
+            .collect::<Vec<DirEntry>>()
+        )
 }
 
 /// Read directory and parse contents into supported data models
@@ -1273,6 +1327,7 @@ fn create_subdir_if_required(
                      &target_subdir.strip_prefix(&args.target_dir).unwrap().display());
         }
     } else {
+        // TODO 5x: same as fs::create_dir_all()
         let subdir_creation = DirBuilder::new()
             // create subdirs along the path as required
             // recursive + create doesn't return Err if dir exists
