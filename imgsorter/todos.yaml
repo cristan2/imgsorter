@@ -18,6 +18,8 @@
     [x] prefer date taken over date modified
     [x] dry run/copy output - sort dirs by name (see https://stackoverflow.com/questions/59799388/sort-hashmap-data-by-keys)
     [ ] EXIF for video data
+    [ ] depth limit for source recursive subdirs
+    [ ] calculate total file size
 
 [ ] 3 - Stats
     [x] a - show in progress statistics
@@ -61,7 +63,7 @@
     [ ] a - undo ?
     [ ] b - maybe don't read file list into memory?
     [ ] c - search recursively into existing subdirs (but skip "imgsorted" target subdir)
-    [ ] d - additional option to read and generate list of devices - this can be filled in and re-read as config - see 4a
+    [-] d - additional option to read and generate list of devices - this can be filled in and re-read as config - see 4a
     [ ] better confirmation
     [ ] how to treat existing files - skip, overwrite, rename
     [ ] how to treat files without EXIF (e.g. images received over WhatsApp)

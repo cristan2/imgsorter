@@ -341,21 +341,33 @@ pub struct SupportedFile {
 impl SupportedFile {
     pub fn parse_from(dir_entry: DirEntry, source_index: usize) -> SupportedFile {
         let _extension = get_extension(&dir_entry);
+        let _file_type = get_file_type(&_extension);
         let _metadata = dir_entry.metadata().unwrap();
 
-        let _exif_data = read_exif_date_and_device(&dir_entry);
-        let _system_date = get_system_modified_date(&_metadata);
+        let mut _empty_exif = ExifDateDevice {
+            date_original: None,
+            date_time: None,
+            camera_model: None
+        };
+
+        let _exif_data = match _file_type {
+            // It's much faster if we only try to read EXIF for image files
+            FileType::Image =>
+                read_exif_date_and_device(&dir_entry, _empty_exif),
+            _ =>
+                _empty_exif
+        };
 
         // Read image date - prefer EXIF tags over system date
         let _image_date = _exif_data.date_original
             .unwrap_or(_exif_data.date_time
-                .unwrap_or(_system_date
+                .unwrap_or(get_system_modified_date(&_metadata)
                     .unwrap_or(DEFAULT_NO_DATE_STR.to_string())));
 
         SupportedFile {
             file_name: dir_entry.file_name(),
             file_path: dir_entry.path(),
-            file_type: get_file_type(&_extension),
+            file_type: _file_type,
             extension: _extension,
             date_str: _image_date,
             metadata: _metadata,
@@ -818,35 +830,33 @@ fn read_supported_files(
     args: &mut CliArgs
 ) -> Result<Vec<DirEntry>, std::io::Error> {
 
-    // TODO 5d: don't use Ok directly; handle all ?'s; args is unused
-    Ok(
-        fs::read_dir(source_dir)?
-            .into_iter()
+    // TODO 5d: handle all ?'s
+    let dir_entries = fs::read_dir(source_dir)?
+        .into_iter()
+        .filter_map(|entry| entry.ok());
 
-            // filter only ok files
-            .filter_map(|entry| entry.ok())
-
-            // filter out any source subdirectories
-            // TODO 7c - allow option to recursively walk subdirs
-            .filter(|entry| {
-                match entry.metadata() {
-                    Ok(metadata) => {
-                        if metadata.is_dir() {
-                            // println!("Skipping directory {:?}", entry.file_name());
-                            // stats.inc_dirs_ignored();
-                            false
-                        } else {
-                            true
-                        }
-                    }
-                    Err(_) => {
-                        println!("Could not read metadata for {:?}", entry);
-                        false
-                    }
-                }
-            })
+    // filter out any source subdirectories
+    let filtered_entries = if args.source_recursive {
+        dir_entries
+            .filter(|entry| entry.path().is_file())
             .collect::<Vec<DirEntry>>()
-        )
+
+    // but record stats if "source_recursive" is not enabled
+    } else {
+        dir_entries
+            .filter(|entry| 
+                if entry.path().is_file() {
+                    true
+                } else {
+                    println!("Skipping directory {:?}", entry.file_name());
+                    stats.inc_dirs_ignored();
+                    false
+                }
+            )
+            .collect::<Vec<DirEntry>>()
+        };
+    
+    Ok(filtered_entries)
 }
 
 /// Read directory and parse contents into supported data models
@@ -860,7 +870,10 @@ fn parse_dir_contents(
 
     for (source_ix, source_dir) in source_dir_contents.into_iter().enumerate() {
 
-        println!("Reading files from {}", args.source_dir[source_ix].display());
+        let parse_start_time = Instant::now();
+        print_progress(format!("Parsing {} files from {}... ",
+            source_dir.len(),
+            args.source_dir[source_ix].display()));
 
         for dir_entry in source_dir {
             stats.inc_files_total();
@@ -905,10 +918,17 @@ fn parse_dir_contents(
 
                 FileType::Unknown => {
                     stats.inc_unknown_skipped();
+                    if DBG_ON {
                         println!("Skipping unknown file {:?}", current_file.get_file_name_ref())
                     }
                 }
             }
+        }
+
+        print_progress(format!("done ({}.{} sec)",
+            parse_start_time.elapsed().as_secs(),
+            parse_start_time.elapsed().subsec_millis()));
+        println!();
     }
 
     // This is a consuming call for now, so needs reassignment
@@ -1437,14 +1457,10 @@ fn parse_exif_date(date_str: String) -> Option<String> {
     }
 }
 
-fn read_exif_date_and_device(file: &DirEntry) -> ExifDateDevice {
-
-    // Create an empty Exif object and set values after reading EXIF data
-    let mut file_exif = ExifDateDevice{
-        date_original: None,
-        date_time: None,
-        camera_model: None
-    };
+fn read_exif_date_and_device(
+    file: &DirEntry,
+    mut file_exif: ExifDateDevice
+) -> ExifDateDevice {
 
     // TODO 5d: handle this unwrap
     // Return early if this is not a file, there's no device name to read
