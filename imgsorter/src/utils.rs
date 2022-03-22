@@ -2,6 +2,7 @@ use std::collections::hash_set::Iter;
 use std::collections::HashSet;
 use std::iter::Cloned;
 use std::ffi::OsString;
+use std::io::Write;
 
 pub struct ColoredString;
 
@@ -108,4 +109,9 @@ pub fn print_sets_with_index(msg: &str, set: &Vec<HashSet<OsString>>) {
     println!("{}:", msg);
     set.iter().enumerate()
         .for_each(|(ix, set)| println!("{:?} -> {:?}", ix, set));
+}
+
+pub fn print_progress(msg: String) {
+    print!("{}", msg);
+    let _ = std::io::stdout().flush();
 }

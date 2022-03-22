@@ -18,6 +18,9 @@
     [x] prefer date taken over date modified
     [x] dry run/copy output - sort dirs by name (see https://stackoverflow.com/questions/59799388/sort-hashmap-data-by-keys)
     [ ] EXIF for video data
+    [ ] depth limit for source recursive subdirs
+    [ ] calculate total file size
+    [ ] don't create device subdirs if only one file per device (even if device count > 1)
 
 [ ] 3 - Stats
     [x] a - show in progress statistics
@@ -27,6 +30,7 @@
     [ ] separate dirs created into "date dirs" and "device dirs"
     [ ] stats for "could not read EXIF"
     [ ] stats for file size
+    [ ] stats for time taken - prefetching dirs, parsing files, copying files
 
 [ ] 4 - Config
     [ ] a - config file - rename device with custom name (i.e. personal name instead of camera name) - see 7d
@@ -43,6 +47,7 @@
     [ ] h - improve maps duplication - use drain_filter or partition or retain or something else
     [ ] i - move map methods to *DeviceTree
     [ ] k - Reimplement is_source_unique
+    [ ] g - Store total count of files and maybe file size when reading source files
 
 [ ] 6 - Misc / bugs
     [x] a - change copy to rename
@@ -61,7 +66,7 @@
     [ ] a - undo ?
     [ ] b - maybe don't read file list into memory?
     [ ] c - search recursively into existing subdirs (but skip "imgsorted" target subdir)
-    [ ] d - additional option to read and generate list of devices - this can be filled in and re-read as config - see 4a
+    [-] d - additional option to read and generate list of devices - this can be filled in and re-read as config - see 4a
     [ ] better confirmation
     [ ] how to treat existing files - skip, overwrite, rename
     [ ] how to treat files without EXIF (e.g. images received over WhatsApp)

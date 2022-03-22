@@ -20,6 +20,7 @@ const DEFAULT_MIN_COUNT: i32 = 1;
 const DEFAULT_COPY: bool = true;
 const DEFAULT_SILENT: bool = false;
 const DEFAULT_DRY_RUN: bool = false;
+const DEFAULT_SOURCE_RECURSIVE: bool = false;
 
 const DATE_DIR_FORMAT: &'static str = "%Y.%m.%d";
 
@@ -340,21 +341,33 @@ pub struct SupportedFile {
 impl SupportedFile {
     pub fn parse_from(dir_entry: DirEntry, source_index: usize) -> SupportedFile {
         let _extension = get_extension(&dir_entry);
+        let _file_type = get_file_type(&_extension);
         let _metadata = dir_entry.metadata().unwrap();
 
-        let _exif_data = read_exif_date_and_device(&dir_entry);
-        let _system_date = get_system_modified_date(&_metadata);
+        let mut _empty_exif = ExifDateDevice {
+            date_original: None,
+            date_time: None,
+            camera_model: None
+        };
+
+        let _exif_data = match _file_type {
+            // It's much faster if we only try to read EXIF for image files
+            FileType::Image =>
+                read_exif_date_and_device(&dir_entry, _empty_exif),
+            _ =>
+                _empty_exif
+        };
 
         // Read image date - prefer EXIF tags over system date
         let _image_date = _exif_data.date_original
             .unwrap_or(_exif_data.date_time
-                .unwrap_or(_system_date
+                .unwrap_or(get_system_modified_date(&_metadata)
                     .unwrap_or(DEFAULT_NO_DATE_STR.to_string())));
 
         SupportedFile {
             file_name: dir_entry.file_name(),
             file_path: dir_entry.path(),
-            file_type: get_file_type(&_extension),
+            file_type: _file_type,
             extension: _extension,
             date_str: _image_date,
             metadata: _metadata,
@@ -393,6 +406,9 @@ pub struct CliArgs {
     /// will be created, instead of directly placed in the target_dir
     target_dir: PathBuf,
 
+    /// If this is enabled, descend into subdirectories recursively
+    source_recursive: bool,
+
     /// The minimum number of files with the same date necessary
     /// for a dedicated subdir to be created and the files moved
     min_files_per_dir: i32,
@@ -423,6 +439,7 @@ impl CliArgs {
             CliArgs {
                 source_dir: vec![cwd.clone()],
                 target_dir: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
+                source_recursive: DEFAULT_SOURCE_RECURSIVE,
                 min_files_per_dir: DEFAULT_MIN_COUNT,
                 cwd,
                 silent: DEFAULT_SILENT,
@@ -439,6 +456,7 @@ impl CliArgs {
         cwd_source_subdir: Option<String>,
         // Full path where the sorted images will be moved
         target: Option<String>,
+        source_recursive: Option<bool>,
         // Subdir inside the CWD where the sorted images will be moved
         // Note: if `target` is provided, this is ignored
         cwd_target_subdir: Option<String>,
@@ -475,6 +493,7 @@ impl CliArgs {
                     target,
                     cwd_target_subdir.or(Some(String::from(DEFAULT_TARGET_SUBDIR))),
                     &cwd),
+                source_recursive: source_recursive.unwrap_or(DEFAULT_SOURCE_RECURSIVE),
                 min_files_per_dir: min_files.unwrap_or(DEFAULT_MIN_COUNT),
                 cwd,
                 silent: silent.unwrap_or(DEFAULT_SILENT),
@@ -507,19 +526,35 @@ impl CliArgs {
         self
     }
 
+    fn add_source_dir(mut self, src_dir: &str) -> CliArgs {
+        self.source_dir.push(PathBuf::from(src_dir));
+        self
+    }
+
+    fn set_source_paths(&mut self, sources: Vec<PathBuf>) {
+        self.source_dir = sources;
+    }
+
     fn set_target_dir(mut self, subdir: &str) -> CliArgs {
         let new_path = PathBuf::from(subdir);
         self.target_dir = new_path.join(DEFAULT_TARGET_SUBDIR);
         self
     }
 
-    // fn append_source_subdir(mut self, subdir: &str) -> CliArgs {
-    //     self.source_dir.push(subdir);
-    //     self
-    // }
+    fn append_source_subdir(mut self, subdir: &str) -> CliArgs {
+        if self.source_dir.len() == 1 {
+            self.source_dir[0].push(subdir);
+        }
+        self
+    }
 
     fn append_target_subdir(mut self, subdir: &str) -> CliArgs {
         self.target_dir.push(subdir);
+        self
+    }
+
+    fn set_source_recursive(mut self, do_recursive: bool) -> CliArgs {
+        self.source_recursive = do_recursive;
         self
     }
 
@@ -560,6 +595,7 @@ fn main() -> Result<(), std::io::Error> {
         ])
         .set_target_dir(r"D:\Temp\New folder test remove - Copy")
         .set_silent(false)
+        .set_source_recursive(true)
         .set_copy_not_move(true);
         // Uncomment for faster dev
         // .set_dry_run(true);
@@ -568,14 +604,33 @@ fn main() -> Result<(), std::io::Error> {
         dbg!(&args);
     }
 
+    /*****************************************************************************/
+    /* ---                        Read source dirs                           --- */
+    /*****************************************************************************/
+
+    if args.source_recursive {
+
+        print!("> Fetching source directories list recursively...");
+        let fetch_dirs_start_time = Instant::now();
+
+        let new_source_dirs = walk_source_dirs_recursively(&args);
+
+        print!("done ({}ms)", fetch_dirs_start_time.elapsed().as_millis());
+        println!();
+
+        args.set_source_paths(new_source_dirs);
+    }
 
     /*****************************************************************************/
     /* ---                        Read source files                          --- */
     /*****************************************************************************/
 
     // TODO 6f: handle path not exists
+    // TODO 5g: instead of Vec<Vec<DirEntry>>, return a `SourceDirTree` struct
+    // which wraps the Vec's but contains additional metadata, such as no of files or total size
     // Read dir contents and filter out error results
-    let source_contents = args.source_dir.clone().iter()
+    let source_contents = args.source_dir.clone()
+        .iter()
         .filter_map(|src_dir|
             read_supported_files(src_dir, &mut stats, &mut args).ok())
         .collect::<Vec<_>>();
@@ -695,6 +750,47 @@ fn main() -> Result<(), std::io::Error> {
     Ok(())
 }
 
+fn walk_source_dirs_recursively(args: &CliArgs) -> Vec<PathBuf> {
+
+    fn walk_dir(
+        source_dir: PathBuf,
+        vec_accum: &mut Vec<PathBuf>
+    ) -> Result<(), std::io::Error> {
+
+        if DBG_ON {
+            println!("> Reading {:?}...", &source_dir);
+        }
+
+        let subdirs: Vec<DirEntry> = fs::read_dir(&source_dir)?
+            .into_iter()
+            .filter_map(|s| s.ok())
+            .filter(|entry| entry.path().is_dir())
+            .collect::<Vec<_>>();
+
+        vec_accum.push(source_dir);            
+
+        if !subdirs.is_empty() {
+            subdirs
+                .iter()
+                .for_each(|dir_entry| {
+                    let _ = walk_dir(dir_entry.path(), vec_accum); 
+                });
+        };
+
+        Ok(())
+    }
+
+    let mut new_source_dirs = Vec::new();
+
+    args.source_dir.clone()
+        .into_iter()
+        .for_each(|d| {
+            walk_dir(d, &mut new_source_dirs).ok();
+        });
+
+    new_source_dirs
+}
+
 /// For dry runs over multiple source dirs we want to show if there are duplicate files across all sources.
 /// This method iterates over all filenames in the source dirs, extracting a set for each dir.
 /// Then it iterates all sets, checking each one against all previous ones and keeps only
@@ -736,35 +832,33 @@ fn read_supported_files(
     args: &mut CliArgs
 ) -> Result<Vec<DirEntry>, std::io::Error> {
 
-    // TODO 5d: don't use Ok directly; handle all ?'s; args is unused
-    Ok(
-        fs::read_dir(source_dir)?
-            .into_iter()
+    // TODO 5d: handle all ?'s
+    let dir_entries = fs::read_dir(source_dir)?
+        .into_iter()
+        .filter_map(|entry| entry.ok());
 
-            // filter only ok files
-            .filter_map(|entry| entry.ok())
+    // filter out any source subdirectories...
+    let filtered_entries = if args.source_recursive {
+        dir_entries
+            .filter(|entry| entry.path().is_file())
+            .collect::<Vec<DirEntry>>()
 
-            // filter out any source subdirectories
-            // TODO 7c - allow option to recursively walk subdirs
-            .filter(|entry| {
-                match entry.metadata() {
-                    Ok(metadata) => {
-                        if metadata.is_dir() {
-                            if DBG_ON { println!("Skipping directory {:?}", entry.file_name()) }
-                            stats.inc_dirs_ignored();
-                            false
-                        } else {
-                            true
-                        }
-                    }
-                    Err(_) => {
-                        println!("Could not read metadata for {:?}", entry);
-                        false
-                    }
+    // ...but record stats if "source_recursive" is not enabled
+    } else {
+        dir_entries
+            .filter(|entry| 
+                if entry.path().is_file() {
+                    true
+                } else {
+                    println!("Skipping directory {:?}", entry.file_name());
+                    stats.inc_dirs_ignored();
+                    false
                 }
-            })
-
-            .collect::<Vec<DirEntry>>())
+            )
+            .collect::<Vec<DirEntry>>()
+        };
+    
+    Ok(filtered_entries)
 }
 
 /// Read directory and parse contents into supported data models
@@ -776,14 +870,28 @@ fn parse_dir_contents(
 
     let mut new_dir_tree: TargetDateDeviceTree = TargetDateDeviceTree::new();
 
+    // TODO 5g: this should already be available from source_dir_contents metadata
+    let total_no_files: usize = source_dir_contents.iter().map(|vec|vec.len()).sum();
+
+    let mut count_so_far = 0;
+
     for (source_ix, source_dir) in source_dir_contents.into_iter().enumerate() {
 
-        println!("Reading files from {}", args.source_dir[source_ix].display());
+        let parse_start_time = Instant::now();
 
-        for dir_entry in source_dir {
+        let current_file_count = source_dir.len();
+
+        print_progress(format!("[{}/{}] Parsing {} files from {}... ",
+                               count_so_far,
+                               total_no_files,
+                               current_file_count,
+                               args.source_dir[source_ix].display()));
+
+        // Parse each file into its internal representation and add it to the target tree
+        for entry in source_dir {
             stats.inc_files_total();
 
-            let current_file: SupportedFile = SupportedFile::parse_from(dir_entry, source_ix);
+            let current_file: SupportedFile = SupportedFile::parse_from(entry, source_ix);
 
             // Build final target path for this file
             match current_file.file_type {
@@ -823,10 +931,20 @@ fn parse_dir_contents(
 
                 FileType::Unknown => {
                     stats.inc_unknown_skipped();
-                    println!("Skipping unknown file {:?}", current_file.get_file_name_ref())
+                    if DBG_ON {
+                        println!("Skipping unknown file {:?}", current_file.get_file_name_ref())
+                    }
                 }
             }
         }
+
+        // Record progress
+        count_so_far += current_file_count;
+
+        print_progress(format!("done ({}.{} sec)",
+                               parse_start_time.elapsed().as_secs(),
+                               parse_start_time.elapsed().subsec_millis()));
+        println!();
     }
 
     // This is a consuming call for now, so needs reassignment
@@ -1273,6 +1391,7 @@ fn create_subdir_if_required(
                      &target_subdir.strip_prefix(&args.target_dir).unwrap().display());
         }
     } else {
+        // TODO 5x: same as fs::create_dir_all()
         let subdir_creation = DirBuilder::new()
             // create subdirs along the path as required
             // recursive + create doesn't return Err if dir exists
@@ -1300,7 +1419,7 @@ fn create_subdir_if_required(
 }
 
 /// Read metadata and return the file's modified time in YYYY-MM-DD format
-/// This is the operating systemțs Date Modified: the time that any application or
+/// This is the operating system's Date Modified: the time that any application or
 /// the camera or the operating system itself modified the file.
 /// See also [read_exif_date_and_device()]
 fn get_system_modified_date(file_metadata: &Metadata) -> Option<String> {
@@ -1354,14 +1473,10 @@ fn parse_exif_date(date_str: String) -> Option<String> {
     }
 }
 
-fn read_exif_date_and_device(file: &DirEntry) -> ExifDateDevice {
-
-    // Create an empty Exif object and set values after reading EXIF data
-    let mut file_exif = ExifDateDevice{
-        date_original: None,
-        date_time: None,
-        camera_model: None
-    };
+fn read_exif_date_and_device(
+    file: &DirEntry,
+    mut file_exif: ExifDateDevice
+) -> ExifDateDevice {
 
     // TODO 5d: handle this unwrap
     // Return early if this is not a file, there's no device name to read
