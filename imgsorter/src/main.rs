@@ -626,6 +626,8 @@ fn main() -> Result<(), std::io::Error> {
     /*****************************************************************************/
 
     // TODO 6f: handle path not exists
+    // TODO 5g: instead of Vec<Vec<DirEntry>>, return a `SourceDirTree` struct
+    // which wraps the Vec's but contains additional metadata, such as no of files or total size
     // Read dir contents and filter out error results
     let source_contents = args.source_dir.clone()
         .iter()
@@ -835,13 +837,13 @@ fn read_supported_files(
         .into_iter()
         .filter_map(|entry| entry.ok());
 
-    // filter out any source subdirectories
+    // filter out any source subdirectories...
     let filtered_entries = if args.source_recursive {
         dir_entries
             .filter(|entry| entry.path().is_file())
             .collect::<Vec<DirEntry>>()
 
-    // but record stats if "source_recursive" is not enabled
+    // ...but record stats if "source_recursive" is not enabled
     } else {
         dir_entries
             .filter(|entry| 
@@ -868,17 +870,28 @@ fn parse_dir_contents(
 
     let mut new_dir_tree: TargetDateDeviceTree = TargetDateDeviceTree::new();
 
+    // TODO 5g: this should already be available from source_dir_contents metadata
+    let total_no_files: usize = source_dir_contents.iter().map(|vec|vec.len()).sum();
+
+    let mut count_so_far = 0;
+
     for (source_ix, source_dir) in source_dir_contents.into_iter().enumerate() {
 
         let parse_start_time = Instant::now();
-        print_progress(format!("Parsing {} files from {}... ",
-            source_dir.len(),
-            args.source_dir[source_ix].display()));
 
-        for dir_entry in source_dir {
+        let current_file_count = source_dir.len();
+
+        print_progress(format!("[{}/{}] Parsing {} files from {}... ",
+                               count_so_far,
+                               total_no_files,
+                               current_file_count,
+                               args.source_dir[source_ix].display()));
+
+        // Parse each file into its internal representation and add it to the target tree
+        for entry in source_dir {
             stats.inc_files_total();
 
-            let current_file: SupportedFile = SupportedFile::parse_from(dir_entry, source_ix);
+            let current_file: SupportedFile = SupportedFile::parse_from(entry, source_ix);
 
             // Build final target path for this file
             match current_file.file_type {
@@ -925,9 +938,12 @@ fn parse_dir_contents(
             }
         }
 
+        // Record progress
+        count_so_far += current_file_count;
+
         print_progress(format!("done ({}.{} sec)",
-            parse_start_time.elapsed().as_secs(),
-            parse_start_time.elapsed().subsec_millis()));
+                               parse_start_time.elapsed().as_secs(),
+                               parse_start_time.elapsed().subsec_millis()));
         println!();
     }
 

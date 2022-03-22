@@ -20,6 +20,7 @@
     [ ] EXIF for video data
     [ ] depth limit for source recursive subdirs
     [ ] calculate total file size
+    [ ] don't create device subdirs if only one file per device (even if device count > 1)
 
 [ ] 3 - Stats
     [x] a - show in progress statistics
@@ -29,6 +30,7 @@
     [ ] separate dirs created into "date dirs" and "device dirs"
     [ ] stats for "could not read EXIF"
     [ ] stats for file size
+    [ ] stats for time taken - prefetching dirs, parsing files, copying files
 
 [ ] 4 - Config
     [ ] a - config file - rename device with custom name (i.e. personal name instead of camera name) - see 7d
@@ -45,6 +47,7 @@
     [ ] h - improve maps duplication - use drain_filter or partition or retain or something else
     [ ] i - move map methods to *DeviceTree
     [ ] k - Reimplement is_source_unique
+    [ ] g - Store total count of files and maybe file size when reading source files
 
 [ ] 6 - Misc / bugs
     [x] a - change copy to rename
