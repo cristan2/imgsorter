@@ -44,6 +44,7 @@ pub enum OutputColor {
 }
 
 pub struct RightPadding;
+pub struct LeftPadding;
 
 impl RightPadding {
     // TODO 5g - have char as argument
@@ -65,6 +66,12 @@ impl RightPadding {
 
     pub fn middle_dot(str: String, pad_width: usize) -> String {
         format!("{:·<width$}", str, width=pad_width)
+    }
+}
+
+impl LeftPadding {
+    pub fn zeroes3<T: Into<u64>>(no: T) -> String {
+        format!("{:0>width$}", no.into(), width=3)
     }
 }
 

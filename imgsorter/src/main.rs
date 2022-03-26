@@ -10,7 +10,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use std::fs::{DirEntry, DirBuilder, File, Metadata};
 use rexif::{ExifTag, ExifResult};
 use std::io::{Read, Seek, SeekFrom};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use imgsorter::utils::*;
 
 const DBG_ON: bool = false;
@@ -212,6 +212,10 @@ pub struct FileStats {
     error_file_create: i32,
     error_file_delete: i32,
     error_dir_create: i32,
+    time_fetch_dirs: Duration,
+    time_parse_files: Duration,
+    time_write_files: Duration,
+    time_total: Duration
 }
 
 impl FileStats {
@@ -230,6 +234,10 @@ impl FileStats {
             error_file_create: 0,
             error_file_delete: 0,
             error_dir_create: 0,
+            time_fetch_dirs: Duration::new(0, 0),
+            time_parse_files: Duration::new(0, 0),
+            time_write_files: Duration::new(0, 0),
+            time_total: Duration::new(0, 0)
         }
     }
 
@@ -246,6 +254,10 @@ impl FileStats {
     pub fn inc_error_file_create(&mut self) { self.error_file_create += 1 }
     pub fn inc_error_file_delete(&mut self) { self.error_file_delete += 1 }
     pub fn inc_error_dir_create(&mut self) { self.error_dir_create += 1 }
+    pub fn set_time_fetch_dirs(&mut self, elapsed: Duration) { self.time_fetch_dirs = elapsed }
+    pub fn set_time_parse_files(&mut self, elapsed: Duration) { self.time_parse_files = elapsed }
+    pub fn set_time_write_files(&mut self, elapsed: Duration) { self.time_write_files = elapsed }
+    pub fn set_time_total(&mut self, elapsed: Duration) { self.time_total = elapsed }
 
     pub fn color_if_non_zero(err_stat: i32, level: OutputColor) -> String {
         if err_stat > 0 {
@@ -266,10 +278,9 @@ impl FileStats {
 
     pub fn print_stats(&self, args: &CliArgs) {
         let general_stats = format!("
-Final statistics
------------------------------
+---------------------------------
 Total files:             {total}
------------------------------
+---------------------------------
 Images moved:            {img_move}
 Images copied:           {img_copy}
 Images skipped:          {img_skip}
@@ -279,11 +290,17 @@ Videos skipped:          {vid_skip}
 Directories ignored:     {dir_ignore}
 Directories created:     {dir_create}
 Unknown files skipped:   {f_skip}
------------------------------
+---------------------------------
 File create errors:      {fc_err}
 File delete errors:      {fd_err}
 Directory create errors: {dc_err}
------------------------------",
+---------------------------------
+Time fetching folders:   {td_sec}:{td_ms}s
+Time parsing files:      {tf_sec}:{tf_ms}s
+Time writing files:      {tc_sec}:{tc_ms}s
+---------------------------------
+Total time taken:        {tt_sec}:{tt_ms}s
+---------------------------------",
                             total=FileStats::color_if_non_zero(self.files_total, OutputColor::Neutral),
                             img_move=FileStats::color_if_non_zero(self.img_moved, OutputColor::Neutral),
                             img_copy=FileStats::color_if_non_zero(self.img_copied, OutputColor::Neutral),
@@ -297,6 +314,14 @@ Directory create errors: {dc_err}
                             fc_err=FileStats::color_if_non_zero(self.error_file_create, OutputColor::Error),
                             fd_err=FileStats::color_if_non_zero(self.error_file_delete, OutputColor::Error),
                             dc_err=FileStats::color_if_non_zero(self.error_dir_create, OutputColor::Error),
+                            td_sec=self.time_fetch_dirs.as_secs(),
+                            td_ms=LeftPadding::zeroes3(self.time_fetch_dirs.subsec_millis()),
+                            tf_sec=self.time_parse_files.as_secs(),
+                            tf_ms=LeftPadding::zeroes3(self.time_parse_files.subsec_millis()),
+                            tc_sec=self.time_write_files.as_secs(),
+                            tc_ms=LeftPadding::zeroes3(self.time_write_files.subsec_millis()),
+                            tt_sec=self.time_total.as_secs(),
+                            tt_ms=LeftPadding::zeroes3(self.time_total.subsec_millis()),
         );
 
         println!("{}", general_stats);
@@ -610,15 +635,13 @@ fn main() -> Result<(), std::io::Error> {
 
     if args.source_recursive {
 
-        print!("> Fetching source directories list recursively...");
+        if DBG_ON { println!("> Fetching source directories list recursively..."); }
         let fetch_dirs_start_time = Instant::now();
 
         let new_source_dirs = walk_source_dirs_recursively(&args);
-
-        print!("done ({}ms)", fetch_dirs_start_time.elapsed().as_millis());
-        println!();
-
         args.set_source_paths(new_source_dirs);
+
+        stats.set_time_fetch_dirs(fetch_dirs_start_time.elapsed());
     }
 
     /*****************************************************************************/
@@ -727,8 +750,12 @@ fn main() -> Result<(), std::io::Error> {
     // TODO prefilter for Images and Videos only
     // Iterate files, read modified date and create subdirs
     // Copy images and videos to subdirs based on modified date
+    let parse_start_time = Instant::now();
     let mut target_dir_tree = parse_dir_contents(source_contents, &args, &mut stats);
 
+    stats.set_time_parse_files(parse_start_time.elapsed());
+
+    let write_start_time = Instant::now();
     if !target_dir_tree.dir_tree.is_empty() {
         println!();
         let start_status = format!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
@@ -740,12 +767,14 @@ fn main() -> Result<(), std::io::Error> {
         write_target_dir_files(&mut target_dir_tree, source_unique_files, &args, &mut stats);
     }
 
+    // Record time taken
+    // Dirs fetching occurs before confirmation, while start time starts after confirmation
+    stats.set_time_write_files(write_start_time.elapsed());
+    stats.set_time_total(start_time.elapsed() + stats.time_fetch_dirs);
+
     // Print final stats
     println!();
     stats.print_stats(&args);
-
-    let duration = start_time.elapsed();
-    println!("Finished in {}.{} sec", duration.as_secs(), duration.subsec_millis());
 
     Ok(())
 }
@@ -877,7 +906,7 @@ fn parse_dir_contents(
 
     for (source_ix, source_dir) in source_dir_contents.into_iter().enumerate() {
 
-        let parse_start_time = Instant::now();
+        let parse_dir_start_time = Instant::now();
 
         let current_file_count = source_dir.len();
 
@@ -942,8 +971,8 @@ fn parse_dir_contents(
         count_so_far += current_file_count;
 
         print_progress(format!("done ({}.{} sec)",
-                               parse_start_time.elapsed().as_secs(),
-                               parse_start_time.elapsed().subsec_millis()));
+                               parse_dir_start_time.elapsed().as_secs(),
+                               LeftPadding::zeroes3(parse_dir_start_time.elapsed().subsec_millis())));
         println!();
     }
 

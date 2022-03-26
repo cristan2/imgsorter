@@ -44,7 +44,7 @@
     [ ] d - better error handling (e.g. check all `.unwrap()`s)
     [ ] e - better name for SupportedFile (or maybe don't accept Unknown file types)
     [ ] f - universal line terminators
-    [ ] g - macro for padding formats which take a variable for fill char
+    [ ] g - macro for padding formats which take a variable for fill char - https://stackoverflow.com/questions/69173413/does-the-rust-format-macro-provide-for-user-specified-fill-characters
     [ ] h - improve maps duplication - use drain_filter or partition or retain or something else
     [ ] i - move map methods to *DeviceTree
     [ ] k - Reimplement is_source_unique
