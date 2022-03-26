@@ -15,12 +15,13 @@
     [x] d - handle unknown files
     [x] e - copy/move file only if it's supported file
     [x] f - handle dir creation fail / dir already exists
+    [ ] g - if there are only two files for two devices, ignore the file without EXIF info
     [x] prefer date taken over date modified
     [x] dry run/copy output - sort dirs by name (see https://stackoverflow.com/questions/59799388/sort-hashmap-data-by-keys)
     [ ] EXIF for video data
     [ ] depth limit for source recursive subdirs
     [ ] calculate total file size
-    [ ] don't create device subdirs if only one file per device (even if device count > 1)
+    [x] don't create device subdirs if only one file per device (even if device count > 1)
 
 [ ] 3 - Stats
     [x] a - show in progress statistics

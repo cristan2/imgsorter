@@ -1016,7 +1016,7 @@ fn write_target_dir_files(
     for (date_dir_name, devices_files_and_paths) in &new_dir_tree.dir_tree {
         let device_count_for_date = devices_files_and_paths.file_tree.keys().len();
 
-        let files_count = devices_files_and_paths.file_tree.iter()
+        let file_count_for_date = devices_files_and_paths.file_tree.iter()
             .fold(0, |accum, (_, files_and_paths)|
                 accum + files_and_paths.len());
 
@@ -1026,9 +1026,9 @@ fn write_target_dir_files(
         if is_dry_run {
 
             let _dir_name_with_device_status = format!("[{}] ({:?} devices, {:?} files) ",
-                                                        date_dir_name.clone(),
-                                                        device_count_for_date,
-                                                        files_count);
+                                                       date_dir_name.clone(),
+                                                       device_count_for_date,
+                                                       file_count_for_date);
 
             let padded_dir_name = RightPadding::dot(
                 _dir_name_with_device_status,
@@ -1054,7 +1054,30 @@ fn write_target_dir_files(
 
             let mut indent_level: usize = 0;
 
-            let do_create_device_subdirs = device_count_for_date > 1 && device_name_opt.is_some();
+            // This condition helps prevent creating a redundant device subdir if
+            // there's only a single Some("device") device (without any "None" device files)
+            // Before                 After
+            // ------                 -----
+            // [date_dir]             [date_dir]
+            //  └─ [device_dir]        |
+            //      └─ file01.ext      └─ file01.ext
+            //      └─ file02.ext      └─ file02.ext
+            let has_at_least_one_distinct_device = device_count_for_date > 1 && device_name_opt.is_some();
+
+            // This condition helps prevent creating a device subdir for a single file, if there's also
+            // a "None" device with a single file. In practice, this is most likely to be a situation where
+            // a picture taken with a camera (computed device is Some("device") based on EXIF) is sent
+            // via whatsapp and would end up in a "Sent" folder without EXIF info (computed device is None)
+            // Before                 After
+            // ------                 -----
+            // [date_dir]             [date_dir]
+            //  └─ [device_dir]        |
+            //  │   └─ file01.ext      └─ file01.ext
+            //  └─ file02.ext          └─ file02.ext
+            // TODO 2g: add more logic to this case and maybe skip copying the file without EXIF info
+            let has_double_file = device_count_for_date == 2 && file_count_for_date == 2;
+
+            let do_create_device_subdirs = has_at_least_one_distinct_device && !has_double_file;
 
             // If there's more than one device, attach device dir to destination path, otherwise ignore devices
             let device_destination_path = if do_create_device_subdirs {
