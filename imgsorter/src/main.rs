@@ -13,10 +13,12 @@ use std::io::{Read, Seek, SeekFrom};
 use std::time::{Duration, Instant};
 use imgsorter::utils::*;
 
+use toml::*;
+
 const DBG_ON: bool = false;
 const DEFAULT_NO_DATE_STR: &'static str = "no date";
 const DEFAULT_TARGET_SUBDIR: &'static str = "imgsorted";
-const DEFAULT_MIN_COUNT: i32 = 1;
+const DEFAULT_MIN_COUNT: i64 = 1;
 const DEFAULT_COPY: bool = true;
 const DEFAULT_SILENT: bool = false;
 const DEFAULT_DRY_RUN: bool = false;
@@ -436,7 +438,7 @@ pub struct CliArgs {
 
     /// The minimum number of files with the same date necessary
     /// for a dedicated subdir to be created and the files moved
-    min_files_per_dir: i32,
+    min_files_per_dir: i64,
 
     /// The current working directory
     cwd: PathBuf,
@@ -449,7 +451,10 @@ pub struct CliArgs {
 
     /// Whether names of newly created date subdirectories
     /// will include the count of devices and files it contains
-    dry_run: bool
+    dry_run: bool,
+
+    /// Whether to print additional information during processing
+    debug_on: bool
 }
 
 impl CliArgs {
@@ -469,7 +474,8 @@ impl CliArgs {
                 cwd,
                 silent: DEFAULT_SILENT,
                 copy_not_move: DEFAULT_COPY,
-                dry_run: DEFAULT_DRY_RUN
+                dry_run: DEFAULT_DRY_RUN,
+                debug_on: DBG_ON
             })
     }
 
@@ -485,10 +491,11 @@ impl CliArgs {
         // Subdir inside the CWD where the sorted images will be moved
         // Note: if `target` is provided, this is ignored
         cwd_target_subdir: Option<String>,
-        min_files: Option<i32>,
+        min_files: Option<i64>,
         silent: Option<bool>,
         copy_not_move: Option<bool>,
-        dry_run: Option<bool>
+        dry_run: Option<bool>,
+        debug_on: Option<bool>
     ) -> Result<CliArgs, std::io::Error> {
 
         fn create_path(provided_path: Option<String>, path_subdir: Option<String>, cwd: &PathBuf) -> PathBuf {
@@ -524,8 +531,147 @@ impl CliArgs {
                 silent: silent.unwrap_or(DEFAULT_SILENT),
                 copy_not_move: copy_not_move.unwrap_or(DEFAULT_COPY),
                 dry_run: dry_run.unwrap_or(DEFAULT_DRY_RUN),
+                debug_on: debug_on.unwrap_or(DBG_ON),
             }
         )
+    }
+
+    fn new_from_toml(config_file: &str) -> Result<CliArgs, std::io::Error> {
+        let mut args = CliArgs::new()?;
+
+        type TomlMap = toml::map::Map<String, toml::Value>;
+
+        fn print_missing_value(value: &str) {
+            println!("> Config key '{}' is invalid or missing, using default", value);
+        }
+
+        fn get_boolean_value(toml_table: &TomlMap, key: &str) -> Option<bool> {
+            let value = toml_table.get(key)
+                .map(|toml_value| toml_value.as_bool())
+                .flatten();
+            
+            if value.is_none() { print_missing_value(key) };
+            value
+        }
+
+        fn get_integer_value(toml_table: &TomlMap, key: &str) -> Option<i64> {
+            let value = toml_table.get(key)
+                .map(|toml_value| toml_value.as_integer())
+                .flatten();
+            
+            if value.is_none() { print_missing_value(key) };
+            value
+        }
+
+        fn get_string_value<'a>(toml_table: &TomlMap, key: &'a str) -> Option<String> {
+            let value = toml_table.get(key)
+                .map(|toml_value| toml_value.as_str())
+                .flatten()
+                .map(|str_val| String::from(str_val));
+            
+            if value.is_none() { print_missing_value(key) };
+            value
+        }
+
+        // fn get_array_value(toml_table: &TomlMap, key: &str) -> Option<Vec<String>> {
+        //     let value_vec = toml_table.get(key)
+        //         .map(|toml_value| toml_value.as_array())
+        //         .flatten();
+        //     
+        //     match value_vec {
+        //         Some(strings_vec) => {
+        //             let asdf = strings_vec.iter()
+        //                 .map(|value| value.as_str())
+        //                 .filter(|s| s.is_ok())
+        //                 .collect::<Vec<String>>();
+        //                 
+        //         },
+        //         None => {
+        //             print_missing_value(key);
+        //             None
+        //         }
+        //     }            
+        // }
+
+        match fs::read_to_string(config_file) {
+            Ok(file_contents) => {
+                match file_contents.parse::<Value>() {
+                    Ok(raw_toml) => {
+
+                        match raw_toml.as_table() {
+                            Some(toml_content) => {
+
+                                /* --- Parse source/target --- */
+
+                                match &toml_content.get("folders") {
+                                    Some(folders_opt) => {
+                                        if let Some(folders) = folders_opt.as_table() {
+                                            if let Some(target_dir) = get_string_value(&folders, "target_dir") {
+                                                args.set_target_dir(target_dir);
+                                            }
+
+                                            get_array_value(&folders, "source_dirs")
+                                        }
+                                    }
+                                    None =>
+                                        print_missing_value("folders")
+                                }
+
+                                /* --- Parse options --- */
+
+                                match &toml_content.get("options") {
+                                    Some(options_opt) => {
+                                        if let Some(options) = options_opt.as_table() {
+
+                                            if let Some(source_recursive) = get_boolean_value(&options, "source_recursive") {
+                                                args.source_recursive = source_recursive;
+                                            }
+
+                                            if let Some(dry_run) = get_boolean_value(&options, "dry_run") {
+                                                args.dry_run = dry_run;
+                                            }
+
+                                            if let Some(copy_not_move) = get_boolean_value(&options, "copy_not_move") {
+                                                args.copy_not_move = copy_not_move;
+                                            }
+
+                                            if let Some(silent) = get_boolean_value(&options, "silent") {
+                                                args.silent = silent;
+                                            }
+
+                                            if let Some(debug_on) = get_boolean_value(&options, "debug_on") {
+                                                args.debug_on = debug_on;
+                                            }
+                                            
+                                            if let Some(min_files_per_dir) = get_integer_value(&options, "min_files_per_dir") {
+                                                args.min_files_per_dir = min_files_per_dir;
+                                            }
+                                        }
+                                    },
+                                    None =>
+                                        print_missing_value("options")
+
+                                }
+                            },
+                            None => {
+                                println!("Could not parse TOML into a key-value object");
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        println!("{}", ColoredString::red(
+                            "Could not parse config file, not valid TOML. Continuing with defaults."));
+                        eprintln!("{}", err);
+                    }
+                }
+            }
+            Err(e) => {
+                println!("{}", ColoredString::red(format!(
+                    "Could not read config file {}. Continuing with defaults.", config_file).as_str()));
+                eprintln!("{}", e);
+            }
+        };
+        Ok(args)
     }
 
     /// Change the source directory. This will also change the target
@@ -560,10 +706,9 @@ impl CliArgs {
         self.source_dir = sources;
     }
 
-    fn set_target_dir(mut self, subdir: &str) -> CliArgs {
+    fn set_target_dir(&mut self, subdir: String) {
         let new_path = PathBuf::from(subdir);
         self.target_dir = new_path.join(DEFAULT_TARGET_SUBDIR);
-        self
     }
 
     fn append_source_subdir(mut self, subdir: &str) -> CliArgs {
@@ -573,25 +718,10 @@ impl CliArgs {
         self
     }
 
-    fn append_target_subdir(mut self, subdir: &str) -> CliArgs {
-        self.target_dir.push(subdir);
-        self
-    }
-
-    fn set_source_recursive(mut self, do_recursive: bool) -> CliArgs {
-        self.source_recursive = do_recursive;
-        self
-    }
-
-    fn set_silent(mut self, do_proces_silent: bool) -> CliArgs {
-        self.silent = do_proces_silent;
-        self
-    }
-
-    fn set_copy_not_move(mut self, do_copy_not_move_file: bool) -> CliArgs {
-        self.copy_not_move = do_copy_not_move_file;
-        self
-    }
+    // fn append_target_subdir(mut self, subdir: &str) -> CliArgs {
+    //     self.target_dir.push(subdir);
+    //     self
+    // }
 
     fn has_multiple_sources(&self) -> bool {
         self.source_dir.len() > 1
@@ -607,6 +737,9 @@ fn main() -> Result<(), std::io::Error> {
     /* ---                     Read or set args                              --- */
     /*****************************************************************************/
 
+    let mut toml_args = CliArgs::new_from_toml("imgsorter.toml")?;
+    // dbg!(toml_args);
+
     let mut args = CliArgs::new()?
         // TODO 1a: temporar citim din ./test_pics
         // .append_source_subdir("test_pics")
@@ -617,17 +750,13 @@ fn main() -> Result<(), std::io::Error> {
             r"D:\Temp\New folder test remove - Copy 2",
             r"D:\Temp\New folder test remove - Copy 2 - Copy",
             // r"Non-existent"
-        ])
-        .set_target_dir(r"D:\Temp\New folder test remove - Copy")
-        .set_silent(false)
-        .set_source_recursive(true)
-        .set_copy_not_move(true);
-        // Uncomment for faster dev
-        // .set_dry_run(true);
+        ]);
 
     if DBG_ON {
         dbg!(&args);
     }
+
+    
 
     /*****************************************************************************/
     /* ---                        Read source dirs                           --- */
@@ -639,7 +768,11 @@ fn main() -> Result<(), std::io::Error> {
         let fetch_dirs_start_time = Instant::now();
 
         let new_source_dirs = walk_source_dirs_recursively(&args);
-        args.set_source_paths(new_source_dirs);
+        if new_source_dirs.is_empty() {
+            panic!("Source folders are not valid");
+        } else {
+            args.set_source_paths(new_source_dirs);
+        }
 
         stats.set_time_fetch_dirs(fetch_dirs_start_time.elapsed());
     }
