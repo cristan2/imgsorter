@@ -7,7 +7,6 @@ source_dirs = [
     'D:\Temp\New folder test remove - Copy 2 - Copy'
 ]
 
-
 [options]
 dry_run = false
 silent = false
@@ -15,9 +14,3 @@ source_recursive = true
 copy_not_move = true
 debug_on = false
 min_files_per_dir = 1
-
-# source_dirs = [
-#     "D:\Temp\New folder test remove - Copy",
-#     "D:\Temp\New folder test remove - Copy 2",
-#     "D:\Temp\New folder test remove - Copy 2 - Copy",
-# ]

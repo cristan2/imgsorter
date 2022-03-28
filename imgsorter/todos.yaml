@@ -35,7 +35,7 @@
 
 [ ] 4 - Config
     [ ] a - config file - rename device with custom name (i.e. personal name instead of camera name) - see 7d
-    [ ] config file - instead of CLI?
+    [x] config file - instead of CLI?
 
 [ ] 5 - Optimize code
     [x] a - struct to model "supported file" with required metadata (file name, device info, date, etc)
@@ -56,7 +56,7 @@
     [x] d - fix eroare "Access is denied." daca rulezi a doua oara si target files exista 
           - eroare cand target dir exista si se incearca citire metadate
     [x] e - run with debug - optional debug printouts
-    [ ] f - handle source path not exists
+    [ ] f - handle source path not exists / guard against setting invalid CliArgs values
     [ ] g - fix edge cases for moving assorted files ()
     [x] create_subdir_if_required shouldn't rely on CWD to strip prefix
     [x] only create device name subdirs if there's more than one

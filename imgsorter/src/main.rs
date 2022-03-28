@@ -542,7 +542,7 @@ impl CliArgs {
         type TomlMap = toml::map::Map<String, toml::Value>;
 
         fn print_missing_value(value: &str) {
-            println!("> Config key '{}' is invalid or missing, using default", value);
+            println!("> Config key '{}' is empty, invalid or missing. Using preset default.", value);
         }
 
         fn get_boolean_value(toml_table: &TomlMap, key: &str) -> Option<bool> {
@@ -558,40 +558,46 @@ impl CliArgs {
             let value = toml_table.get(key)
                 .map(|toml_value| toml_value.as_integer())
                 .flatten();
-            
+
             if value.is_none() { print_missing_value(key) };
             value
         }
 
-        fn get_string_value<'a>(toml_table: &TomlMap, key: &'a str) -> Option<String> {
+        fn get_string_value(toml_table: &TomlMap, key: &str) -> Option<String> {
             let value = toml_table.get(key)
                 .map(|toml_value| toml_value.as_str())
                 .flatten()
-                .map(|str_val| String::from(str_val));
-            
+                .map(|str_val| String::from(str_val))
+                .filter(|s| !s.is_empty());
+
+            // We've already filtered out empty strings, so it's ok to just check for none
             if value.is_none() { print_missing_value(key) };
             value
         }
 
-        // fn get_array_value(toml_table: &TomlMap, key: &str) -> Option<Vec<String>> {
-        //     let value_vec = toml_table.get(key)
-        //         .map(|toml_value| toml_value.as_array())
-        //         .flatten();
-        //     
-        //     match value_vec {
-        //         Some(strings_vec) => {
-        //             let asdf = strings_vec.iter()
-        //                 .map(|value| value.as_str())
-        //                 .filter(|s| s.is_ok())
-        //                 .collect::<Vec<String>>();
-        //                 
-        //         },
-        //         None => {
-        //             print_missing_value(key);
-        //             None
-        //         }
-        //     }            
-        // }
+        fn get_array_value(toml_table: &TomlMap, key: &str) -> Option<Vec<String>> {
+            let value_vec = toml_table.get(key)
+                .map(|toml_value| toml_value.as_array())
+                .flatten()
+                .map(|strings_vec|{
+                    strings_vec.iter()
+                        .flat_map(|value| value.as_str())
+                        .map(|s|String::from(s))
+                        .collect::<Vec<_>>()
+                })
+                .filter(|v| !v.is_empty());
+
+            // We've already filtered out empty vecs, so it's ok to just check for none
+            if value_vec.is_none() { print_missing_value(key) };
+            value_vec
+        }
+
+        fn get_paths(path_strs: Vec<String>) -> Vec<PathBuf> {
+            path_strs
+                .iter()
+                .map(|s|PathBuf::from(s))
+                .collect::<Vec<_>>()
+        }
 
         match fs::read_to_string(config_file) {
             Ok(file_contents) => {
@@ -606,11 +612,20 @@ impl CliArgs {
                                 match &toml_content.get("folders") {
                                     Some(folders_opt) => {
                                         if let Some(folders) = folders_opt.as_table() {
+
                                             if let Some(target_dir) = get_string_value(&folders, "target_dir") {
-                                                args.set_target_dir(target_dir);
+                                                // get_string_value already filters out empty strings ,but just to be sure
+                                                if !target_dir.is_empty() {
+                                                    args.set_target_dir(target_dir);
+                                                }
                                             }
 
-                                            get_array_value(&folders, "source_dirs")
+                                            if let Some(source_paths) = get_array_value(&folders, "source_dirs") {
+                                                // get_array_value already filters out empty arrays ,but just to be sure
+                                                if !source_paths.is_empty() {
+                                                    args.source_dir = get_paths(source_paths);
+                                                }
+                                            }
                                         }
                                     }
                                     None =>
@@ -737,26 +752,17 @@ fn main() -> Result<(), std::io::Error> {
     /* ---                     Read or set args                              --- */
     /*****************************************************************************/
 
-    let mut toml_args = CliArgs::new_from_toml("imgsorter.toml")?;
-    // dbg!(toml_args);
+    let mut args = CliArgs::new_from_toml("imgsorter.toml")?;
+    dbg!(&args);
 
-    let mut args = CliArgs::new()?
+    // let mut args = CliArgs::new()?
         // TODO 1a: temporar citim din ./test_pics
         // .append_source_subdir("test_pics")
-        // .set_source_dir(r"D:\Temp\New folder test remove - Copy")
-        // .set_source_dir(r"D:\Poze\! Mobil\Test pics")
-        .set_source_dirs(vec![
-            r"D:\Temp\New folder test remove - Copy",
-            r"D:\Temp\New folder test remove - Copy 2",
-            r"D:\Temp\New folder test remove - Copy 2 - Copy",
-            // r"Non-existent"
-        ]);
 
     if DBG_ON {
         dbg!(&args);
     }
 
-    
 
     /*****************************************************************************/
     /* ---                        Read source dirs                           --- */
@@ -771,7 +777,7 @@ fn main() -> Result<(), std::io::Error> {
         if new_source_dirs.is_empty() {
             panic!("Source folders are not valid");
         } else {
-            args.set_source_paths(new_source_dirs);
+            args.source_dir = new_source_dirs;
         }
 
         stats.set_time_fetch_dirs(fetch_dirs_start_time.elapsed());
@@ -1012,7 +1018,7 @@ fn read_supported_files(
                 if entry.path().is_file() {
                     true
                 } else {
-                    println!("Skipping directory {:?}", entry.file_name());
+                    println!("Skipping subfolder {:?} in {:?}", entry.file_name(), source_dir.file_name().unwrap());
                     stats.inc_dirs_ignored();
                     false
                 }
