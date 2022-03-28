@@ -122,3 +122,15 @@ pub fn print_progress(msg: String) {
     print!("{}", msg);
     let _ = std::io::stdout().flush();
 }
+
+/// Convert bytes to an appropriate multiple (MB or GB) and append its unit
+pub fn get_file_size_string(filesize: u64) -> String {
+    match filesize {
+        size if size <= 0 =>
+            String::from("unknown"),
+        size if size < 1024u64.pow(3) =>
+            format!("{:.2} MB", (size as f64 / 1024u64.pow(2) as f64)),
+        size =>
+            format!("{:.2} GB", (size as f64/ 1024u64.pow(3) as f64))
+    }
+}

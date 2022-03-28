@@ -6,11 +6,14 @@ use std::error::Error;
 use std::ffi::OsString;
 use std::fmt::Formatter;
 use std::iter::FromIterator;
-use chrono::{DateTime, NaiveDateTime, Utc};
 use std::fs::{DirEntry, DirBuilder, File, Metadata};
-use rexif::{ExifTag, ExifResult};
 use std::io::{Read, Seek, SeekFrom};
 use std::time::{Duration, Instant};
+
+use rexif::{ExifTag, ExifResult};
+use chrono::{DateTime, NaiveDateTime, Utc};
+use filesize::PathExt;
+
 use imgsorter::utils::*;
 
 const DBG_ON: bool = false;
@@ -199,7 +202,8 @@ pub enum ConfirmationType {
 
 #[derive(Debug)]
 pub struct FileStats {
-    files_total: i32,
+    files_count_total: i32,
+    file_size_total: u64,
     img_moved: i32,
     img_copied: i32,
     img_skipped: i32,
@@ -221,7 +225,8 @@ pub struct FileStats {
 impl FileStats {
     pub fn new() -> FileStats {
         FileStats {
-            files_total: 0,
+            files_count_total: 0,
+            file_size_total: 0,
             img_moved: 0,
             img_copied: 0,
             img_skipped: 0,
@@ -241,7 +246,8 @@ impl FileStats {
         }
     }
 
-    pub fn inc_files_total(&mut self) { self.files_total += 1 }
+    pub fn inc_files_total(&mut self, count: usize) { self.files_count_total += count as i32}
+    pub fn inc_files_size(&mut self, size: u64) { self.file_size_total += size }
     pub fn inc_img_moved(&mut self) { self.img_moved += 1 }
     pub fn inc_img_copied(&mut self) { self.img_copied += 1 }
     pub fn inc_img_skipped(&mut self) { self.img_skipped += 1 }
@@ -280,6 +286,7 @@ impl FileStats {
         let general_stats = format!("
 ---------------------------------
 Total files:             {total}
+Total size:              {size}
 ---------------------------------
 Images moved:            {img_move}
 Images copied:           {img_copy}
@@ -295,38 +302,46 @@ File create errors:      {fc_err}
 File delete errors:      {fd_err}
 Directory create errors: {dc_err}
 ---------------------------------
-Time fetching folders:   {td_sec}:{td_ms}s
-Time parsing files:      {tf_sec}:{tf_ms}s
-Time writing files:      {tc_sec}:{tc_ms}s
+Time fetching folders:   {tfetch_dir}s
+Time parsing files:      {tparse_file}s
+Time writing files:      {twrite_file}s
 ---------------------------------
-Total time taken:        {tt_sec}:{tt_ms}s
+Total time taken:        {t_total}s
 ---------------------------------",
-                            total=FileStats::color_if_non_zero(self.files_total, OutputColor::Neutral),
-                            img_move=FileStats::color_if_non_zero(self.img_moved, OutputColor::Neutral),
-                            img_copy=FileStats::color_if_non_zero(self.img_copied, OutputColor::Neutral),
-                            img_skip=FileStats::color_if_non_zero(self.img_skipped, OutputColor::Warning),
-                            vid_move=FileStats::color_if_non_zero(self.vid_moved,OutputColor::Neutral),
-                            vid_copy=FileStats::color_if_non_zero(self.vid_copied,OutputColor::Neutral),
-                            vid_skip=FileStats::color_if_non_zero(self.vid_skipped, OutputColor::Warning),
-                            dir_create=FileStats::color_if_non_zero(self.dirs_created, OutputColor::Neutral),
-                            dir_ignore=FileStats::color_if_non_zero(self.dirs_ignored, OutputColor::Warning),
-                            f_skip=FileStats::color_if_non_zero(self.unknown_skipped, OutputColor::Warning),
-                            fc_err=FileStats::color_if_non_zero(self.error_file_create, OutputColor::Error),
-                            fd_err=FileStats::color_if_non_zero(self.error_file_delete, OutputColor::Error),
-                            dc_err=FileStats::color_if_non_zero(self.error_dir_create, OutputColor::Error),
-                            td_sec=self.time_fetch_dirs.as_secs(),
-                            td_ms=LeftPadding::zeroes3(self.time_fetch_dirs.subsec_millis()),
-                            tf_sec=self.time_parse_files.as_secs(),
-                            tf_ms=LeftPadding::zeroes3(self.time_parse_files.subsec_millis()),
-                            tc_sec=self.time_write_files.as_secs(),
-                            tc_ms=LeftPadding::zeroes3(self.time_write_files.subsec_millis()),
-                            tt_sec=self.time_total.as_secs(),
-                            tt_ms=LeftPadding::zeroes3(self.time_total.subsec_millis()),
+                                    total=FileStats::color_if_non_zero(self.files_count_total, OutputColor::Neutral),
+                                    size=ColoredString::bold_white(get_file_size_string(self.file_size_total).as_str()),
+
+                                    img_move=FileStats::color_if_non_zero(self.img_moved, OutputColor::Neutral),
+                                    img_copy=FileStats::color_if_non_zero(self.img_copied, OutputColor::Neutral),
+                                    img_skip=FileStats::color_if_non_zero(self.img_skipped, OutputColor::Warning),
+                                    vid_move=FileStats::color_if_non_zero(self.vid_moved,OutputColor::Neutral),
+                                    vid_copy=FileStats::color_if_non_zero(self.vid_copied,OutputColor::Neutral),
+                                    vid_skip=FileStats::color_if_non_zero(self.vid_skipped, OutputColor::Warning),
+                                    dir_create=FileStats::color_if_non_zero(self.dirs_created, OutputColor::Neutral),
+                                    dir_ignore=FileStats::color_if_non_zero(self.dirs_ignored, OutputColor::Warning),
+                                    f_skip=FileStats::color_if_non_zero(self.unknown_skipped, OutputColor::Warning),
+
+                                    fc_err=FileStats::color_if_non_zero(self.error_file_create, OutputColor::Error),
+                                    fd_err=FileStats::color_if_non_zero(self.error_file_delete, OutputColor::Error),
+                                    dc_err=FileStats::color_if_non_zero(self.error_dir_create, OutputColor::Error),
+
+                                    tfetch_dir=ColoredString::bold_white(format!("{}:{}",
+                                                                                 self.time_fetch_dirs.as_secs(),
+                                                                                 LeftPadding::zeroes3(self.time_fetch_dirs.subsec_millis())).as_str()),
+                                    tparse_file=ColoredString::bold_white(format!("{}:{}",
+                                                                                  self.time_parse_files.as_secs(),
+                                                                                  LeftPadding::zeroes3(self.time_parse_files.subsec_millis())).as_str()),
+                                    twrite_file=ColoredString::bold_white(format!("{}:{}",
+                                                                                  self.time_write_files.as_secs(),
+                                                                                  LeftPadding::zeroes3(self.time_write_files.subsec_millis())).as_str()),
+                                    t_total=ColoredString::bold_white(format!("{}:{}",
+                                                                                  self.time_total.as_secs(),
+                                                                                  LeftPadding::zeroes3(self.time_total.subsec_millis())).as_str()),
         );
 
         println!("{}", general_stats);
 
-        if self.files_total == self.unknown_skipped {
+        if self.files_count_total == self.unknown_skipped {
             println!("{}", ColoredString::orange("No supported files found in source folder."))
         } else {
             if self.error_file_create > 0 {
@@ -359,6 +374,8 @@ pub struct SupportedFile {
     date_str: String,
     metadata: Metadata,
     device_name: Option<String>,
+    // index of the vec holding the files in the original source dir of this file
+    // this is used to detect duplicates across multiple source dirs when doing dry runs
     source_dir_index: usize
 }
 
@@ -636,12 +653,12 @@ fn main() -> Result<(), std::io::Error> {
     if args.source_recursive {
 
         if DBG_ON { println!("> Fetching source directories list recursively..."); }
-        let fetch_dirs_start_time = Instant::now();
+        let time_fetching_dirs = Instant::now();
 
         let new_source_dirs = walk_source_dirs_recursively(&args);
         args.set_source_paths(new_source_dirs);
 
-        stats.set_time_fetch_dirs(fetch_dirs_start_time.elapsed());
+        stats.set_time_fetch_dirs(time_fetching_dirs.elapsed());
     }
 
     /*****************************************************************************/
@@ -733,7 +750,7 @@ fn main() -> Result<(), std::io::Error> {
         }
     }
 
-    let start_time = Instant::now();
+    let time_processing = Instant::now();
 
     println!("---------------------------------------------------------------------------");
     println!();
@@ -750,18 +767,13 @@ fn main() -> Result<(), std::io::Error> {
     // TODO prefilter for Images and Videos only
     // Iterate files, read modified date and create subdirs
     // Copy images and videos to subdirs based on modified date
-    let parse_start_time = Instant::now();
+    let time_parsing_files = Instant::now();
     let mut target_dir_tree = parse_dir_contents(source_contents, &args, &mut stats);
 
-    stats.set_time_parse_files(parse_start_time.elapsed());
+    stats.set_time_parse_files(time_parsing_files.elapsed());
 
-    let write_start_time = Instant::now();
+    let time_writing_files = Instant::now();
     if !target_dir_tree.dir_tree.is_empty() {
-        println!();
-        let start_status = format!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
-        println!("{}", ColoredString::bold_white(start_status.as_str()));
-        println!();
-    
         // Iterate files and either copy/move to subdirs as necessary
         // or do a dry run to simulate a copy/move pass
         write_target_dir_files(&mut target_dir_tree, source_unique_files, &args, &mut stats);
@@ -769,8 +781,8 @@ fn main() -> Result<(), std::io::Error> {
 
     // Record time taken
     // Dirs fetching occurs before confirmation, while start time starts after confirmation
-    stats.set_time_write_files(write_start_time.elapsed());
-    stats.set_time_total(start_time.elapsed() + stats.time_fetch_dirs);
+    stats.set_time_write_files(time_writing_files.elapsed());
+    stats.set_time_total(time_processing.elapsed() + stats.time_fetch_dirs);
 
     // Print final stats
     println!();
@@ -902,11 +914,13 @@ fn parse_dir_contents(
     // TODO 5g: this should already be available from source_dir_contents metadata
     let total_no_files: usize = source_dir_contents.iter().map(|vec|vec.len()).sum();
 
+    stats.inc_files_total(total_no_files);
+
     let mut count_so_far = 0;
 
     for (source_ix, source_dir) in source_dir_contents.into_iter().enumerate() {
 
-        let parse_dir_start_time = Instant::now();
+        let time_parsing_dir = Instant::now();
 
         let current_file_count = source_dir.len();
 
@@ -918,7 +932,6 @@ fn parse_dir_contents(
 
         // Parse each file into its internal representation and add it to the target tree
         for entry in source_dir {
-            stats.inc_files_total();
 
             let current_file: SupportedFile = SupportedFile::parse_from(entry, source_ix);
 
@@ -971,8 +984,8 @@ fn parse_dir_contents(
         count_so_far += current_file_count;
 
         print_progress(format!("done ({}.{} sec)",
-                               parse_dir_start_time.elapsed().as_secs(),
-                               LeftPadding::zeroes3(parse_dir_start_time.elapsed().subsec_millis())));
+                               time_parsing_dir.elapsed().as_secs(),
+                               LeftPadding::zeroes3(time_parsing_dir.elapsed().subsec_millis())));
         println!();
     }
 
@@ -1012,6 +1025,11 @@ fn write_target_dir_files(
         // new_dir_tree.max_filename_len = new_dir_tree.max_filename_len
         //     + String::from(FILE_TREE_INDENT).chars().count()
         //     + String::from(FILE_TREE_ENTRY).chars().count()
+    } else {
+        println!();
+        let start_status = format!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
+        println!("{}", ColoredString::bold_white(start_status.as_str()));
+        println!();
     }
 
     let dir_padding_width = {
@@ -1045,19 +1063,30 @@ fn write_target_dir_files(
     for (date_dir_name, devices_files_and_paths) in &new_dir_tree.dir_tree {
         let device_count_for_date = devices_files_and_paths.file_tree.keys().len();
 
-        let file_count_for_date = devices_files_and_paths.file_tree.iter()
-            .fold(0, |accum, (_, files_and_paths)|
-                accum + files_and_paths.len());
+        // Get a total sum of file counts and file size in a single iteration
+        let (file_count_for_date, file_size_for_date) = devices_files_and_paths.file_tree.iter()
+            .fold((0, 0), |(accum_count, accum_size), (_, files_and_paths)|
+                (
+                    accum_count + files_and_paths.len(),
+                    accum_size + get_files_size(files_and_paths)
+                ));
+        stats.inc_files_size(file_size_for_date);
 
         // Attach file's date as a new subdirectory to the target path
         let date_destination_path = args.target_dir.clone().join(date_dir_name);
 
         if is_dry_run {
 
-            let _dir_name_with_device_status = format!("[{}] ({:?} devices, {:?} files) ",
-                                                       date_dir_name.clone(),
-                                                       device_count_for_date,
-                                                       file_count_for_date);
+            let _device_count_str = if device_count_for_date == 1 {"device"} else {"devices"};
+            let _file_count_str = if file_count_for_date == 1 {"file"} else {"files"};
+
+            let _dir_name_with_device_status = format!("[{dirname}] ({devicecount:?} {devicestr}, {filecount:?} {filestr}, {filesize}) ",
+                                                       dirname=date_dir_name.clone(),
+                                                       devicecount=device_count_for_date,
+                                                       devicestr=_device_count_str,
+                                                       filecount=file_count_for_date,
+                                                       filestr=_file_count_str,
+                                                       filesize=get_file_size_string(file_size_for_date));
 
             let padded_dir_name = RightPadding::dot(
                 _dir_name_with_device_status,
@@ -1159,7 +1188,7 @@ fn write_target_dir_files(
                 let (padded_filename,
                     op_separator,
                     padded_path,
-                    op_status
+                    write_result
                 ) = {
 
                     // need this space after the filename so there's a gap until the padding starts
@@ -1199,7 +1228,7 @@ fn write_target_dir_files(
                     } else {
 
                         // Copy/move file
-                        let file_copy_status = copy_file_if_not_exists(
+                        let file_write_status = copy_file_if_not_exists(
                             &file,
                             &mut file_destination_path,
                             &args, &mut stats);
@@ -1212,7 +1241,7 @@ fn write_target_dir_files(
                              + 1);
 
                         // Return everything to be printed
-                        (padded_filename, SEPARATOR_COPY_MOVE, padded_path, file_copy_status)
+                        (padded_filename, SEPARATOR_COPY_MOVE, padded_path, file_write_status)
                     }
                 };
 
@@ -1222,10 +1251,21 @@ fn write_target_dir_files(
                          op_separator=op_separator,
                          path=padded_path,
                          status_separator=SEPARATOR_STATUS,
-                         status=op_status);
+                         status=write_result);
             } // end loop files
         } // end loop device dirs
     } // end loop date dirs
+}
+
+/// Read file metadata and return size in bytes
+fn get_files_size(files: &Vec<SupportedFile>) -> u64 {
+    files
+        .iter()
+        .map(|file| {
+            let f_path = &file.file_path;
+            f_path.size_on_disk_fast(&file.metadata).ok().unwrap_or(0)
+        })
+        .sum()
 }
 
 /// Read a directory path and return a string signalling if the path exists
