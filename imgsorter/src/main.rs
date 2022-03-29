@@ -542,7 +542,10 @@ impl CliArgs {
         type TomlMap = toml::map::Map<String, toml::Value>;
 
         fn print_missing_value(value: &str) {
-            println!("> Config key '{}' is empty, invalid or missing. Using preset default.", value);
+            // TODO if debug_on is read from args, this should be set first
+            if DBG_ON {
+                println!("> Config key '{}' is empty, invalid or missing. Using preset default.", value);
+            }
         }
 
         fn get_boolean_value(toml_table: &TomlMap, key: &str) -> Option<bool> {
@@ -613,17 +616,34 @@ impl CliArgs {
                                     Some(folders_opt) => {
                                         if let Some(folders) = folders_opt.as_table() {
 
-                                            if let Some(target_dir) = get_string_value(&folders, "target_dir") {
-                                                // get_string_value already filters out empty strings ,but just to be sure
-                                                if !target_dir.is_empty() {
-                                                    args.set_target_dir(target_dir);
+                                            // args.set_source_paths will return an error and we exit if no valid
+                                            // source directories are found - there's nothing to do without a source
+                                            if let Some(source_paths) = get_array_value(&folders, "source_dirs") {
+                                                args.set_source_paths(get_paths(source_paths))?;
+                                            // TODO run in CWD??
+                                            } else {
+                                                println!("{}", ColoredString::red(
+                                                    format!(
+                                                       "Config file has no valid source folders!\n{}\n{}\n{}\n{}\n{}",
+                                                       "Edit imgsorter.toml and add the following lines, filling in valid paths:",
+                                                       "source_dirs = [",
+                                                       "  'D:\\Example dir\\Pictures',",
+                                                       "  'E:\\My dir\\Pictures',",
+                                                       "]").as_str()));
+                                                return Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+                                            }
+
+                                            if let Some(source_subdir) = get_string_value(&folders, "source_subdir") {
+                                                // get_string_value already filters out empty strings, but just to be safe
+                                                if !source_subdir.is_empty() {
+                                                    args.append_source_subdir(source_subdir.as_str());
                                                 }
                                             }
 
-                                            if let Some(source_paths) = get_array_value(&folders, "source_dirs") {
-                                                // get_array_value already filters out empty arrays ,but just to be sure
-                                                if !source_paths.is_empty() {
-                                                    args.source_dir = get_paths(source_paths);
+                                            if let Some(target_dir) = get_string_value(&folders, "target_dir") {
+                                                // get_string_value already filters out empty strings, but just to be safe
+                                                if !target_dir.is_empty() {
+                                                    args.set_target_dir(target_dir);
                                                 }
                                             }
                                         }
@@ -692,33 +712,56 @@ impl CliArgs {
     /// Change the source directory. This will also change the target
     /// directory to a subdir in the same directory. To set a different
     /// target directory, use [set_target_dir]
-    fn set_source_dir(mut self, source: &str) -> CliArgs {
-        let new_path = PathBuf::from(source);
-        self.target_dir = new_path.clone().join(DEFAULT_TARGET_SUBDIR);
-        self.source_dir = vec![new_path];
-        self
-    }
+    // fn set_source_dir(mut self, source: &str) -> CliArgs {
+    //     let new_path = PathBuf::from(source);
+    //     self.target_dir = new_path.clone().join(DEFAULT_TARGET_SUBDIR);
+    //     self.source_dir = vec![new_path];
+    //     self
+    // }
 
     /// Change the source directory. This will also change the target
     /// directory to a subdir in the same directory. To set a different
     /// target directory, use [set_target_dir]
-    fn set_source_dirs(mut self, sources: Vec<&str>) -> CliArgs {
-        let source_paths = sources.iter()
-            .map(|src_dir| PathBuf::from(src_dir))
-            .collect::<Vec<PathBuf>>();
+    // fn set_source_dirs(mut self, sources: Vec<&str>) -> CliArgs {
+    //     let source_paths = sources.iter()
+    //         .map(|src_dir| PathBuf::from(src_dir))
+    //         .collect::<Vec<PathBuf>>();
+    // 
+    //     // self.target_dir = new_path.clone().join(DEFAULT_TARGET_SUBDIR);
+    //     self.source_dir = source_paths;
+    //     self
+    // }
 
-        // self.target_dir = new_path.clone().join(DEFAULT_TARGET_SUBDIR);
-        self.source_dir = source_paths;
-        self
-    }
+    // fn add_source_dir(mut self, src_dir: &str) -> CliArgs {
+    //     self.source_dir.push(PathBuf::from(src_dir));
+    //     self
+    // }
 
-    fn add_source_dir(mut self, src_dir: &str) -> CliArgs {
-        self.source_dir.push(PathBuf::from(src_dir));
-        self
-    }
+    fn set_source_paths(&mut self, sources: Vec<PathBuf>) -> Result<(), std::io::Error> {
+        let (valid_paths, invalid_paths): (Vec<PathBuf>, Vec<PathBuf>) = sources
+            .into_iter()
+            .partition(|path| path.exists());
 
-    fn set_source_paths(&mut self, sources: Vec<PathBuf>) {
-        self.source_dir = sources;
+        let list_of_invalid = invalid_paths
+            .iter()
+            .flat_map(|s|s.to_str())
+            .collect::<Vec<_>>()
+            .join("\n> ");
+
+        if valid_paths.is_empty() {
+            println!("{}", ColoredString::red(
+                format!(
+                    "Invalid source folders!\n> {}",
+                    list_of_invalid).as_str()));
+            Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+        } else {
+            println!("{}", ColoredString::orange(
+                format!(
+                    "Some source folders were invalid and were ignored:\n> {}",
+                    list_of_invalid).as_str()));
+            self.source_dir = valid_paths;
+            Ok(())
+        }
     }
 
     fn set_target_dir(&mut self, subdir: String) {
@@ -726,11 +769,10 @@ impl CliArgs {
         self.target_dir = new_path.join(DEFAULT_TARGET_SUBDIR);
     }
 
-    fn append_source_subdir(mut self, subdir: &str) -> CliArgs {
+    fn append_source_subdir(&mut self, subdir: &str) {
         if self.source_dir.len() == 1 {
             self.source_dir[0].push(subdir);
         }
-        self
     }
 
     // fn append_target_subdir(mut self, subdir: &str) -> CliArgs {
@@ -755,10 +797,6 @@ fn main() -> Result<(), std::io::Error> {
     let mut args = CliArgs::new_from_toml("imgsorter.toml")?;
     dbg!(&args);
 
-    // let mut args = CliArgs::new()?
-        // TODO 1a: temporar citim din ./test_pics
-        // .append_source_subdir("test_pics")
-
     if DBG_ON {
         dbg!(&args);
     }
@@ -775,7 +813,8 @@ fn main() -> Result<(), std::io::Error> {
 
         let new_source_dirs = walk_source_dirs_recursively(&args);
         if new_source_dirs.is_empty() {
-            panic!("Source folders are not valid");
+            // TODO replace with Err
+            panic!("Source folders are empty or don't exist");
         } else {
             args.source_dir = new_source_dirs;
         }
@@ -803,8 +842,9 @@ fn main() -> Result<(), std::io::Error> {
     /*****************************************************************************/
 
     {
-        let total_source_files = source_contents.iter()
-            .map(|dir|dir.len()).reduce(|a, b| a+b).unwrap_or(0);
+        let total_source_files: usize = source_contents.iter()
+            .map(|dir|dir.len())
+            .sum();
 
         let copy_status = if args.copy_not_move {
             ColoredString::orange("copied:")
