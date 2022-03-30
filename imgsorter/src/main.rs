@@ -854,7 +854,6 @@ fn main() -> Result<(), std::io::Error> {
     /*****************************************************************************/
 
     let mut args = CliArgs::new_from_toml("imgsorter.toml")?;
-    dbg!(&args);
 
     if DBG_ON {
         dbg!(&args);
