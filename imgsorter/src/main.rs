@@ -15,18 +15,19 @@ use imgsorter::utils::*;
 
 use toml::*;
 
-const DBG_ON: bool = false;
-const DEFAULT_NO_DATE_STR: &'static str = "no date";
-const DEFAULT_TARGET_SUBDIR: &'static str = "imgsorted";
+// Config defaults
 const DEFAULT_MIN_COUNT: i64 = 1;
 const DEFAULT_COPY: bool = true;
 const DEFAULT_SILENT: bool = false;
 const DEFAULT_DRY_RUN: bool = false;
 const DEFAULT_SOURCE_RECURSIVE: bool = false;
+static DEFAULT_ONEOFFS_DIR_NAME: &str = "Miscellaneous";
 
+// Unexposed defaults
+const DBG_ON: bool = false;
+const DEFAULT_NO_DATE_STR: &'static str = "no date";
 const DATE_DIR_FORMAT: &'static str = "%Y.%m.%d";
-
-static ASSORTED_DIR: &str = "assorted";
+const DEFAULT_TARGET_SUBDIR: &'static str = "imgsorted";
 
 /// Convenience wrapper over a map holding all files for a given device
 /// where the string representation of the optional device is the map key
@@ -55,6 +56,7 @@ impl DeviceTree {
 ///  │   │   └─ file.ext  // inner map; value is Vec of supported files
 ///  │   │   └─ file.ext
 ///  │   └─ device_dir
+///  │   │   └─ ...
 ///  └─ [assorted]
 ///  │   └─ single.file
 /// ```
@@ -102,7 +104,7 @@ impl TargetDateDeviceTree {
     }
 
     /// Iterate all files in this this map and move all files which are in a directory with
-    /// less than args.min_files_per_dir into a new separate directory called [ASSORTED_DIR].
+    /// less than args.min_files_per_dir into a new separate directory called [DEFAULT_ONEOFFS_DIR_NAME].
     ///
     /// In practice, this should avoid creating date dirs which contain a single file. Instead,
     /// all such one-offs will be placed together in a single directory.
@@ -125,25 +127,25 @@ impl TargetDateDeviceTree {
             all_files_count <= args.min_files_per_dir as usize
         };
 
-        let has_assorted_files = |device_tree: &DeviceTree| {
+        let has_oneoff_files = |device_tree: &DeviceTree| {
             _has_single_device(&device_tree) && _has_minimum_files(&device_tree)
         };
 
         // TODO 5h: this is inefficient, optimize to a single iteration and non-consuming method
         let mut devices_tree: BTreeMap<String, DeviceTree> = BTreeMap::new();
-        let mut assorted_files: Vec<SupportedFile> = Vec::new();
+        let mut oneoff_files: Vec<SupportedFile> = Vec::new();
 
         self.dir_tree
             .into_iter()
             .for_each(|(device_dir, device_tree)| {
                 // Move single files from the current date dir to a separate dir,
                 // which will be joined again later under a different key
-                if has_assorted_files(&device_tree) {
+                if has_oneoff_files(&device_tree) {
 
                     // TODO 6g handle max_len and possible file duplicates
                     device_tree.file_tree
                         .into_iter()
-                        .for_each(|(_, src_files)| assorted_files.extend(src_files));
+                        .for_each(|(_, src_files)| oneoff_files.extend(src_files));
 
                 // keep the existing date-device structure
                 } else {
@@ -151,9 +153,9 @@ impl TargetDateDeviceTree {
                 }
             });
 
-        let mut assorted_files_tree = DeviceTree::new();
-        assorted_files_tree.file_tree.insert(None, assorted_files);
-        devices_tree.insert(ASSORTED_DIR.to_string(), assorted_files_tree);
+        let mut oneoffs_tree = DeviceTree::new();
+        oneoffs_tree.file_tree.insert(None, oneoff_files);
+        devices_tree.insert(args.oneoffs_dir_name.clone(), oneoffs_tree);
 
         self.dir_tree = devices_tree;
 
@@ -422,23 +424,28 @@ impl SupportedFile {
 
 #[derive(Debug)]
 pub struct CliArgs {
-    /// The directory where the images to be sorted are located.
+    /// The directory or directories where the images to be sorted are located.
     /// If not provided, the current working dir will be used
     source_dir: Vec<PathBuf>,
 
     /// The directory where the images to be sorted will be moved.
     /// If not provided, the current working dir will be used.
-    /// Optionally, a subdir may be set via `set_target_subdir`
-    /// where all the sorted files and their date directories
-    /// will be created, instead of directly placed in the target_dir
+    /// If the target does not exist, it will be created
+    /// If the target *does* exist, a subdirectory called
+    /// [DEFAULT_TARGET_SUBDIR] will be created and used,
+    /// instead of directly placed in the target_dir
     target_dir: PathBuf,
 
     /// If this is enabled, descend into subdirectories recursively
     source_recursive: bool,
 
     /// The minimum number of files with the same date necessary
-    /// for a dedicated subdir to be created and the files moved
+    /// for a dedicated subdir to be created
     min_files_per_dir: i64,
+
+    /// The name of the subdir which will hold files for any given date
+    /// with less than or equal to the [min_files_per_dir] threshold
+    oneoffs_dir_name: String,
 
     /// The current working directory
     cwd: PathBuf,
@@ -449,12 +456,13 @@ pub struct CliArgs {
     /// Whether files are copied instead of moved to the sorted subdirs
     copy_not_move: bool,
 
-    /// Whether names of newly created date subdirectories
-    /// will include the count of devices and files it contains
+    /// Whether to do a simulation of the process, without writing any files
+    /// This will display additional information, like the resulting dir structure
+    /// including the total number of devices, files and file size
     dry_run: bool,
 
     /// Whether to print additional information during processing
-    debug_on: bool
+    debug: bool
 }
 
 impl CliArgs {
@@ -471,70 +479,73 @@ impl CliArgs {
                 target_dir: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
                 source_recursive: DEFAULT_SOURCE_RECURSIVE,
                 min_files_per_dir: DEFAULT_MIN_COUNT,
+                oneoffs_dir_name: String::from(DEFAULT_ONEOFFS_DIR_NAME),
                 cwd,
                 silent: DEFAULT_SILENT,
                 copy_not_move: DEFAULT_COPY,
                 dry_run: DEFAULT_DRY_RUN,
-                debug_on: DBG_ON
+                debug: DBG_ON
             })
     }
 
-    fn new_with_options(
-        // Full path from where to read images to be sorted
-        source: Option<String>,
-        // Subdir inside the CWD from where to read images to be sorted
-        // Note: if `source` is provided, this is ignored
-        cwd_source_subdir: Option<String>,
-        // Full path where the sorted images will be moved
-        target: Option<String>,
-        source_recursive: Option<bool>,
-        // Subdir inside the CWD where the sorted images will be moved
-        // Note: if `target` is provided, this is ignored
-        cwd_target_subdir: Option<String>,
-        min_files: Option<i64>,
-        silent: Option<bool>,
-        copy_not_move: Option<bool>,
-        dry_run: Option<bool>,
-        debug_on: Option<bool>
-    ) -> Result<CliArgs, std::io::Error> {
-
-        fn create_path(provided_path: Option<String>, path_subdir: Option<String>, cwd: &PathBuf) -> PathBuf {
-            match provided_path {
-                // if a full path has been provided, use that
-                Some(path) =>
-                    PathBuf::from(path),
-                // otherwise, use the cwd...
-                None => {
-                    // but create a subdir if one was provided
-                    match path_subdir {
-                        Some(subdir) =>
-                            cwd.join(subdir),
-                        None =>
-                            cwd.clone()
-                    }
-                }
-            }
-        }
-
-        let cwd = env::current_dir()?;
-
-        Ok(
-            CliArgs {
-                source_dir: vec![create_path(source, cwd_source_subdir, &cwd)],
-                target_dir: create_path(
-                    target,
-                    cwd_target_subdir.or(Some(String::from(DEFAULT_TARGET_SUBDIR))),
-                    &cwd),
-                source_recursive: source_recursive.unwrap_or(DEFAULT_SOURCE_RECURSIVE),
-                min_files_per_dir: min_files.unwrap_or(DEFAULT_MIN_COUNT),
-                cwd,
-                silent: silent.unwrap_or(DEFAULT_SILENT),
-                copy_not_move: copy_not_move.unwrap_or(DEFAULT_COPY),
-                dry_run: dry_run.unwrap_or(DEFAULT_DRY_RUN),
-                debug_on: debug_on.unwrap_or(DBG_ON),
-            }
-        )
-    }
+    // fn new_with_options(
+    //     // Full path from where to read images to be sorted
+    //     source: Option<String>,
+    //     // Subdir inside the CWD from where to read images to be sorted
+    //     // Note: if `source` is provided, this is ignored
+    //     cwd_source_subdir: Option<String>,
+    //     // Full path where the sorted images will be moved
+    //     target: Option<String>,
+    //     source_recursive: Option<bool>,
+    //     // Subdir inside the CWD where the sorted images will be moved
+    //     // Note: if `target` is provided, this is ignored
+    //     cwd_target_subdir: Option<String>,
+    //     min_files: Option<i64>,
+    //     oneoffs_dir_name: Option<String>,
+    //     silent: Option<bool>,
+    //     copy_not_move: Option<bool>,
+    //     dry_run: Option<bool>,
+    //     debug_on: Option<bool>
+    // ) -> Result<CliArgs, std::io::Error> {
+    //
+    //     fn create_path(provided_path: Option<String>, path_subdir: Option<String>, cwd: &PathBuf) -> PathBuf {
+    //         match provided_path {
+    //             // if a full path has been provided, use that
+    //             Some(path) =>
+    //                 PathBuf::from(path),
+    //             // otherwise, use the cwd...
+    //             None => {
+    //                 // but create a subdir if one was provided
+    //                 match path_subdir {
+    //                     Some(subdir) =>
+    //                         cwd.join(subdir),
+    //                     None =>
+    //                         cwd.clone()
+    //                 }
+    //             }
+    //         }
+    //     }
+    //
+    //     let cwd = env::current_dir()?;
+    //
+    //     Ok(
+    //         CliArgs {
+    //             source_dir: vec![create_path(source, cwd_source_subdir, &cwd)],
+    //             target_dir: create_path(
+    //                 target,
+    //                 cwd_target_subdir.or(Some(String::from(DEFAULT_TARGET_SUBDIR))),
+    //                 &cwd),
+    //             source_recursive: source_recursive.unwrap_or(DEFAULT_SOURCE_RECURSIVE),
+    //             min_files_per_dir: min_files.unwrap_or(DEFAULT_MIN_COUNT),
+    //             oneoffs_dir_name: oneoffs_dir_name.unwrap_or(String::from(DEFAULT_ONEOFFS_DIR_NAME)),
+    //             cwd,
+    //             silent: silent.unwrap_or(DEFAULT_SILENT),
+    //             copy_not_move: copy_not_move.unwrap_or(DEFAULT_COPY),
+    //             dry_run: dry_run.unwrap_or(DEFAULT_DRY_RUN),
+    //             debug: debug_on.unwrap_or(DBG_ON),
+    //         }
+    //     )
+    // }
 
     fn new_from_toml(config_file: &str) -> Result<CliArgs, std::io::Error> {
         let mut args = CliArgs::new()?;
@@ -548,6 +559,10 @@ impl CliArgs {
             }
         }
 
+        fn print_invalid_value(key: &str, message: &str) {
+            println!("> Config key '{}' is invalid: {}", key, message);
+        }
+
         fn get_boolean_value(toml_table: &TomlMap, key: &str) -> Option<bool> {
             let value = toml_table.get(key)
                 .map(|toml_value| toml_value.as_bool())
@@ -557,13 +572,23 @@ impl CliArgs {
             value
         }
 
-        fn get_integer_value(toml_table: &TomlMap, key: &str) -> Option<i64> {
+        // Will always return a positive integer. If the number is negative, will return None
+        fn get_positive_integer_value(toml_table: &TomlMap, key: &str) -> Option<i64> {
             let value = toml_table.get(key)
                 .map(|toml_value| toml_value.as_integer())
                 .flatten();
 
-            if value.is_none() { print_missing_value(key) };
-            value
+            match value {
+                None => {
+                    print_missing_value(key);
+                    None
+                },
+                Some(x) if x < 0 => {
+                    print_invalid_value(key, "Number must be greater than 0");
+                    None
+                },
+                Some(x) => Some(x)
+            }
         }
 
         fn get_string_value(toml_table: &TomlMap, key: &str) -> Option<String> {
@@ -633,6 +658,8 @@ impl CliArgs {
                                                 return Err(std::io::Error::from(std::io::ErrorKind::NotFound))
                                             }
 
+                                            // Not exposed in config; use for dev only
+                                            // source_subdir = 'test_pics'
                                             if let Some(source_subdir) = get_string_value(&folders, "source_subdir") {
                                                 // get_string_value already filters out empty strings, but just to be safe
                                                 if !source_subdir.is_empty() {
@@ -646,8 +673,19 @@ impl CliArgs {
                                                     args.set_target_dir(target_dir);
                                                 }
                                             }
-                                        }
-                                    }
+
+                                            if let Some(min_files_per_dir) = get_positive_integer_value(&folders, "min_files_per_dir") {
+                                                args.min_files_per_dir = min_files_per_dir;
+                                            }
+
+                                            if let Some(oneoffs_name) = get_string_value(&folders, "target_oneoffs_subdir_name") {
+                                                // get_string_value already filters out empty strings, but just to be safe
+                                                if !oneoffs_name.is_empty() {
+                                                    args.oneoffs_dir_name = oneoffs_name;
+                                                }
+                                            }
+                                        } // end if let Some(folders)
+                                    } // end Some(folders_opt)
                                     None =>
                                         print_missing_value("folders")
                                 }
@@ -674,12 +712,10 @@ impl CliArgs {
                                                 args.silent = silent;
                                             }
 
+                                            // Not exposed in config; use for dev only
+                                            // debug_on = true
                                             if let Some(debug_on) = get_boolean_value(&options, "debug_on") {
-                                                args.debug_on = debug_on;
-                                            }
-                                            
-                                            if let Some(min_files_per_dir) = get_integer_value(&options, "min_files_per_dir") {
-                                                args.min_files_per_dir = min_files_per_dir;
+                                                args.debug = debug_on;
                                             }
                                         }
                                     },
@@ -764,9 +800,15 @@ impl CliArgs {
         }
     }
 
-    fn set_target_dir(&mut self, subdir: String) {
-        let new_path = PathBuf::from(subdir);
-        self.target_dir = new_path.join(DEFAULT_TARGET_SUBDIR);
+    // Create the target path from the provided target_path_str
+    // If the path already exists, create subdirectory DEFAULT_TARGET_SUBDIR inside it
+    fn set_target_dir(&mut self, target_path_str: String) {
+        let target_path = PathBuf::from(target_path_str);
+        self.target_dir = if target_path.exists() {
+            target_path.join(DEFAULT_TARGET_SUBDIR)
+        } else {
+            target_path
+        }
     }
 
     fn append_source_subdir(&mut self, subdir: &str) {

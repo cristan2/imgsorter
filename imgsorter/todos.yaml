@@ -1,12 +1,13 @@
 [ ] 1 - CLI / config file args
-    [ ] CLI or config file?
-    [ ] a - arg for paths
-    [ ] b - arg for min file count required to create date dir (i.e. avoid 1-image dirs)
+    [x] CLI or config file?
+    [x] a - arg for paths
+    [x] b - arg for min file count required to create date dir (i.e. avoid 1-image dirs)
     [ ] c - arg flag for logfile
-    [ ] d - arg flag for target dir
+    [x] d - arg flag for target dir
     [x] e - defaults for options
-    [ ] f - print options before confirmation
+    [x] f - print options before confirmation
     [ ] g - skip files without EXIF (videos, images from other programs, etc.)?
+    [ ] target_sorted_subdir_name = 'imgsorted'
 
 [x] 2 - File handling
     [x] a - subdirs by device name
