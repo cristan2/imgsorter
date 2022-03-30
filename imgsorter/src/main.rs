@@ -1111,7 +1111,9 @@ fn read_supported_files(
                 if entry.path().is_file() {
                     true
                 } else {
-                    println!("Skipping subfolder {:?} in {:?}", entry.file_name(), source_dir.file_name().unwrap());
+                    if DBG_ON {
+                        println!("Recursive option is off, skipping subfolder {:?} in {:?}", entry.file_name(), source_dir.file_name().unwrap());
+                    }
                     stats.inc_dirs_ignored();
                     false
                 }

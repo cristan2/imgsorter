@@ -3,7 +3,9 @@
 # If this option is missing, the directory from which the program is launched will be used.
 source_dirs = [
   'D:\Temp\New folder test remove - Copy',
-  'D:\Cristi\rust-utils\imgsorter\test_pics'
+  'D:\Temp\New folder test remove - Copy 2',
+  'D:\Temp\New folder test remove - Copy 2 - Copy',
+  'invalid_folder'
 ]
 
 # The destination folder for the sorted files.
