@@ -103,6 +103,11 @@ impl TargetDateDeviceTree {
     /// Returns a new [DateDeviceTree] object
     fn isolate_single_images(mut self, args: &Args) -> Self {
 
+        // Don't bother doing anything if we don't have at least a threshold of 1
+        if args.min_files_per_dir <= 0 {
+            return self
+        }
+
         let _has_single_device = |device_tree: &DeviceTree| device_tree.file_tree.keys().len() < 2;
 
         let _has_minimum_files = |device_tree: &DeviceTree| {
