@@ -1,3 +1,10 @@
+- reverse paths & arrows for dry runs
+- device list in config
+- clippy
+- stats for dry run
+- additional file formats - amr, etc
+- documentation - readme + main flows
+
 [ ] 1 - CLI / config file args
     [x] CLI or config file?
     [x] a - arg for paths
@@ -8,6 +15,7 @@
     [ ] arg flag for logfile
     [ ] skip files without EXIF (videos, images from other programs, etc.)?
     [ ] target_sorted_subdir_name = 'imgsorted'
+    [ ] use args.debug instead of DBG_ON
 
 [x] 2 - File handling
     [x] a - subdirs by device name
@@ -50,6 +58,7 @@
     [ ] i - move map methods to *DeviceTree
     [ ] k - Reimplement is_source_unique
     [ ] g - Store total count of files and maybe file size when reading source files
+    [ ] h - Fix/refactor/improve paddig calculation
 
 [ ] 6 - Misc / bugs
     [x] a - change copy to rename
@@ -59,6 +68,7 @@
     [x] e - run with debug - optional debug printouts
     [ ] f - handle source path not exists / guard against setting invalid CliArgs values
     [ ] g - fix edge cases for moving assorted files ()
+    [ ] filename padding during dry runs is sometimes bigger
     [x] create_subdir_if_required shouldn't rely on CWD to strip prefix
     [x] only create device name subdirs if there's more than one
     [x] option to always create device name subdirs even if there's only one

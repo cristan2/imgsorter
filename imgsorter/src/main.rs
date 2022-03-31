@@ -280,8 +280,8 @@ impl FileStats {
     }
 
     pub fn print_stats(&self, args: &Args) {
-        let general_stats = format!("
----------------------------------
+        let general_stats = format!(
+"---------------------------------
 Total files:             {total}
 Total size:              {size}
 ---------------------------------
@@ -431,6 +431,7 @@ impl SupportedFile {
         &self.device_name
     }
 }
+
 fn main() -> Result<(), std::io::Error> {
 
     let mut stats = FileStats::new();
@@ -592,7 +593,6 @@ fn main() -> Result<(), std::io::Error> {
     stats.set_time_total(time_processing.elapsed() + stats.time_fetch_dirs);
 
     // Print final stats
-    println!();
     stats.print_stats(&args);
 
     Ok(())
@@ -826,14 +826,12 @@ fn write_target_dir_files(
             String::from(FILE_TREE_INDENT).chars().count()
                 + String::from(FILE_TREE_ENTRY).chars().count();
 
+        // TODO cand this be a single field instead of two?
         if args.has_multiple_sources() {
             new_dir_tree.max_source_path_len = new_dir_tree.max_source_path_len + _extra_indents_len
         } else {
             new_dir_tree.max_filename_len = new_dir_tree.max_filename_len + _extra_indents_len
         }
-        // new_dir_tree.max_filename_len = new_dir_tree.max_filename_len
-        //     + String::from(FILE_TREE_INDENT).chars().count()
-        //     + String::from(FILE_TREE_ENTRY).chars().count()
     } else {
         println!();
         let start_status = format!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
@@ -858,6 +856,26 @@ fn write_target_dir_files(
                     + 1 // add +1 for the gap between a path and its padding
                     + 1 // add +1 for the gap between a path and the operation status
             };
+
+            // TODO 5h: fix padding
+            // Also print headers now
+            {
+                let source_padding = RightPadding::space(
+                    String::from("SOURCE PATH"),
+                    _source_len
+                        + 1 // add +1 for the gap between a filename and its padding
+                        + SEPARATOR_DRY_RUN.chars().count()
+                );
+                let target_padding = RightPadding::space(
+                    String::from("TARGET FILE"), new_dir_tree.max_target_path_len);
+
+                let heading = "-".repeat(_total_padding_width);
+
+                println!("{}", &heading);
+                println!("{}{}", source_padding, target_padding);
+                println!("{}", heading);
+            }
+
             Some(_total_padding_width)
         } else {
             None
@@ -889,13 +907,14 @@ fn write_target_dir_files(
             let _device_count_str = if device_count_for_date == 1 {"device"} else {"devices"};
             let _file_count_str = if file_count_for_date == 1 {"file"} else {"files"};
 
-            let _dir_name_with_device_status = format!("[{dirname}] ({devicecount:?} {devicestr}, {filecount:?} {filestr}, {filesize}) ",
-                                                       dirname=date_dir_name.clone(),
-                                                       devicecount=device_count_for_date,
-                                                       devicestr=_device_count_str,
-                                                       filecount=file_count_for_date,
-                                                       filestr=_file_count_str,
-                                                       filesize=get_file_size_string(file_size_for_date));
+            let _dir_name_with_device_status = format!(
+                "[{dirname}] ({devicecount:?} {devicestr}, {filecount:?} {filestr}, {filesize}) ",
+                dirname=date_dir_name.clone(),
+                devicecount=device_count_for_date,
+                devicestr=_device_count_str,
+                filecount=file_count_for_date,
+                filestr=_file_count_str,
+                filesize=get_file_size_string(file_size_for_date));
 
             let padded_dir_name = RightPadding::dot(
                 _dir_name_with_device_status,
@@ -906,7 +925,7 @@ fn write_target_dir_files(
             let target_dir_exists = dry_run_check_target_exists(&date_destination_path);
 
             // Print everything together
-            println!("\n{} {}", padded_dir_name, target_dir_exists);
+            println!("{} {}", padded_dir_name, target_dir_exists);
         }
 
 
@@ -1063,6 +1082,9 @@ fn write_target_dir_files(
                          status=write_result);
             } // end loop files
         } // end loop device dirs
+
+        // leave some empty space before the date dir
+        println!();
     } // end loop date dirs
 }
 
