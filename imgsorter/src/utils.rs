@@ -43,6 +43,48 @@ pub enum OutputColor {
     Good
 }
 
+/// Sample tree - CURRENT
+/// [2019.01.28] (2 devices, 3 files, 3.34 MB) .................................... [new folder will be created]
+/// └── D:\Pics\IMG-20190128.jpg ---------> 2019.01.28\IMG-20190128.jpg ........... file will be copied
+/// └── [HUAWEI] .................................................................. [new folder will be created]
+/// |    └── D:\Pics\IMG-20190128.jpeg ---> 2019.01.28\HUAWEI\IMG-20190128.jpeg ... file will be copied
+/// |    └── D:\Pics\IMG-20190128.jpeg ---> 2019.01.28\HUAWEI\IMG-20190128.jpeg ... file will be copied
+///
+/// Sample tree - AFTER
+/// [2019.01.28] (2 devices, 3 files, 3.34 MB) .................................... [new folder will be created]
+/// └── 2019.01.28\IMG-20190128.jpg <---------------- D:\Pics\IMG-20190128.jpg .... file will be copied
+/// └── [HUAWEI] .................................................................. [new folder will be created]
+/// |    └── 2019.01.28\HUAWEI\IMG-20190128.jpeg <--- D:\Pics\IMG-20190128.jpeg ... file will be copied
+/// |    └── 2019.01.28\HUAWEI\IMG-20190128.jpeg <--- D:\Pics\IMG-20190128.jpeg ... file will be copied
+pub struct Padder {
+    // BASIC INFO
+    // int: source max_len - either filename or full path
+    // int: target max_len - date\device\filename
+    // int: operation status max len
+
+    // ADDITIONAL SIGNS
+    // int: max depth size -> calculate FILE_TREE_INDENT x max_depth_size +
+    // string: operation_separator
+    // string: status separator
+
+    // INTERNAL API
+    // fn _total_source_len()
+    // fn _total_target_len()
+    // fn _total_max_len() = dir_tre_indents + target + op_sep + source + status_sep
+
+    // EXTERNAL API
+    // fn format_date_dir(dir_name+device_status) - pad to total max len
+    // fn format_device_dir(dir_name) - indent_string(0, format!("[{}] ", dir_name))
+    // // There are no sub-subdirs possible, so there will only ever be a single dir level under a date level
+    // // fn format_dir(dir_name, level) - indent_string(level, format!("[{}] ", dir_name))
+    // fn format_target_path(path, depth)
+    // fn format_source_path(path)
+    // ??? fn format_files(source_path_or_filename, target_path, target_depth, op_status)
+
+    // fn format_header_separator() - pad to total max len + max len status
+    // fn format_header_target() - pad to target max_len + additional signs
+    // fn format_header_source() - pad to source max_len
+}
 pub struct RightPadding;
 pub struct LeftPadding;
 
