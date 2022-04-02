@@ -438,15 +438,11 @@ impl SupportedFile {
 
 fn main() -> Result<(), std::io::Error> {
 
+    let mut args = Args::new_from_toml("imgsorter.toml")?;
+
     let mut stats = FileStats::new();
 
-    let mut padder = Padder::new();
-
-    /*****************************************************************************/
-    /* ---                     Read or set args                              --- */
-    /*****************************************************************************/
-
-    let mut args = Args::new_from_toml("imgsorter.toml")?;
+    let mut padder = Padder::new(args.has_multiple_sources());
 
     if DBG_ON {
         dbg!(&args);
@@ -845,7 +841,7 @@ fn write_target_dir_files(
         padder.add_extra_source_chars_from_str(FILE_TREE_INDENT);
         padder.add_extra_source_chars_from_str(FILE_TREE_ENTRY);
 
-        // // TODO cand this be a single field instead of two?
+        // // TODO can this be a single field instead of two?
         // if args.has_multiple_sources() {
         //     new_dir_tree.max_source_path_len = new_dir_tree.max_source_path_len + _extra_indents_len
         // } else {
@@ -858,7 +854,7 @@ fn write_target_dir_files(
         println!();
     }
 
-    let dir_padding_width = {
+    // let dir_padding_width = {
         if is_dry_run {
             // TODO can be calculated and set earlier, not here
             // let _source_len = if args.has_multiple_sources() {
@@ -867,20 +863,20 @@ fn write_target_dir_files(
             //     new_dir_tree.max_filename_len
             // };
 
-            // TODO temporary
-            let _source_len = padder.get_total_max_source_len(args.has_multiple_sources());
-
-            // TODO to be converted into Padder::_total_max_len
-            let _total_padding_width = {
-                _source_len
-                    + 1 // add +1 for the gap between a filename and its padding
-                    + SEPARATOR_DRY_RUN.chars().count()
-                    // + new_dir_tree.max_target_path_len
-                    + padder.get_total_max_target_len()
-                    + SEPARATOR_STATUS.chars().count()
-                    + 1 // add +1 for the gap between a path and its padding
-                    + 1 // add +1 for the gap between a path and the operation status
-            };
+            // // TODO temporary
+            // let _source_len = padder.get_total_max_source_len();
+            //
+            // // TODO to be converted into Padder::_total_max_len
+            // let _total_padding_width = {
+            //     _source_len
+            //         + 1 // add +1 for the gap between a filename and its padding
+            //         + SEPARATOR_DRY_RUN.chars().count()
+            //         // + new_dir_tree.max_target_path_len
+            //         + padder.get_total_max_target_len()
+            //         + SEPARATOR_STATUS.chars().count()
+            //         + 1 // add +1 for the gap between a path and its padding
+            //         + 1 // add +1 for the gap between a path and the operation status
+            // };
 
             // TODO 5h: fix padding
             // Also print headers now
@@ -888,7 +884,7 @@ fn write_target_dir_files(
                 // TODO Padding::format_header_source
                 let source_padding = RightPadding::space(
                     String::from("SOURCE PATH"),
-                    _source_len
+                    padder.get_total_max_source_len()
                         + 1 // add +1 for the gap between a filename and its padding
                         + SEPARATOR_DRY_RUN.chars().count()
                 );
@@ -899,17 +895,17 @@ fn write_target_dir_files(
                     String::from("TARGET FILE"), padder.get_total_max_target_len());
 
                 // TODO Padding::format_header_separator
-                let heading = "-".repeat(_total_padding_width);
+                let heading = "-".repeat(padder.get_total_padding_len());
 
                 println!("{}", &heading);
                 println!("{}{}", source_padding, target_padding);
                 println!("{}", heading);
             }
 
-            Some(_total_padding_width)
-        } else {
-            None
-        }
+            // Some(_total_padding_width)
+        // } else {
+        //     None
+        // }
     };
 
 
@@ -937,7 +933,7 @@ fn write_target_dir_files(
             let _device_count_str = if device_count_for_date == 1 {"device"} else {"devices"};
             let _file_count_str = if file_count_for_date == 1 {"file"} else {"files"};
 
-            let _dir_name_with_device_status = {
+            let date_dir_name_with_device_status = {
                 format!(
                     "[{dirname}] ({devicecount:?} {devicestr}, {filecount:?} {filestr}, {filesize}) ",
                     dirname = date_dir_name.clone(),
@@ -949,16 +945,16 @@ fn write_target_dir_files(
             };
 
             // TODO replace with Padding::format_date_dir
-            let padded_dir_name = RightPadding::dot(
-                _dir_name_with_device_status,
+            let padded_date_dir_name_with_device_status = RightPadding::dot(
+                date_dir_name_with_device_status,
                 // safe to unwrap for dry runs
-                dir_padding_width.unwrap());
+                padder.get_total_padding_len());
 
             // Check restrictions - if target exists
             let target_dir_exists = dry_run_check_target_exists(&date_destination_path);
 
             // Print everything together
-            println!("{} {}", padded_dir_name, target_dir_exists);
+            println!("{} {}", padded_date_dir_name_with_device_status, target_dir_exists);
         }
 
 
@@ -1011,21 +1007,20 @@ fn write_target_dir_files(
                     // If dry run, increase indent for subsequent files
                     indent_level += 1;
 
-
                     // Add tree indents and padding to dir name
-                    let _indented_dir_name: String = indent_string(0, format!("[{}] ", dir_name));
+                    let indented_device_dir_name: String = indent_string(0, format!("[{}] ", dir_name));
 
                     // TODO replace this with Padder::format_device_dir() then delete _indented_dir_name above
-                    let padded_dir_name = RightPadding::dot(
-                        _indented_dir_name,
+                    let padded_indented_device_dir_name = RightPadding::dot(
+                        indented_device_dir_name,
                         // safe to unwrap for dry runs
-                        dir_padding_width.unwrap());
+                        padder.get_total_max_target_len());
 
                     // Check restrictions - if target exists
                     let target_dir_status_check = dry_run_check_target_exists(&device_path);
 
                     // Print everything together
-                    println!("{} {}", padded_dir_name, target_dir_status_check);
+                    println!("{} {}", padded_indented_device_dir_name, target_dir_status_check);
                 }
 
                 device_path
@@ -1081,12 +1076,12 @@ fn write_target_dir_files(
 
                         // Add tree indents and dry run padding (normal dashes) to file name
                         // TODO replace with Padder::format_source_path()
-                        let _indented_source_filename = indent_string(indent_level, _filename_string);
+                        let indented_source_filename = indent_string(indent_level, _filename_string);
                         let padded_source_filename = RightPadding::dash(
-                            _indented_source_filename,
+                            indented_source_filename,
                             // add +1 for the space added to the right of filename_string
                             // if args.has_multiple_sources() {new_dir_tree.max_source_path_len} else {new_dir_tree.max_filename_len}
-                            padder.get_total_max_source_len(args.has_multiple_sources())
+                            padder.get_total_max_source_len()
                             + 1);
 
                         // Return everything to be printed
@@ -1107,7 +1102,7 @@ fn write_target_dir_files(
                         let padded_filename = RightPadding::em_dash(
                             _filename_string,
                             // if args.has_multiple_sources() {new_dir_tree.max_source_path_len} else {new_dir_tree.max_filename_len}
-                            padder.get_total_max_source_len(args.has_multiple_sources())
+                            padder.get_total_max_source_len()
                             // add +1 for the space added to the right of filename_string
                              + 1);
 
