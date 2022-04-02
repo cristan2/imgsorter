@@ -54,13 +54,14 @@ impl DeviceTree {
 /// Additionally, the struct
 struct TargetDateDeviceTree {
     dir_tree: BTreeMap<String, DeviceTree>,
-    max_filename_len: usize,
-    max_source_path_len: usize,
+    // max_filename_len: usize,
+    // max_source_path_len: usize,
+    // computed at the end
     max_target_path_len: usize
 }
 
 /// Just output a simple list of filenames for now
-impl fmt::Display for  TargetDateDeviceTree {
+impl fmt::Display for TargetDateDeviceTree {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let file_names: Vec<String> = self.dir_tree
             .iter()
@@ -88,8 +89,8 @@ impl TargetDateDeviceTree {
     fn new() -> TargetDateDeviceTree {
         TargetDateDeviceTree {
             dir_tree: BTreeMap::new(),
-            max_filename_len: 0,
-            max_source_path_len: 0,
+            // max_filename_len: 0,
+            // max_source_path_len: 0,
             max_target_path_len: 0,
         }
     }
@@ -164,7 +165,7 @@ impl TargetDateDeviceTree {
     /// Resulting value covers two cases:
     /// - there's at least one date dir with >1 devices subdirs: compute path length to include `date/device_name/file_name`
     /// - there's no date dir with >1 devices: compute path length to include `date/file_name`
-    fn compute_max_path_len(&mut self) {
+    fn compute_max_path_len(&mut self, padder: &Padder) {
         let max_date_dir_path_len = &self.dir_tree.iter()
             // filter only date dirs with at least 2 devices
             .filter(|(_, device_tree)| device_tree.file_tree.keys().clone().len() > 1 )
@@ -174,11 +175,11 @@ impl TargetDateDeviceTree {
 
         if max_date_dir_path_len.is_some() {
             // add +1 for the length of the separator between dirs and filename
-            self.max_target_path_len = max_date_dir_path_len.clone().unwrap() + 1 + &self.max_filename_len;
+            self.max_target_path_len = max_date_dir_path_len.clone().unwrap() + 1 + padder.source_file_max_len;
         } else {
             // add +10 for the length of date dirs, e.g. 2016.12.29
             // add +1 for the length of the separator between date and filename
-            self.max_target_path_len = 10 + 1 + &self.max_filename_len;
+            self.max_target_path_len = 10 + 1 + padder.source_file_max_len;
         }
     }
 }
@@ -436,6 +437,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut stats = FileStats::new();
 
+    let mut padder = Padder::new();
 
     /*****************************************************************************/
     /* ---                     Read or set args                              --- */
@@ -576,7 +578,7 @@ fn main() -> Result<(), std::io::Error> {
     // Iterate files, read modified date and create subdirs
     // Copy images and videos to subdirs based on modified date
     let time_parsing_files = Instant::now();
-    let mut target_dir_tree = parse_dir_contents(source_contents, &args, &mut stats);
+    let mut target_dir_tree = parse_dir_contents(source_contents, &args, &mut stats, &mut padder);
 
     stats.set_time_parse_files(time_parsing_files.elapsed());
 
@@ -584,7 +586,7 @@ fn main() -> Result<(), std::io::Error> {
     if !target_dir_tree.dir_tree.is_empty() {
         // Iterate files and either copy/move to subdirs as necessary
         // or do a dry run to simulate a copy/move pass
-        write_target_dir_files(&mut target_dir_tree, source_unique_files, &args, &mut stats);
+        write_target_dir_files(&mut target_dir_tree, source_unique_files, &args, &mut stats, &mut padder);
     }
 
     // Record time taken
@@ -715,7 +717,8 @@ fn read_supported_files(
 fn parse_dir_contents(
     source_dir_contents: Vec<Vec<DirEntry>>,
     args: &Args,
-    stats: &mut FileStats
+    stats: &mut FileStats,
+    padder: &mut Padder
 ) -> TargetDateDeviceTree {
 
     let mut new_dir_tree: TargetDateDeviceTree = TargetDateDeviceTree::new();
@@ -752,20 +755,24 @@ fn parse_dir_contents(
 
                     // TODO 5i: replace these with single method in DateDeviceTree
                     // Attach file's date as a new subdirectory to the current target path
-                    let all_devices_for_this_date = new_dir_tree
-                        .dir_tree
-                        .entry(file_date)
-                        .or_insert(DeviceTree::new());
+                    let devicetree_for_this_date = {
+                        new_dir_tree
+                            .dir_tree
+                            .entry(file_date)
+                            .or_insert(DeviceTree::new())
+                    };
 
                     // TODO 5i: replace these with single method in DeviceTree
-                    let all_files_for_this_device = all_devices_for_this_date
-                        .file_tree
-                        .entry(file_device)
-                        .or_insert(Vec::new());
+                    let all_files_for_this_device = {
+                        devicetree_for_this_date
+                            .file_tree
+                            .entry(file_device)
+                            .or_insert(Vec::new())
+                    };
 
                     // Store the string lengths of the file name and path for padding in stdout
-                    let _filename_len = String::from(current_file.file_name.clone().to_str().unwrap()).chars().count();
-                    let _source_path_len = current_file.file_path.display().to_string().chars().count();
+                    // let _filename_len = String::from(current_file.file_name.clone().to_str().unwrap()).chars().count();
+                    // let _source_path_len = current_file.file_path.display().to_string().chars().count();
 
                     let _device_name_len = current_file.device_name.clone().map(|d| d.chars().count()).unwrap_or(0);
                     let _date_name_str = &current_file.date_str.chars().count();
@@ -773,9 +780,11 @@ fn parse_dir_contents(
                     let total_target_path_len = _date_name_str + 1 + _device_name_len;
 
                     // padder.max ...
-                    new_dir_tree.max_filename_len = max(new_dir_tree.max_filename_len, _filename_len);
-                    new_dir_tree.max_source_path_len = max(new_dir_tree.max_source_path_len, _source_path_len);
-                    all_devices_for_this_date.max_dir_path_len = max(all_devices_for_this_date.max_dir_path_len, total_target_path_len);
+                    padder.set_max_source_filename_from_str(current_file.file_name.clone().to_str().unwrap());
+                    padder.set_max_source_path(get_string_char_count(current_file.file_path.display().to_string()));
+                    // new_dir_tree.max_filename_len = max(new_dir_tree.max_filename_len, _filename_len);
+                    // new_dir_tree.max_source_path_len = max(new_dir_tree.max_source_path_len, _source_path_len);
+                    devicetree_for_this_date.max_dir_path_len = max(devicetree_for_this_date.max_dir_path_len, total_target_path_len);
 
                     // Add file to dir tree
                     all_files_for_this_device.push(current_file);
@@ -804,7 +813,7 @@ fn parse_dir_contents(
 
     // The max path length can only be computed after the tree has been filled with devices and files
     // because of the requirement to only create device subdirs if there are at least 2 devices
-    new_dir_tree.compute_max_path_len();
+    new_dir_tree.compute_max_path_len(&padder);
 
     return new_dir_tree;
 }
@@ -815,7 +824,8 @@ fn write_target_dir_files(
     // For dry runs, this represents a vector of unique files per each source dir
     source_unique_files: Option<Vec<HashSet<OsString>>>,
     args: &Args,
-    mut stats: &mut FileStats
+    mut stats: &mut FileStats,
+    padder: &mut Padder
 ) {
 
     let is_dry_run = args.dry_run;
@@ -824,17 +834,20 @@ fn write_target_dir_files(
     // indents and markings to the max length to be taken into account when padding
     if is_dry_run {
         // TODO need to pre-calculate max-depth length
-        // FILE_TREE_INDENT is not required when there's only one level (i.e. one single device throughout)
-        let _extra_indents_len =
-            String::from(FILE_TREE_INDENT).chars().count()
-                + String::from(FILE_TREE_ENTRY).chars().count();
+        // TODO FILE_TREE_INDENT is not required when there's only one level (i.e. one single device throughout)
+        // let _extra_indents_len =
+        //     String::from(FILE_TREE_INDENT).chars().count()
+        //         + String::from(FILE_TREE_ENTRY).chars().count();
 
-        // TODO cand this be a single field instead of two?
-        if args.has_multiple_sources() {
-            new_dir_tree.max_source_path_len = new_dir_tree.max_source_path_len + _extra_indents_len
-        } else {
-            new_dir_tree.max_filename_len = new_dir_tree.max_filename_len + _extra_indents_len
-        }
+        padder.add_extra_source_chars_from_str(FILE_TREE_INDENT);
+        padder.add_extra_source_chars_from_str(FILE_TREE_ENTRY);
+
+        // // TODO cand this be a single field instead of two?
+        // if args.has_multiple_sources() {
+        //     new_dir_tree.max_source_path_len = new_dir_tree.max_source_path_len + _extra_indents_len
+        // } else {
+        //     new_dir_tree.max_filename_len = new_dir_tree.max_filename_len + _extra_indents_len
+        // }
     } else {
         println!();
         let start_status = format!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
@@ -845,11 +858,14 @@ fn write_target_dir_files(
     let dir_padding_width = {
         if is_dry_run {
             // TODO can be calculated and set earlier, not here
-            let _source_len = if args.has_multiple_sources() {
-                new_dir_tree.max_source_path_len
-            } else {
-                new_dir_tree.max_filename_len
-            };
+            // let _source_len = if args.has_multiple_sources() {
+            //     new_dir_tree.max_source_path_len
+            // } else {
+            //     new_dir_tree.max_filename_len
+            // };
+
+            // TODO temporary
+            let _source_len = padder.get_total_max_source_len(args.has_multiple_sources());
 
             // TODO to be converted into Padder::_total_max_len
             let _total_padding_width = {
@@ -1062,7 +1078,8 @@ fn write_target_dir_files(
                         let padded_source_filename = RightPadding::dash(
                             _indented_source_filename,
                             // add +1 for the space added to the right of filename_string
-                            if args.has_multiple_sources() {new_dir_tree.max_source_path_len} else {new_dir_tree.max_filename_len}
+                            // if args.has_multiple_sources() {new_dir_tree.max_source_path_len} else {new_dir_tree.max_filename_len}
+                            padder.get_total_max_source_len(args.has_multiple_sources())
                             + 1);
 
                         // Return everything to be printed
@@ -1082,7 +1099,8 @@ fn write_target_dir_files(
                         // Add copy/move padding (em dashes) to file name
                         let padded_filename = RightPadding::em_dash(
                             _filename_string,
-                            if args.has_multiple_sources() {new_dir_tree.max_source_path_len} else {new_dir_tree.max_filename_len}
+                            // if args.has_multiple_sources() {new_dir_tree.max_source_path_len} else {new_dir_tree.max_filename_len}
+                            padder.get_total_max_source_len(args.has_multiple_sources())
                             // add +1 for the space added to the right of filename_string
                              + 1);
 

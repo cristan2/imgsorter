@@ -1,5 +1,6 @@
 use std::collections::hash_set::Iter;
 use std::collections::HashSet;
+use std::cmp::max;
 use std::iter::Cloned;
 use std::ffi::OsString;
 use std::io::Write;
@@ -58,6 +59,18 @@ pub enum OutputColor {
 /// |    └── 2019.01.28\HUAWEI\IMG-20190128.jpeg <--- D:\Pics\IMG-20190128.jpeg ... file will be copied
 pub struct Padder {
     // BASIC INFO
+
+    // The maximum filename length of all source files, without any path information
+    pub source_file_max_len: usize,
+    // The maximum path length of all source files
+    pub source_path_max_len: usize,
+    // This does not include the path of the parent target dir, only the relative path inside it
+    pub target_path_max_len: usize,
+
+    // Length of any additional glyphs or words which are added to the source file
+    // when printed, such as dir tree indents or other separators
+    pub extra_source_chars: usize,
+
     // int: source max_len - either filename or full path
     // int: target max_len - date\device\filename
     // int: operation status max len
@@ -87,6 +100,56 @@ pub struct Padder {
 }
 pub struct RightPadding;
 pub struct LeftPadding;
+
+impl Padder {
+    pub fn new() -> Padder {
+        Padder{
+            source_file_max_len: 0,
+            source_path_max_len: 0,
+            target_path_max_len: 0,
+            extra_source_chars: 0,
+        }
+    }
+
+    pub fn set_max_source_filename(&mut self, new_file_len: usize) {
+        self.source_file_max_len = max(self.source_file_max_len, new_file_len)
+    }
+
+    pub fn set_max_source_path(&mut self, new_path_len: usize) {
+        self.source_path_max_len = max(self.source_path_max_len, new_path_len)
+    }
+
+    pub fn add_extra_source_chars(&mut self, new_len: usize) {
+        self.extra_source_chars += new_len
+    }
+
+    pub fn set_max_source_filename_from_str(&mut self, new_file_name: &str) {
+        self.set_max_source_filename(get_string_char_count(String::from(new_file_name)));
+    }
+
+    pub fn set_max_source_path_from_str(&mut self, new_path: &str) {
+        self.set_max_source_path(get_string_char_count(String::from(new_path)));
+    }
+
+    pub fn add_extra_source_chars_from_str(&mut self, extra: &str) {
+        self.add_extra_source_chars(get_string_char_count(String::from(extra)));
+    }
+
+    // TODO maybe have `has_multiple_sources` as constructor param?
+    // this is temporary maybe?
+    pub fn get_base_source_len(&self, has_multiple_sources: bool) -> usize {
+        if has_multiple_sources {
+            self.source_path_max_len
+        } else {
+            self.source_file_max_len
+        }
+    }
+
+    pub fn get_total_max_source_len(&self, has_multiple_sources: bool) -> usize {
+        let base = self.get_base_source_len(has_multiple_sources);
+        base + self.extra_source_chars
+    }
+}
 
 impl RightPadding {
     // TODO 5g - have char as argument
@@ -163,6 +226,10 @@ pub fn print_sets_with_index(msg: &str, set: &Vec<HashSet<OsString>>) {
 pub fn print_progress(msg: String) {
     print!("{}", msg);
     let _ = std::io::stdout().flush();
+}
+
+pub fn get_string_char_count(s: String) -> usize {
+    String::from(s).chars().count()
 }
 
 /// Convert bytes to an appropriate multiple (MB or GB) and append its unit
