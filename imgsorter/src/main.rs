@@ -57,7 +57,7 @@ struct TargetDateDeviceTree {
     // max_filename_len: usize,
     // max_source_path_len: usize,
     // computed at the end
-    max_target_path_len: usize
+    // max_target_path_len: usize
 }
 
 /// Just output a simple list of filenames for now
@@ -91,7 +91,7 @@ impl TargetDateDeviceTree {
             dir_tree: BTreeMap::new(),
             // max_filename_len: 0,
             // max_source_path_len: 0,
-            max_target_path_len: 0,
+            // max_target_path_len: 0,
         }
     }
 
@@ -162,10 +162,10 @@ impl TargetDateDeviceTree {
     /// Find the maximum length of the path string that may be present in the output
     /// This can only be computed after the tree has been filled with devices and files
     /// because of the requirement to only create device subdirs if there are at least 2 devices
-    /// Resulting value covers two cases:
-    /// - there's at least one date dir with >1 devices subdirs: compute path length to include `date/device_name/file_name`
-    /// - there's no date dir with >1 devices: compute path length to include `date/file_name`
-    fn compute_max_path_len(&mut self, padder: &Padder) {
+    /// The resulting value covers two cases:
+    /// - there's at least one date dir with >1 device subdirs -> target path length will be formed of `date/device_name`
+    /// - there's no date dir with >1 devices -> target path will just include `date`
+    fn compute_max_path_len(&mut self) -> usize {
         let max_date_dir_path_len = &self.dir_tree.iter()
             // filter only date dirs with at least 2 devices
             .filter(|(_, device_tree)| device_tree.file_tree.keys().clone().len() > 1 )
@@ -173,14 +173,17 @@ impl TargetDateDeviceTree {
             .map(|(_, device_tree)| device_tree.max_dir_path_len)
             .max();
 
-        if max_date_dir_path_len.is_some() {
-            // add +1 for the length of the separator between dirs and filename
-            self.max_target_path_len = max_date_dir_path_len.clone().unwrap() + 1 + padder.source_file_max_len;
-        } else {
-            // add +10 for the length of date dirs, e.g. 2016.12.29
-            // add +1 for the length of the separator between date and filename
-            self.max_target_path_len = 10 + 1 + padder.source_file_max_len;
-        }
+        // if max_date_dir_path_len.is_some() {
+        //     // add +1 for the length of the separator between dirs and filename
+        //     self.max_target_path_len = max_date_dir_path_len.clone().unwrap() + 1 + padder.source_base_file_max_len;
+        // } else {
+        //     // add +10 for the length of date dirs, e.g. 2016.12.29
+        //     // add +1 for the length of the separator between date and filename
+        //     self.max_target_path_len = 10 + 1 + padder.source_base_file_max_len;
+        // }
+
+        // default 10 for the length of date dirs, e.g. 2016.12.29
+        max_date_dir_path_len.unwrap_or(10)
     }
 }
 
@@ -813,7 +816,7 @@ fn parse_dir_contents(
 
     // The max path length can only be computed after the tree has been filled with devices and files
     // because of the requirement to only create device subdirs if there are at least 2 devices
-    new_dir_tree.compute_max_path_len(&padder);
+    padder.set_max_target_path(new_dir_tree.compute_max_path_len());
 
     return new_dir_tree;
 }
@@ -872,7 +875,8 @@ fn write_target_dir_files(
                 _source_len
                     + 1 // add +1 for the gap between a filename and its padding
                     + SEPARATOR_DRY_RUN.chars().count()
-                    + new_dir_tree.max_target_path_len
+                    // + new_dir_tree.max_target_path_len
+                    + padder.get_total_max_target_len()
                     + SEPARATOR_STATUS.chars().count()
                     + 1 // add +1 for the gap between a path and its padding
                     + 1 // add +1 for the gap between a path and the operation status
@@ -891,7 +895,8 @@ fn write_target_dir_files(
 
                 // TODO Padding::format_header_target
                 let target_padding = RightPadding::space(
-                    String::from("TARGET FILE"), new_dir_tree.max_target_path_len);
+                    // String::from("TARGET FILE"), new_dir_tree.max_target_path_len);
+                    String::from("TARGET FILE"), padder.get_total_max_target_len());
 
                 // TODO Padding::format_header_separator
                 let heading = "-".repeat(_total_padding_width);
@@ -1062,8 +1067,10 @@ fn write_target_dir_files(
                     // TODO replace with Padder::format_target_path()
                     let padded_target_path = RightPadding::dot(
                         format!("{} ", _stripped_target_path),
+                        // new_dir_tree.max_target_path_len + 1);
+                        padder.get_total_max_target_len()
                         // add +1 for the space added to the right of _stripped_target_path
-                        new_dir_tree.max_target_path_len + 1);
+                        + 1);
 
                     // Check files and print result in this format:
                     //  └── DSC_0002.JPG ---> 2017.03.12\DSC_0002.JPG... file will be copied

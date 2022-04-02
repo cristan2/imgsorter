@@ -45,27 +45,33 @@ pub enum OutputColor {
 }
 
 /// Sample tree - CURRENT
-/// [2019.01.28] (2 devices, 3 files, 3.34 MB) .................................... [new folder will be created]
-/// └── D:\Pics\IMG-20190128.jpg ---------> 2019.01.28\IMG-20190128.jpg ........... file will be copied
-/// └── [HUAWEI] .................................................................. [new folder will be created]
-/// |    └── D:\Pics\IMG-20190128.jpeg ---> 2019.01.28\HUAWEI\IMG-20190128.jpeg ... file will be copied
-/// |    └── D:\Pics\IMG-20190128.jpeg ---> 2019.01.28\HUAWEI\IMG-20190128.jpeg ... file will be copied
+/// [2019.01.28] (2 devices, 3 files, 3.34 MB) .................................. [new folder will be created]
+/// └── D:\Pics\IMG-20190128.jpg --------> 2019.01.28\IMG-20190128.jpg .......... file will be copied
+/// └── [HUAWEI] ................................................................ [new folder will be created]
+/// |    └── D:\Pics\IMG-20190128.jpg ---> 2019.01.28\HUAWEI\IMG-20190128.jpg ... file will be copied
+/// |    └── D:\Pics\IMG-20190128.jpg ---> 2019.01.28\HUAWEI\IMG-20190128.jpg ... file will be copied
 ///
 /// Sample tree - AFTER
-/// [2019.01.28] (2 devices, 3 files, 3.34 MB) .................................... [new folder will be created]
-/// └── 2019.01.28\IMG-20190128.jpg <---------------- D:\Pics\IMG-20190128.jpg .... file will be copied
-/// └── [HUAWEI] .................................................................. [new folder will be created]
-/// |    └── 2019.01.28\HUAWEI\IMG-20190128.jpeg <--- D:\Pics\IMG-20190128.jpeg ... file will be copied
-/// |    └── 2019.01.28\HUAWEI\IMG-20190128.jpeg <--- D:\Pics\IMG-20190128.jpeg ... file will be copied
+/// [2019.01.28] (2 devices, 3 files, 3.34 MB) .................................. [new folder will be created]
+/// └── 2019.01.28\IMG-20190128.jpg <--------------- D:\Pics\IMG-20190128.jpg ... file will be copied
+/// └── [HUAWEI] ................................................................ [new folder will be created]
+/// |    └── 2019.01.28\HUAWEI\IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ... file will be copied
+/// |    └── 2019.01.28\HUAWEI\IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ... file will be copied
 pub struct Padder {
     // BASIC INFO
 
-    // The maximum filename length of all source files, without any path information
-    pub source_file_max_len: usize,
-    // The maximum path length of all source files
+    /// The maximum length of filename of all source files,
+    /// without any path information, e.g. `IMG-20190128.jpg`
+    pub source_base_file_max_len: usize,
+    /// The maximum length of the absolute path length of all source files,
+    /// including the file name, e.g. `D:\Pics\IMG-20190128.jpg`
     pub source_path_max_len: usize,
-    // This does not include the path of the parent target dir, only the relative path inside it
-    pub target_path_max_len: usize,
+    /// This maximum length of the relative target path from the parent target dir
+    /// This *does not* include the filename length, which can always be read
+    ///   from [source_base_file_max_len] (and adding 1 for the separator char)
+    /// So this will include either the "date\device name", or just the "date", e.g.:
+    /// `2019.01.28\HUAWEI` or just `2019.01.28`
+    pub target_relative_path_max_len: usize,
 
     // Length of any additional glyphs or words which are added to the source file
     // when printed, such as dir tree indents or other separators
@@ -104,19 +110,23 @@ pub struct LeftPadding;
 impl Padder {
     pub fn new() -> Padder {
         Padder{
-            source_file_max_len: 0,
+            source_base_file_max_len: 0,
             source_path_max_len: 0,
-            target_path_max_len: 0,
+            target_relative_path_max_len: 0,
             extra_source_chars: 0,
         }
     }
 
     pub fn set_max_source_filename(&mut self, new_file_len: usize) {
-        self.source_file_max_len = max(self.source_file_max_len, new_file_len)
+        self.source_base_file_max_len = max(self.source_base_file_max_len, new_file_len)
     }
 
     pub fn set_max_source_path(&mut self, new_path_len: usize) {
         self.source_path_max_len = max(self.source_path_max_len, new_path_len)
+    }
+
+    pub fn set_max_target_path(&mut self, new_path_len: usize) {
+        self.target_relative_path_max_len = max(self.target_relative_path_max_len, new_path_len)
     }
 
     pub fn add_extra_source_chars(&mut self, new_len: usize) {
@@ -141,13 +151,22 @@ impl Padder {
         if has_multiple_sources {
             self.source_path_max_len
         } else {
-            self.source_file_max_len
+            self.source_base_file_max_len
         }
     }
 
+    /// Retrieves the total length of the source - either just the filename
+    ///  or the full path, depending on whether we have multiple sources - plus
+    /// any additional symbols, like tree indents
     pub fn get_total_max_source_len(&self, has_multiple_sources: bool) -> usize {
         let base = self.get_base_source_len(has_multiple_sources);
         base + self.extra_source_chars
+    }
+
+    /// Retrieves the total relative target path, including the filename
+    pub fn get_total_max_target_len(&self) -> usize {
+        // add +1 for the length of the separator between path and filename
+        self.target_relative_path_max_len + 1 + self.source_base_file_max_len
     }
 }
 
