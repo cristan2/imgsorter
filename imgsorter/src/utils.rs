@@ -45,18 +45,18 @@ pub enum OutputColor {
 }
 
 /// Sample tree - CURRENT
-/// [2019.01.28] (2 devices, 3 files, 3.34 MB) .................................. [new folder will be created]
-/// └── D:\Pics\IMG-20190128.jpg --------> 2019.01.28\IMG-20190128.jpg .......... file will be copied
-/// └── [HUAWEI] ................................................................ [new folder will be created]
-/// |    └── D:\Pics\IMG-20190128.jpg ---> 2019.01.28\HUAWEI\IMG-20190128.jpg ... file will be copied
-/// |    └── D:\Pics\IMG-20190128.jpg ---> 2019.01.28\HUAWEI\IMG-20190128.jpg ... file will be copied
+/// [2019.01.28] (2 devices, 3 files, 3.34 MB) ...................................... [new folder will be created]
+/// └── D:\Pics\IMG-20190128.jpg --------> 2019.01.28\IMG-20190128.jpg .............. file will be copied
+/// └── [Canon 100D] ................................................................ [new folder will be created]
+/// |    └── D:\Pics\IMG-20190128.jpg ---> 2019.01.28\Canon 100D\IMG-20190128.jpg ... file will be copied
+/// |    └── D:\Pics\IMG-20190128.jpg ---> 2019.01.28\Canon 100D\IMG-20190128.jpg ... file will be copied
 ///
 /// Sample tree - AFTER
-/// [2019.01.28] (2 devices, 3 files, 3.34 MB) .................................. [new folder will be created]
-/// └── 2019.01.28\IMG-20190128.jpg <--------------- D:\Pics\IMG-20190128.jpg ... file will be copied
-/// └── [HUAWEI] ................................................................ [new folder will be created]
-/// |    └── 2019.01.28\HUAWEI\IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ... file will be copied
-/// |    └── 2019.01.28\HUAWEI\IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ... file will be copied
+/// [2019.01.28] (2 devices, 3 files, 3.34 MB) ...................................... [new folder will be created]
+/// └── 2019.01.28\IMG-20190128.jpg <------------------- D:\Pics\IMG-20190128.jpg ... file will be copied
+/// └── [Canon 100D] ................................................................ [new folder will be created]
+/// |    └── 2019.01.28\Canon 100D\IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ... file will be copied
+/// |    └── 2019.01.28\Canon 100D\IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ... file will be copied
 pub struct Padder {
     // BASIC INFO
 
@@ -75,7 +75,7 @@ pub struct Padder {
     /// This *does not* include the filename length, which can always be read
     ///   from [source_base_file_max_len] (and adding 1 for the separator char)
     /// So this will include either the "date\device name", or just the "date", e.g.:
-    /// `2019.01.28\HUAWEI` or just `2019.01.28`
+    /// `2019.01.28\Canon 100` or just `2019.01.28`
     pub target_relative_path_max_len: usize,
 
     // Length of any additional glyphs or words which are added to the source file
@@ -186,6 +186,61 @@ impl Padder {
             + 1 // add +1 for the gap between a path and its padding
             + 1 // add +1 for the gap between a path and the operation status
     }
+
+    /* --- Formatter functions --- */
+
+    /// Adds dot padding to the maximum padding length for the date dir, e.g.:
+    /// `[2019.01.28] (2 devices, 3 files, 3.34 MB) ..........................`
+    pub fn format_date_dir(&self, date_dir_name_with_device_status: String) -> String {
+        RightPadding::dot(
+            date_dir_name_with_device_status,
+            self.get_total_padding_len())
+    }
+
+    /// Adds dot padding to the maximum padding length for the device dir.
+    /// The device dirs will always have a single dir tree symbol prefix,
+    /// since we don't expect additional sublevels for the devices, e.g.:
+    /// `└── [Canon 100D] ..............................`
+    pub fn format_device_dir(&self, device_dir_name: String) -> String {
+        let indented_device_dir_name: String = indent_string(
+            // There are no indent levels for device dirs, just add
+            0, format!("[{}] ", device_dir_name));
+
+        RightPadding::dot(
+            indented_device_dir_name,
+            // safe to unwrap for dry runs
+            self.get_total_padding_len())
+    }
+
+    pub fn format_target_file_dotted(&self, mut filename: String) -> String {
+        // Add a space after the filename so there's a gap until the padding starts
+        filename.push(' ');
+        RightPadding::dot(
+            format!("{}", filename),
+            // add +1 for the space added to the filename
+            self.get_total_max_target_len() + 1)
+    }
+
+    pub fn format_source_file_indented_dashed(&self, mut filename: String, indent_level: usize) -> String {
+        // Add a space after the filename so there's a gap until the padding starts
+        filename.push(' ');
+        let indented_source_filename = indent_string(indent_level, filename);
+        RightPadding::dash(
+            format!("{}", indented_source_filename),
+            // add +1 for the space added to the filename
+            self.get_total_max_source_len() + 1)
+    }
+
+    pub fn format_source_file_indented_em_dashed(&self, mut filename: String) -> String {
+        // Add a space after the filename so there's a gap until the padding starts
+        filename.push(' ');
+        RightPadding::em_dash(
+            filename,
+            self.get_total_max_source_len()
+                // add +1 for the space added to the filename
+                + 1)
+    }
+
 }
 
 impl RightPadding {
@@ -223,6 +278,14 @@ pub const SEPARATOR_COPY_MOVE: &'static str = "──>";
 pub const FILE_TREE_ENTRY: &'static str = " └── ";
 pub const FILE_TREE_INDENT: &'static str = " |   ";
 
+/// Adds dir tree symbols in front of the string based on the indent level.
+/// If level > 0, string gets an equal number of [FILE_TREE_INDENT] prefixes.
+/// All strings get a [FILE_TREE_ENTRY] prefix. For example:
+/// [2019.01.28]
+/// └── IMG-20190128.jpg
+/// └── [Canon 100D]
+/// |    └── IMG-20190128.jpg
+/// |    └── IMG-20190128.jpg
 pub fn indent_string(indent_level: usize, file_name: String) -> String {
     let indents = FILE_TREE_INDENT.repeat(indent_level);
     format!("{}{}{}", indents, FILE_TREE_ENTRY.to_string(), file_name)
