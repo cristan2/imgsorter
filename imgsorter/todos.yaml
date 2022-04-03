@@ -59,9 +59,10 @@
     [ ] i - move map methods to *DeviceTree
     [ ] k - Reimplement is_source_unique
     [ ] g - Store total count of files and maybe file size when reading source files
-    [ ] h - Fix/refactor/improve padding calculation
+    [x] h - Fix/refactor/improve padding calculation
     [ ] i - Move operation statuses to map and calculate max header and separator lengths based on them
     [ ] RightPadding & ColoredString should take both &str and String
+    [ ] cache result of padding length calculations and other improvements
 
 [ ] 6 - Misc / bugs
     [x] a - change copy to rename
@@ -88,7 +89,11 @@
     [ ] how to treat existing files - skip, overwrite, rename
     [ ] how to treat files without EXIF (e.g. images received over WhatsApp)
     [ ] colored separator arrows
+    [ ] show dir tree when presenting the source paths before confirmation, instead of a simple list of paths
+        - show full path only for the sources in config, not for the recursively found subdirs
+        - maybe show no of files next to each dir
     [ ] after move, leave a txt file in place named "where are my photos" which explains where they were moved (process summary); have option to disable this
     [x] colored text
+    [ ] more comments and examples for Padder methods + rearrange more logically
 
 [ ] 8 - Cleanup

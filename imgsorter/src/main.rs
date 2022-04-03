@@ -51,7 +51,6 @@ impl DeviceTree {
 ///  └─ [assorted]
 ///  │   └─ single.file
 /// ```
-/// Additionally, the struct
 struct TargetDateDeviceTree {
     dir_tree: BTreeMap<String, DeviceTree>,
     // max_filename_len: usize,
@@ -1012,6 +1011,9 @@ fn write_target_dir_files(
             files_and_paths_vec
         ) in &devices_files_and_paths.file_tree {
 
+            // Maximum directory depth inside a date dir, starting from 0
+            // Date Dir > 0. Device Dir > 1. File
+            // Date Dir > 0. File
             let mut indent_level: usize = 0;
 
             // This condition helps prevent creating a redundant device subdir if
@@ -1039,7 +1041,7 @@ fn write_target_dir_files(
 
             let do_create_device_subdirs = has_at_least_one_distinct_device && !has_double_file;
 
-            // If there's more than one device, attach device dir to destination path, otherwise ignore devices
+            // If there's more than one device (including "None"), attach device dir to destination path
             let device_destination_path = if do_create_device_subdirs {
                 // This is safe to unwrap, since we've already checked the device is_some
                 let dir_name = device_name_opt.clone().unwrap();
@@ -1053,15 +1055,6 @@ fn write_target_dir_files(
                     indent_level += 1;
 
                     // Add tree indents and padding to dir name
-                    // let indented_device_dir_name: String = indent_string(0, format!("[{}] ", dir_name));
-                    //
-                    // // TODO replace this with Padder::format_device_dir() then delete _indented_dir_name above
-                    // let padded_indented_device_dir_name = RightPadding::dot(
-                    //     indented_device_dir_name,
-                    //     // safe to unwrap for dry runs
-                    //     padder.get_total_padding_len());
-
-                    // Add tree indents and padding to dir name
                     let padded_indented_device_dir_name = padder.format_dryrun_device_dir(dir_name);
 
                     // Check restrictions - if target exists
@@ -1072,6 +1065,8 @@ fn write_target_dir_files(
                 }
 
                 device_path
+
+            // otherwise ignore device and just use the date dir
             } else {
                 date_destination_path.clone()
             };
@@ -1098,81 +1093,28 @@ fn write_target_dir_files(
                     write_result,
                 ) = {
 
-                    // TODO move to SupportedFile::getDisplayString()
-                    // need this space after the filename so there's a gap until the padding starts
-                    // let _filename_string = format!("{} ", &file.file_name.to_str().unwrap());
-                    // let _filename_string = if args.has_multiple_sources() {
-                    //     format!("{} ", &file.file_path.display().to_string())
-                    // } else {
-                    //     format!("{} ", &file.file_name.to_str().unwrap())
-                    // };
-
-                    // TODO replace with Padder::format_target_path()
-                    // let padded_target_path = RightPadding::dot(
-                    //     format!("{} ", _stripped_target_path),
-                    //     // new_dir_tree.max_target_path_len + 1);
-                    //     padder.get_total_max_target_len()
-                    //     // add +1 for the space added to the right of _stripped_target_path
-                    //     + 1);
-
-                    // Check files and print a string in this format:
-                    // `TARGET_INDENTED_RELATIVE_PATH <--- SOURCE_ABSOLUTE_PATH ... STATUS`
-                    // Example:
-                    // [2019.01.28] (2 devices, 3 files, 3.34 MB) ....................... [new folder will be created]
-                    //  └── 2019.01.28\IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ... file will be copied
+                    // Output is different for dry-runs and copy/move operations, so print it separately
                     if is_dry_run {
 
-                        // let padded_target_filename = padder.format_target_file_indented(file.get_file_name_str(), indent_level);
-                        // Add dir tree indents to the file name
+                        // Prepare padded strings for output
                         let indented_target_filename = indent_string(indent_level, file.get_file_name_str());
-
-                        // let padded_target_path = padder.format_target_file_dotted(stripped_target_path);
-                        // let padded_source_path = padder.format_source_file_left_dashed(
-                        //     file.get_source_display_name_str(args),
-                        //     padded_target_filename.clone()
-                        // );
-                        // Add padding (normal dashes) to the separator
                         let padded_separator = padder.format_dryrun_file_separator(indented_target_filename.clone());
 
-                        // let padded_source_path = padder.format_source_dotted(file.get_source_display_name_str(args));
                         let source_path = file.get_source_display_name_str(args);
                         let status_separator = padder.format_dryrun_status_separator_dotted(source_path.clone());
 
-                        // let padded_source_filename = padder.format_source_file_indented_dashed(file.get_source_display_name_str(args), indent_level);
-
-                        // Check restrictions - file exist or read only
+                        // Check restrictions - file exists or is read-only
                         let file_restrictions = dry_run_check_file_restrictions(&file, &file_destination_path, &source_unique_files, args);
 
-                        // Add tree indents and dry run padding (normal dashes) to file name
-                        // // TODO replace with Padder::format_source_path()
-                        // let indented_source_filename = indent_string(indent_level, file.get_display_name(args));
-                        // let padded_source_filename = RightPadding::dash(
-                        //     indented_source_filename,
-                        //     // add +1 for the space added to the right of filename_string
-                        //     // if args.has_multiple_sources() {new_dir_tree.max_source_path_len} else {new_dir_tree.max_filename_len}
-                        //     padder.get_total_max_source_len()
-                        //     + 1);
-
                         // Return everything to be printed
-                        // (padded_source_filename, SEPARATOR_DRY_RUN, padded_target_path, file_restrictions)
-                        // (padded_target_filename, SEPARATOR_DRY_RUN_RIGHT_TO_LEFT, padded_source_path, file_restrictions)
                         (indented_target_filename, padded_separator, source_path, status_separator, file_restrictions)
 
-                    // Copy/move files and print a string in this format:
-                    // `SOURCE_ABSOLUTE_PATH ──> TARGET_RELATIVE_PATH ... STATUS`
-                    // Example:
-                    // [Created folder 2017.03.12]
-                    // D:\Pics\IMG-20190128.jpg ──> 2017.03.12\IMG-20190128.jpg ... ok
                     } else {
 
+                        // Prepare padded strings for output
                         let source_path = file.get_source_display_name_str(args);
-
                         let padded_separator = padder.format_write_file_separator(source_path.clone());
-
                         let stripped_target_path = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
-
-                        // let padded_target_path = padder.format_target_file_dotted(stripped_target_path);
-
                         let status_separator = padder.format_write_status_separator_dotted(stripped_target_path.clone());
 
                         // Copy/move file
@@ -1181,19 +1123,7 @@ fn write_target_dir_files(
                             &mut file_destination_path,
                             &args, &mut stats);
 
-                        // TODO Padder::???
-                        // Add copy/move padding (em dashes) to file name
-                        // let padded_filename = padder.format_source_file_indented_em_dashed(file.get_source_display_name_str(args));
-
-                        // let padded_filename = RightPadding::em_dash(
-                        //     file.get_display_name(args),
-                        //     // if args.has_multiple_sources() {new_dir_tree.max_source_path_len} else {new_dir_tree.max_filename_len}
-                        //     padder.get_total_max_source_len()
-                        //     // add +1 for the space added to the right of filename_string
-                        //      + 1);
-
                         // Return everything to be printed
-                        // (padded_filename, String::from(SEPARATOR_COPY_MOVE), padded_target_path, String::from(SEPARATOR_STATUS), file_write_status)
                         (source_path, padded_separator, stripped_target_path, status_separator, file_write_status)
                     }
                 };
@@ -1208,7 +1138,7 @@ fn write_target_dir_files(
             } // end loop files
         } // end loop device dirs
 
-        // leave some empty space before the date dir
+        // leave some empty space before the next date dir
         println!();
     } // end loop date dirs
 }
@@ -1336,18 +1266,6 @@ fn ask_for_confirmation() -> ConfirmationType {
         }
     }
 }
-
-// TODO 6c: unused, do we need this?
-// fn print_file_list(dir_tree: HashMap<String, Vec<DirEntry>>) {
-//     dir_tree.iter().for_each(|(dir_name, dir_files)|{
-//         println!("{} ({})", dir_name, dir_files.len());
-//         for file in dir_files {
-//             let filename = &file.file_name();
-//             println!("| + {}", filename.to_str().unwrap());
-//         }
-//         // dbg!(dir_files);
-//     })
-// }
 
 fn copy_file_if_not_exists(
     file: &SupportedFile,
