@@ -53,10 +53,6 @@ impl DeviceTree {
 /// ```
 struct TargetDateDeviceTree {
     dir_tree: BTreeMap<String, DeviceTree>,
-    // max_filename_len: usize,
-    // max_source_path_len: usize,
-    // computed at the end
-    // max_target_path_len: usize
 }
 
 /// Just output a simple list of filenames for now
@@ -88,14 +84,11 @@ impl TargetDateDeviceTree {
     fn new() -> TargetDateDeviceTree {
         TargetDateDeviceTree {
             dir_tree: BTreeMap::new(),
-            // max_filename_len: 0,
-            // max_source_path_len: 0,
-            // max_target_path_len: 0,
         }
     }
 
     /// Iterate all files in this this map and move all files which are in a directory with
-    /// less than args.min_files_per_dir into a new separate directory called [DEFAULT_ONEOFFS_DIR_NAME].
+    /// less than args.min_files_per_dir into a new separate directory (see [Args::oneoffs_dir_name])
     ///
     /// In practice, this should avoid creating date dirs which contain a single file. Instead,
     /// all such one-offs will be placed together in a single directory.
@@ -164,7 +157,9 @@ impl TargetDateDeviceTree {
     /// The resulting value covers two cases:
     /// - there's at least one date dir with >1 device subdirs -> target path length will be formed of `date/device_name`
     /// - there's no date dir with >1 devices -> target path will just include `date`
-    fn compute_max_path_len(&mut self) -> usize {
+    /// Note: this must be called AFTER [Self::isolate_single_images()] so that the length of
+    /// the oneoffs directory can be taken into account, if present
+    fn compute_max_path_len(&mut self, args: &Args) -> usize {
         let max_date_dir_path_len = &self.dir_tree.iter()
             // filter only date dirs with at least 2 devices
             .filter(|(_, device_tree)| device_tree.file_tree.keys().clone().len() > 1 )
@@ -172,17 +167,21 @@ impl TargetDateDeviceTree {
             .map(|(_, device_tree)| device_tree.max_dir_path_len)
             .max();
 
-        // if max_date_dir_path_len.is_some() {
-        //     // add +1 for the length of the separator between dirs and filename
-        //     self.max_target_path_len = max_date_dir_path_len.clone().unwrap() + 1 + padder.source_base_file_max_len;
-        // } else {
-        //     // add +10 for the length of date dirs, e.g. 2016.12.29
-        //     // add +1 for the length of the separator between date and filename
-        //     self.max_target_path_len = 10 + 1 + padder.source_base_file_max_len;
-        // }
+        // We also need to account for the presence of a a oneoff directory. This is computed separately
+        // and would not have been considered when setting `max_dir_path_len` during the initial iteration
+        // If present, we compare its length now to the previous max. If not, assume 0 so we can ignore it
+        let has_oneoffs_dir = &self.dir_tree.contains_key(args.oneoffs_dir_name.as_str());
+        let oneoffs_dir_len = if *has_oneoffs_dir {
+            get_string_char_count(args.oneoffs_dir_name.clone())
+        } else {0};
 
-        // default 10 for the length of date dirs, e.g. 2016.12.29
-        max_date_dir_path_len.unwrap_or(10)
+        match *max_date_dir_path_len {
+            Some(max_dir_path_len) =>
+                max(max_dir_path_len, oneoffs_dir_len),
+            None =>
+                // default 10 for the length of date dirs, e.g. 2016.12.29
+                max(10, oneoffs_dir_len)
+        }
     }
 }
 
@@ -788,19 +787,13 @@ fn parse_dir_contents(
                     };
 
                     // Store the string lengths of the file name and path for padding in stdout
-                    // let _filename_len = String::from(current_file.file_name.clone().to_str().unwrap()).chars().count();
-                    // let _source_path_len = current_file.file_path.display().to_string().chars().count();
-
                     let _device_name_len = current_file.device_name.clone().map(|d| d.chars().count()).unwrap_or(0);
                     let _date_name_str = &current_file.date_str.chars().count();
                     // add +1 for each path separator character
                     let total_target_path_len = _date_name_str + 1 + _device_name_len;
 
-                    // padder.max ...
                     padder.set_max_source_filename_from_str(current_file.file_name.clone().to_str().unwrap());
                     padder.set_max_source_path(get_string_char_count(current_file.file_path.display().to_string()));
-                    // new_dir_tree.max_filename_len = max(new_dir_tree.max_filename_len, _filename_len);
-                    // new_dir_tree.max_source_path_len = max(new_dir_tree.max_source_path_len, _source_path_len);
                     devicetree_for_this_date.max_dir_path_len = max(devicetree_for_this_date.max_dir_path_len, total_target_path_len);
 
                     // Add file to dir tree
@@ -830,7 +823,7 @@ fn parse_dir_contents(
 
     // The max path length can only be computed after the tree has been filled with devices and files
     // because of the requirement to only create device subdirs if there are at least 2 devices
-    padder.set_max_target_path(new_dir_tree.compute_max_path_len());
+    padder.set_max_target_path(new_dir_tree.compute_max_path_len(args));
 
     return new_dir_tree;
 }

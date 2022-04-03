@@ -77,7 +77,7 @@
     [x] only create device name subdirs if there's more than one
     [x] option to always create device name subdirs even if there's only one
     [x] string padding for dry run
-    [ ] device_tree.max_dir_path_len ignores the length of oneoffs dir
+    [x] device_tree.max_dir_path_len ignores the length of oneoffs dir
         - having a long dir name leads to panic!
 
 [ ] 7 - Nice to have
