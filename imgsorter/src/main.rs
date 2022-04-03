@@ -423,19 +423,25 @@ impl SupportedFile {
         self.metadata.is_dir()
     }
 
-    pub fn get_file_name_ref(&self) -> &OsString {
-        &self.file_name
+    pub fn get_file_name_str(&self) -> String {
+        String::from(self.file_name.to_str().unwrap())
     }
 
+    // TODO remove and use file_path directly
     pub fn get_file_path_ref(&self) -> &PathBuf {
         &self.file_path
     }
 
+    // TODO remove and use file_path directly
     pub fn get_device_name_ref(&self) -> &Option<String> {
         &self.device_name
     }
 
-    pub fn get_display_name(&self, args: &Args) -> String {
+    /// Return a string representation of the source file or path.
+    /// If there are multiple sources, return the full absolute path
+    /// If there is a single source, return only the filename,
+    /// since the full path will always be the same
+    pub fn get_source_display_name_str(&self, args: &Args) -> String {
         if args.has_multiple_sources() {
             format!("{}", self.file_path.display().to_string())
         } else {
@@ -800,7 +806,7 @@ fn parse_dir_contents(
                 FileType::Unknown => {
                     stats.inc_unknown_skipped();
                     if DBG_ON {
-                        println!("Skipping unknown file {:?}", current_file.get_file_name_ref())
+                        println!("Skipping unknown file {}", current_file.get_file_name_str())
                     }
                 }
             }
@@ -886,6 +892,8 @@ fn write_target_dir_files(
             //         + 1 // add +1 for the gap between a path and the operation status
             // };
 
+            // TODO redo headers
+            /*
             // TODO 5h: fix padding
             // Also print headers now
             {
@@ -894,7 +902,7 @@ fn write_target_dir_files(
                     String::from("SOURCE PATH"),
                     padder.get_total_max_source_len()
                         + 1 // add +1 for the gap between a filename and its padding
-                        + SEPARATOR_DRY_RUN.chars().count()
+                        + SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count()
                 );
 
                 // TODO Padding::format_header_target
@@ -909,6 +917,8 @@ fn write_target_dir_files(
                 println!("{}{}", source_padding, target_padding);
                 println!("{}", heading);
             }
+            */
+
 
             // Some(_total_padding_width)
         // } else {
@@ -1054,12 +1064,13 @@ fn write_target_dir_files(
 
                 // Attach filename to the directory path
                 let mut file_destination_path = device_destination_path.clone()
-                    .join(file.get_file_name_ref());
+                    .join(&file.file_name);
 
                 let (padded_filename,
                     op_separator,
                     padded_path,
-                    write_result
+                    status_separator,
+                    write_result,
                 ) = {
 
                     // TODO move to SupportedFile::getDisplayString()
@@ -1071,7 +1082,6 @@ fn write_target_dir_files(
                     //     format!("{} ", &file.file_name.to_str().unwrap())
                     // };
 
-                    let stripped_target_path = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
                     // TODO replace with Padder::format_target_path()
                     // let padded_target_path = RightPadding::dot(
                     //     format!("{} ", _stripped_target_path),
@@ -1080,14 +1090,30 @@ fn write_target_dir_files(
                     //     // add +1 for the space added to the right of _stripped_target_path
                     //     + 1);
 
-                    let padded_target_path = padder.format_target_file_dotted(stripped_target_path);
-
-                    // Check files and print result in this format:
-                    //  └── DSC_0002.JPG ---> 2017.03.12\DSC_0002.JPG... file will be copied
+                    // Check files and print a string in this format:
+                    // `TARGET_INDENTED_RELATIVE_PATH <--- SOURCE_ABSOLUTE_PATH ... STATUS`
+                    // Example:
+                    // [2019.01.28] (2 devices, 3 files, 3.34 MB) ....................... [new folder will be created]
+                    //  └── 2019.01.28\IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ... file will be copied
                     if is_dry_run {
 
-                        // Add tree indents and dry run padding (normal dashes) to file name
-                        let padded_source_filename = padder.format_source_file_indented_dashed(file.get_display_name(args), indent_level);
+                        // let padded_target_filename = padder.format_target_file_indented(file.get_file_name_str(), indent_level);
+                        // Add dir tree indents to the file name
+                        let indented_target_filename = indent_string(indent_level, file.get_file_name_str());
+
+                        // let padded_target_path = padder.format_target_file_dotted(stripped_target_path);
+                        // let padded_source_path = padder.format_source_file_left_dashed(
+                        //     file.get_source_display_name_str(args),
+                        //     padded_target_filename.clone()
+                        // );
+                        // Add padding (normal dashes) to the separator
+                        let padded_separator = padder.format_file_separator_dashed(indented_target_filename.clone());
+
+                        // let padded_source_path = padder.format_source_dotted(file.get_source_display_name_str(args));
+                        let source_path = file.get_source_display_name_str(args);
+                        let status_separator = padder.format_dryrun_status_separator_dotted(source_path.clone());
+
+                        // let padded_source_filename = padder.format_source_file_indented_dashed(file.get_source_display_name_str(args), indent_level);
 
                         // Check restrictions - file exist or read only
                         let file_restrictions = dry_run_check_file_restrictions(&file, &file_destination_path, &source_unique_files, args);
@@ -1103,11 +1129,26 @@ fn write_target_dir_files(
                         //     + 1);
 
                         // Return everything to be printed
-                        (padded_source_filename, SEPARATOR_DRY_RUN, padded_target_path, file_restrictions)
+                        // (padded_source_filename, SEPARATOR_DRY_RUN, padded_target_path, file_restrictions)
+                        // (padded_target_filename, SEPARATOR_DRY_RUN_RIGHT_TO_LEFT, padded_source_path, file_restrictions)
+                        (indented_target_filename, padded_separator, source_path, status_separator, file_restrictions)
 
-                    // Copy/move files then print result in this format:
-                    // DSC_0002.JPG ───> 2017.03.12\DSC_0002.JPG... ok
+                    // Copy/move files and print a string in this format:
+                    // `SOURCE_ABSOLUTE_PATH ──> TARGET_RELATIVE_PATH ... STATUS`
+                    // Example:
+                    // [Created folder 2017.03.12]
+                    // D:\Pics\IMG-20190128.jpg ──> 2017.03.12\IMG-20190128.jpg ... ok
                     } else {
+
+                        let source_path = file.get_source_display_name_str(args);
+
+                        let padded_separator = padder.format_file_separator_emdashed(source_path.clone());
+
+                        let stripped_target_path = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
+
+                        // let padded_target_path = padder.format_target_file_dotted(stripped_target_path);
+
+                        let status_separator = padder.format_write_status_separator_dotted(stripped_target_path.clone());
 
                         // Copy/move file
                         let file_write_status = copy_file_if_not_exists(
@@ -1117,7 +1158,8 @@ fn write_target_dir_files(
 
                         // TODO Padder::???
                         // Add copy/move padding (em dashes) to file name
-                        let padded_filename = padder.format_source_file_indented_em_dashed(file.get_display_name(args));
+                        // let padded_filename = padder.format_source_file_indented_em_dashed(file.get_source_display_name_str(args));
+
                         // let padded_filename = RightPadding::em_dash(
                         //     file.get_display_name(args),
                         //     // if args.has_multiple_sources() {new_dir_tree.max_source_path_len} else {new_dir_tree.max_filename_len}
@@ -1126,16 +1168,17 @@ fn write_target_dir_files(
                         //      + 1);
 
                         // Return everything to be printed
-                        (padded_filename, SEPARATOR_COPY_MOVE, padded_target_path, file_write_status)
+                        // (padded_filename, String::from(SEPARATOR_COPY_MOVE), padded_target_path, String::from(SEPARATOR_STATUS), file_write_status)
+                        (source_path, padded_separator, stripped_target_path, status_separator, file_write_status)
                     }
                 };
 
-                // Print operation status
-                println!("{file}{op_separator} {path}{status_separator} {status}",
-                         file=padded_filename,
+                // Print operation status - each separator is responsible for adding its own spaces where necessary
+                println!("{left_side_file}{op_separator}{right_side_file}{status_separator}{status}",
+                         left_side_file=padded_filename,
                          op_separator=op_separator,
-                         path=padded_path,
-                         status_separator=SEPARATOR_STATUS,
+                         right_side_file=padded_path,
+                         status_separator=status_separator,
                          status=write_result);
             } // end loop files
         } // end loop device dirs
