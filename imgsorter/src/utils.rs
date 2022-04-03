@@ -186,20 +186,19 @@ impl Padder {
     //     self.target_relative_path_max_len + 1 + self.source_base_file_max_len
     // }
 
-    // TODO separate method not be necessary if not doing other calculation
-    fn get_total_max_source_len(&self) -> usize {
-        self.get_source_len()
-    }
+    // fn get_max_source_len(&self) -> usize {
+    //     self.get_source_len()
+    // }
 
     /// Used for dry runs. This calculates the max target length
     /// which is composed of any file tree symbols plus the base filename
-    fn get_total_max_target_len(&self) -> usize {
+    fn get_dryrun_max_target_len(&self) -> usize {
         self.source_base_file_max_len + self.extra_source_chars
     }
 
     /// Used for write outputs. This calculates the max target path length
     /// which is composed of the relative target path plus the base filename
-    fn get_max_target_path_len(&self) -> usize {
+    fn get_write_max_target_len(&self) -> usize {
         // add +1 for the separator between the path and the filename
         self.target_relative_path_max_len + 1 + self.source_base_file_max_len
     }
@@ -218,14 +217,52 @@ impl Padder {
     // }
 
     // TODO split total_max_target into extra_symbols + max_target ?
-    fn get_total_padding_len(&self) -> usize {
-        self.get_total_max_target_len()
+    fn get_dryrun_total_padding_len(&self) -> usize {
+        // TODO 5: this is the same as
+        // get_dryrun_target_header_padding_len + 1 + get_dryrun_source_header_padding_len
+        self.get_dryrun_max_target_len()
             + 1 // add +1 for the gap between the target filename and the operation separator
             + SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count()
-            + 1 // add +1 for the gap between the source file/path and its the status separator
-            + self.get_total_max_source_len()
-            + 1 // add +1 for the gap between a path and the operation status
-            + SEPARATOR_STATUS.chars().count()
+            + 1 // add +1 for the gap between the operation separator and the source file/path
+            + self.get_source_len()
+            + 1 // add +1 for the gap between the source file/path and the operation status
+            + SEPARATOR_OP_STATUS.chars().count()
+    }
+
+    fn get_dryrun_target_header_padding_len(&self) -> usize {
+        self.get_dryrun_max_target_len()
+            + 1 // add +1 for the gap between the target filename and the operation separator
+            + SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count()
+    }
+
+    fn get_dryrun_source_header_padding_len(&self) -> usize {
+        self.get_source_len()
+            + 1 // add +1 for the gap between the source path and the status separator
+            + SEPARATOR_OP_STATUS.chars().count()
+    }
+
+    fn get_write_total_padding_len(&self) -> usize {
+        // TODO 5: this is the same as
+        // get_write_target_header_padding_len + 1 + get_write_source_header_padding_len
+        self.get_source_len()
+            + 1 // add +1 for the gap between the source path and the operation separator
+            + SEPARATOR_COPY_MOVE.chars().count()
+            + 1 // add +1 for the gap between the operation separator and the target path
+            + self.get_write_max_target_len()
+            + 1 // add +1 for the gap between the target path and the operation status
+            + SEPARATOR_OP_STATUS.chars().count()
+    }
+
+    fn get_write_target_header_padding_len(&self) -> usize {
+        self.get_write_max_target_len()
+            + 1 // add +1 for the gap between the target path and the operation status
+            + SEPARATOR_OP_STATUS.chars().count()
+    }
+
+    fn get_write_source_header_padding_len(&self) -> usize {
+        self.get_source_len()
+            + 1 // add +1 for the gap between the source path and the operation separator
+            + SEPARATOR_COPY_MOVE.chars().count()
     }
 
     /// This separator should fill the space between the current filename and the
@@ -233,41 +270,39 @@ impl Padder {
     /// The calculation is based assuming the target file is printed to the left of the separator
     fn get_dryrun_file_separator_padding_len(&self, indented_target_filename: String) -> usize {
         let indented_target_filename_length = get_string_char_count(indented_target_filename);
-        self.get_total_max_target_len()
-            - indented_target_filename_length
+        self.get_dryrun_max_target_len()
             + SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count()
+            - indented_target_filename_length
     }
 
-    /// This separator should fill the space between the current filename and the maximum source filename length.
+    /// This should fill the space between the current filename and the maximum source filename length.
     /// The calculation is based assuming the source path is printed to the left of the separator
     fn get_write_file_separator_padding_len(&self, source_path: String) -> usize {
         let source_path_length = get_string_char_count(source_path);
-        self.get_total_max_source_len()
-            - source_path_length
+        self.get_source_len()
             + SEPARATOR_COPY_MOVE.chars().count()
+            - source_path_length
     }
 
-    /// This separator should fill the space between the
-    /// source path and the estimated result of the operation
+    /// This should fill the space between the source path and the estimated result of the operation
     fn get_dryrun_status_separator_padding_len(&self, source_path: String) -> usize {
         let source_path_length = get_string_char_count(source_path);
-        self.get_total_max_source_len()
+        self.get_source_len()
+            + SEPARATOR_OP_STATUS.chars().count()
             - source_path_length
-            + SEPARATOR_STATUS.chars().count()
     }
 
-    /// This separator should fill the space between the
-    /// target path and the result of the operation
+    /// This should fill the space between the target path and the result of the operation
     fn get_write_status_separator_padding_len(&self, target_path: String) -> usize {
         let target_path_length = get_string_char_count(target_path);
-        self.get_max_target_path_len()
+        self.get_write_max_target_len()
+            + SEPARATOR_OP_STATUS.chars().count()
             - target_path_length
-            + SEPARATOR_STATUS.chars().count()
     }
 
-    fn get_source_padding_len(&self, padded_target_filename_length: String) -> usize {
+    fn get_dryrun_source_padding_len(&self, padded_target_filename_length: String) -> usize {
         let target_len = get_string_char_count(padded_target_filename_length);
-        self.get_total_padding_len()
+        self.get_dryrun_total_padding_len()
             - target_len
             - 1
             - SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count()
@@ -276,19 +311,68 @@ impl Padder {
 
     /* --- Formatter methods --- */
 
+    pub fn format_dryrun_header_separator(&self, status_width: usize) -> String {
+        format!("{}", "-".repeat(
+            self.get_dryrun_total_padding_len()
+            +1 // add +1 for the gap between the status separator and the status
+            + status_width)
+        )
+    }
+
+    pub fn format_write_header_separator(&self, status_width: usize) -> String {
+        // this is an em-dash, not a dash
+        format!("{}", "─".repeat(
+            self.get_write_total_padding_len()
+                + 1 // add +1 for the gap between the status separator and the status
+                + status_width)
+        )
+    }
+
+    pub fn format_dryrun_header(&self, status_width: usize) -> String {
+        let padded_target= RightPadding::space(
+            String::from("TARGET FILE"),
+            self.get_dryrun_target_header_padding_len());
+
+        let padded_source= RightPadding::space(
+            String::from("SOURCE PATH"),
+            self.get_dryrun_source_header_padding_len());
+
+        let padded_status= RightPadding::space(
+            String::from("OPERATION STATUS"),
+            status_width);
+
+        format!("{} {} {}", padded_target, padded_source, padded_status)
+    }
+
+    pub fn format_write_header(&self, status_width: usize) -> String {
+        let padded_source= RightPadding::space(
+            String::from("SOURCE PATH"),
+            self.get_write_source_header_padding_len());
+
+        let padded_target= RightPadding::space(
+            String::from("TARGET FILE"),
+            self.get_write_target_header_padding_len());
+
+        let padded_status= RightPadding::space(
+            String::from("OPERATION STATUS"),
+            status_width);
+
+        format!("{} {} {}", padded_source, padded_target, padded_status)
+    }
+
     /// Adds dot padding to the maximum padding length for the date dir, e.g.:
     /// `[2019.01.28] (2 devices, 3 files, 3.34 MB) ..........................`
-    pub fn format_date_dir(&self, date_dir_name_with_device_status: String) -> String {
+    pub fn format_dryrun_date_dir(&self, date_dir_name_with_device_status: String) -> String {
         RightPadding::dot(
             date_dir_name_with_device_status,
-            self.get_total_padding_len())
+            self.get_dryrun_total_padding_len())
     }
 
     /// Adds dot padding to the maximum padding length for the device dir.
     /// The device dirs will always have a single dir tree symbol prefix,
     /// since we don't expect additional sublevels for the devices, e.g.:
     /// `└── [Canon 100D] ..............................`
-    pub fn format_device_dir(&self, device_dir_name: String) -> String {
+    pub fn format_dryrun_device_dir(&self, device_dir_name: String) -> String {
         let indented_device_dir_name: String = indent_string(
             // There are no indent levels for device dirs, just add
             0, format!("[{}] ", device_dir_name));
@@ -296,18 +380,18 @@ impl Padder {
         RightPadding::dot(
             indented_device_dir_name,
             // safe to unwrap for dry runs
-            self.get_total_padding_len())
+            self.get_dryrun_total_padding_len())
     }
 
     // ONLY FOR SOURCE-TO-TARGET OUTPUT (used only for copy/move, not dry runs)
-    pub fn format_target_file_dotted(&self, mut filename: String) -> String {
-        // Add a space after the filename so there's a gap until the padding starts
-        filename.push(' ');
-        RightPadding::dot(
-            format!("{}", filename),
-            // add +1 for the space added to the filename
-            self.get_total_max_target_len() + 1)
-    }
+    // pub fn format_target_file_dotted(&self, mut filename: String) -> String {
+    //     // Add a space after the filename so there's a gap until the padding starts
+    //     filename.push(' ');
+    //     RightPadding::dot(
+    //         format!("{}", filename),
+    //         // add +1 for the space added to the filename
+    //         self.get_dryrun_max_target_len() + 1)
+    // }
 
     // ONLY FOR SOURCE-TO-TARGET OUTPUT
     // pub fn format_source_file_indented_dashed(&self, mut filename: String, indent_level: usize) -> String {
@@ -320,15 +404,15 @@ impl Padder {
     //         self.get_total_max_source_len() + 1)
     // }
 
-    pub fn format_source_dotted(&self, mut filename: String) -> String {
-        RightPadding::dot(
-            // Add a space after the filename so there's a gap until the padding starts
-            format!("{} ", filename),
-            // add +1 for the space added to the filename
-            self.get_total_max_source_len() + 1)
-    }
+    // pub fn format_source_dotted(&self, mut filename: String) -> String {
+    //     RightPadding::dot(
+    //         // Add a space after the filename so there's a gap until the padding starts
+    //         format!("{} ", filename),
+    //         // add +1 for the space added to the filename
+    //         self.get_max_source_len() + 1)
+    // }
 
-    pub fn format_file_separator_dashed(&self, left_file: String) -> String {
+    pub fn format_dryrun_file_separator(&self, left_file: String) -> String {
         let padded_separator = RightPadding::dash(
             // Add a space to the left so there's a gap between the previous file and the separator
             format!(" {}", SEPARATOR_DRY_RUN_RIGHT_TO_LEFT),
@@ -338,7 +422,7 @@ impl Padder {
         format!("{} ", padded_separator)
     }
 
-    pub fn format_file_separator_emdashed(&self, left_file: String) -> String {
+    pub fn format_write_file_separator(&self, left_file: String) -> String {
         let padded_separator = LeftPadding::em_dash(
             // Add a space to the left so there's a gap between the file and the separator
             format!("{} ", SEPARATOR_COPY_MOVE),
@@ -351,7 +435,7 @@ impl Padder {
     pub fn format_dryrun_status_separator_dotted(&self, left_file: String) -> String {
         let padded_separator = RightPadding::dot(
             // Add a space to the left so there's a gap between the target file and the separator
-            format!(" {}", SEPARATOR_STATUS),
+            format!(" {}", SEPARATOR_OP_STATUS),
             // add +1 for the space added before the separator
             self.get_dryrun_status_separator_padding_len(left_file) + 1);
         // Add a space to the right so there's a gap between the separator and the source file
@@ -361,7 +445,7 @@ impl Padder {
     pub fn format_write_status_separator_dotted(&self, left_file: String) -> String {
         let padded_separator = RightPadding::dot(
             // Add a space to the left so there's a gap between the target file and the separator
-            format!(" {}", SEPARATOR_STATUS),
+            format!(" {}", SEPARATOR_OP_STATUS),
             // add +1 for the space added before the separator
             self.get_write_status_separator_padding_len(left_file) + 1);
         // Add a space to the right so there's a gap between the separator and the source file
@@ -379,31 +463,31 @@ impl Padder {
     //         self.get_total_max_source_len() + 1)
     // }
 
-    pub fn format_source_file_left_dashed(&self, mut source_filename: String, padded_target_filename_length: String) -> String {
-        // Add a space before the filename so there's a gap until the padding starts
-        source_filename.insert_str(0, " ");
-        LeftPadding::dash(
-            format!("{}", source_filename),
-            // add +1 for the space added to the filename
-            // self.get_source_padding_len())
-        self.get_source_padding_len(padded_target_filename_length) + 1)
-    }
+    // pub fn format_source_file_left_dashed(&self, mut source_filename: String, padded_target_filename_length: String) -> String {
+    //     // Add a space before the filename so there's a gap until the padding starts
+    //     source_filename.insert_str(0, " ");
+    //     LeftPadding::dash(
+    //         format!("{}", source_filename),
+    //         // add +1 for the space added to the filename
+    //         // self.get_source_padding_len())
+    //     self.get_dryrun_source_padding_len(padded_target_filename_length) + 1)
+    // }
 
-    pub fn format_target_file_indented(&self, mut filename: String, indent_level: usize) -> String {
-        // Add a space after the filename so there's a gap until the padding starts
-        filename.push(' ');
-        indent_string(indent_level, filename)
-    }
+    // pub fn format_target_file_indented(&self, mut filename: String, indent_level: usize) -> String {
+    //     // Add a space after the filename so there's a gap until the padding starts
+    //     filename.push(' ');
+    //     indent_string(indent_level, filename)
+    // }
 
-    pub fn format_source_file_indented_em_dashed(&self, mut filename: String) -> String {
-        // Add a space after the filename so there's a gap until the padding starts
-        filename.push(' ');
-        RightPadding::em_dash(
-            filename,
-            self.get_total_max_source_len()
-                // add +1 for the space added to the filename
-                + 1)
-    }
+    // pub fn format_source_file_indented_em_dashed(&self, mut filename: String) -> String {
+    //     // Add a space after the filename so there's a gap until the padding starts
+    //     filename.push(' ');
+    //     RightPadding::em_dash(
+    //         filename,
+    //         self.get_max_source_len()
+    //             // add +1 for the space added to the filename
+    //             + 1)
+    // }
 
 }
 
@@ -444,7 +528,7 @@ impl LeftPadding {
     }
 }
 
-pub const SEPARATOR_STATUS: &'static str = "...";
+pub const SEPARATOR_OP_STATUS: &'static str = "...";
 pub const SEPARATOR_DRY_RUN_LEFT_TO_RIGHT: &'static str = "--->";
 pub const SEPARATOR_DRY_RUN_RIGHT_TO_LEFT: &'static str = "<---";
 pub const SEPARATOR_COPY_MOVE: &'static str = "───>";

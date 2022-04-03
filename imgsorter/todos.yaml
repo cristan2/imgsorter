@@ -3,6 +3,8 @@
 - stats for dry run
 - additional file formats - amr, etc
 - documentation - readme + main flows
+- verbose option - output more info
+- dry run - option to not print everything, truncate after e.g. 5 files in same folder with same status (but save everything to log)
 
 [ ] 1 - CLI / config file args
     [x] CLI or config file?
@@ -57,7 +59,9 @@
     [ ] i - move map methods to *DeviceTree
     [ ] k - Reimplement is_source_unique
     [ ] g - Store total count of files and maybe file size when reading source files
-    [ ] h - Fix/refactor/improve paddig calculation
+    [ ] h - Fix/refactor/improve padding calculation
+    [ ] i - Move operation statuses to map and calculate max header and separator lengths based on them
+    [ ] RightPadding & ColoredString should take both &str and String
 
 [ ] 6 - Misc / bugs
     [x] a - change copy to rename
@@ -72,6 +76,8 @@
     [x] only create device name subdirs if there's more than one
     [x] option to always create device name subdirs even if there's only one
     [x] string padding for dry run
+    [ ] device_tree.max_dir_path_len ignores the length of oneoffs dir
+        - having a long dir name leads to panic!
 
 [ ] 7 - Nice to have
     [ ] a - undo ?

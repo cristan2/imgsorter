@@ -483,6 +483,11 @@ fn main() -> Result<(), std::io::Error> {
         stats.set_time_fetch_dirs(time_fetching_dirs.elapsed());
     }
 
+    // Needs to be created after checking for recursive source dirs,
+    // since we need to pass args.has_multiple_sources()
+    // let mut padder = Padder::new(args.has_multiple_sources());
+    let mut padder = Padder::new(args.has_multiple_sources());
+
     /*****************************************************************************/
     /* ---                        Read source files                          --- */
     /*****************************************************************************/
@@ -855,6 +860,15 @@ fn write_target_dir_files(
         padder.add_extra_source_chars_from_str(FILE_TREE_INDENT);
         padder.add_extra_source_chars_from_str(FILE_TREE_ENTRY);
 
+        // TODO 5i: Refactor operation statuses and calculate this programatically
+        let status_width = 20;
+        let header_separator = padder.format_dryrun_header_separator(status_width);
+        println!();
+        println!("{}", ColoredString::bold_white(header_separator.as_str()));
+        println!("{}", ColoredString::bold_white(
+            padder.format_dryrun_header(status_width).as_str()));
+        println!("{}", ColoredString::bold_white(header_separator.as_str()));
+
         // // TODO can this be a single field instead of two?
         // if args.has_multiple_sources() {
         //     new_dir_tree.max_source_path_len = new_dir_tree.max_source_path_len + _extra_indents_len
@@ -866,6 +880,13 @@ fn write_target_dir_files(
         let start_status = format!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
         println!("{}", ColoredString::bold_white(start_status.as_str()));
         println!();
+
+        let status_width = 20;
+        let header_separator = padder.format_write_header_separator(status_width);
+        println!("{}", ColoredString::bold_white(header_separator.as_str()));
+        println!("{}", ColoredString::bold_white(
+            padder.format_write_header(status_width).as_str()));
+        println!("{}", ColoredString::bold_white(header_separator.as_str()));
     }
 
     // let dir_padding_width = {
@@ -972,9 +993,13 @@ fn write_target_dir_files(
             let target_dir_exists = dry_run_check_target_exists(&date_destination_path);
 
             // Print everything together
-            println!("{dir_devices} {dir_status}",
-                     dir_devices=padder.format_date_dir(date_dir_name_with_device_status),
-                     dir_status=target_dir_exists);
+            println!("{}",
+                ColoredString::bold_white(
+                format!("{dir_devices} {dir_status}",
+                        dir_devices=padder.format_dryrun_date_dir(date_dir_name_with_device_status),
+                        dir_status=target_dir_exists)
+                    .as_str())
+            );
         }
 
 
@@ -1037,7 +1062,7 @@ fn write_target_dir_files(
                     //     padder.get_total_padding_len());
 
                     // Add tree indents and padding to dir name
-                    let padded_indented_device_dir_name = padder.format_device_dir(dir_name);
+                    let padded_indented_device_dir_name = padder.format_dryrun_device_dir(dir_name);
 
                     // Check restrictions - if target exists
                     let target_dir_status_check = dry_run_check_target_exists(&device_path);
@@ -1107,7 +1132,7 @@ fn write_target_dir_files(
                         //     padded_target_filename.clone()
                         // );
                         // Add padding (normal dashes) to the separator
-                        let padded_separator = padder.format_file_separator_dashed(indented_target_filename.clone());
+                        let padded_separator = padder.format_dryrun_file_separator(indented_target_filename.clone());
 
                         // let padded_source_path = padder.format_source_dotted(file.get_source_display_name_str(args));
                         let source_path = file.get_source_display_name_str(args);
@@ -1142,7 +1167,7 @@ fn write_target_dir_files(
 
                         let source_path = file.get_source_display_name_str(args);
 
-                        let padded_separator = padder.format_file_separator_emdashed(source_path.clone());
+                        let padded_separator = padder.format_write_file_separator(source_path.clone());
 
                         let stripped_target_path = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
 
