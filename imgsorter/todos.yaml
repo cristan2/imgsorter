@@ -61,6 +61,7 @@
     [ ] g - Store total count of files and maybe file size when reading source files
     [x] h - Fix/refactor/improve padding calculation
     [ ] i - Move operation statuses to map and calculate max header and separator lengths based on them
+    [ ] m - move `if args.source_recursive` to Args constructor
     [ ] RightPadding & ColoredString should take both &str and String
     [ ] cache result of padding length calculations and other improvements
 
@@ -95,5 +96,6 @@
     [ ] after move, leave a txt file in place named "where are my photos" which explains where they were moved (process summary); have option to disable this
     [x] colored text
     [ ] more comments and examples for Padder methods + rearrange more logically
+    [ ] increase padding spaces from 1 to 2
 
 [ ] 8 - Cleanup

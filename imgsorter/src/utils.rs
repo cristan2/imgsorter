@@ -249,6 +249,7 @@ impl Padder {
         self.get_dryrun_total_padding_len()
             - target_len
             - 1
+            // TODO why do we need this 2 times?
             - SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count()
             - SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count()
     }

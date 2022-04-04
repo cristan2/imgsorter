@@ -425,16 +425,6 @@ impl SupportedFile {
         String::from(self.file_name.to_str().unwrap())
     }
 
-    // TODO remove and use file_path directly
-    pub fn get_file_path_ref(&self) -> &PathBuf {
-        &self.file_path
-    }
-
-    // TODO remove and use file_path directly
-    pub fn get_device_name_ref(&self) -> &Option<String> {
-        &self.device_name
-    }
-
     /// Return a string representation of the source file or path.
     /// If there are multiple sources, return the full absolute path
     /// If there is a single source, return only the filename,
@@ -454,8 +444,6 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut stats = FileStats::new();
 
-    let mut padder = Padder::new(args.has_multiple_sources());
-
     if DBG_ON {
         dbg!(&args);
     }
@@ -465,6 +453,7 @@ fn main() -> Result<(), std::io::Error> {
     /* ---                        Read source dirs                           --- */
     /*****************************************************************************/
 
+    // TODO 5m: move to Args::new_from_toml
     if args.source_recursive {
 
         if DBG_ON { println!("> Fetching source directories list recursively..."); }
@@ -845,9 +834,6 @@ fn write_target_dir_files(
     if is_dry_run {
         // TODO need to pre-calculate max-depth length
         // TODO FILE_TREE_INDENT is not required when there's only one level (i.e. one single device throughout)
-        // let _extra_indents_len =
-        //     String::from(FILE_TREE_INDENT).chars().count()
-        //         + String::from(FILE_TREE_ENTRY).chars().count();
 
         padder.add_extra_source_chars_from_str(FILE_TREE_INDENT);
         padder.add_extra_source_chars_from_str(FILE_TREE_ENTRY);
@@ -861,12 +847,6 @@ fn write_target_dir_files(
             padder.format_dryrun_header(status_width).as_str()));
         println!("{}", ColoredString::bold_white(header_separator.as_str()));
 
-        // // TODO can this be a single field instead of two?
-        // if args.has_multiple_sources() {
-        //     new_dir_tree.max_source_path_len = new_dir_tree.max_source_path_len + _extra_indents_len
-        // } else {
-        //     new_dir_tree.max_filename_len = new_dir_tree.max_filename_len + _extra_indents_len
-        // }
     } else {
         println!();
         let start_status = format!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
@@ -880,64 +860,6 @@ fn write_target_dir_files(
             padder.format_write_header(status_width).as_str()));
         println!("{}", ColoredString::bold_white(header_separator.as_str()));
     }
-
-    // let dir_padding_width = {
-        if is_dry_run {
-            // TODO can be calculated and set earlier, not here
-            // let _source_len = if args.has_multiple_sources() {
-            //     new_dir_tree.max_source_path_len
-            // } else {
-            //     new_dir_tree.max_filename_len
-            // };
-
-            // // TODO temporary
-            // let _source_len = padder.get_total_max_source_len();
-            //
-            // // TODO to be converted into Padder::_total_max_len
-            // let _total_padding_width = {
-            //     _source_len
-            //         + 1 // add +1 for the gap between a filename and its padding
-            //         + SEPARATOR_DRY_RUN.chars().count()
-            //         // + new_dir_tree.max_target_path_len
-            //         + padder.get_total_max_target_len()
-            //         + SEPARATOR_STATUS.chars().count()
-            //         + 1 // add +1 for the gap between a path and its padding
-            //         + 1 // add +1 for the gap between a path and the operation status
-            // };
-
-            // TODO redo headers
-            /*
-            // TODO 5h: fix padding
-            // Also print headers now
-            {
-                // TODO Padding::format_header_source
-                let source_padding = RightPadding::space(
-                    String::from("SOURCE PATH"),
-                    padder.get_total_max_source_len()
-                        + 1 // add +1 for the gap between a filename and its padding
-                        + SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count()
-                );
-
-                // TODO Padding::format_header_target
-                let target_padding = RightPadding::space(
-                    // String::from("TARGET FILE"), new_dir_tree.max_target_path_len);
-                    String::from("TARGET FILE"), padder.get_total_max_target_len());
-
-                // TODO Padding::format_header_separator
-                let heading = "-".repeat(padder.get_total_padding_len());
-
-                println!("{}", &heading);
-                println!("{}{}", source_padding, target_padding);
-                println!("{}", heading);
-            }
-            */
-
-
-            // Some(_total_padding_width)
-        // } else {
-        //     None
-        // }
-    };
 
 
     /*****************************************************************************/
@@ -974,12 +896,6 @@ fn write_target_dir_files(
                     filestr = _file_count_str,
                     filesize = get_file_size_string(file_size_for_date))
             };
-
-            // TODO replace with Padding::format_date_dir
-            // let padded_date_dir_name_with_device_status = RightPadding::dot(
-            //     date_dir_name_with_device_status,
-            //     // safe to unwrap for dry runs
-            //     padder.get_total_padding_len());
 
             // Check restrictions - if target exists
             let target_dir_exists = dry_run_check_target_exists(&date_destination_path);
@@ -1284,7 +1200,7 @@ fn copy_file_if_not_exists(
 
     } else {
 
-        let copy_result = fs::copy(file.get_file_path_ref(), &destination_path);
+        let copy_result = fs::copy(&file.file_path, &destination_path);
 
         match copy_result {
 
@@ -1294,13 +1210,13 @@ fn copy_file_if_not_exists(
                 // If this is a MOVE, delete the source file after a successful copy and append status
                 let (_delete_failed_opt, delete_result_str) = if !args.copy_not_move {
 
-                    let delete_result = fs::remove_file(file.get_file_path_ref());
+                    let delete_result = fs::remove_file(&file.file_path);
 
                     match delete_result {
                         Ok(_) =>
                             (Some(false), String::from(" (source file removed)")),
                         Err(e) => {
-                            if DBG_ON { eprintln!("File delete error: {:?}: ERROR {:?}", file.get_file_path_ref(), e) };
+                            if DBG_ON { eprintln!("File delete error: {:?}: ERROR {:?}", &file.file_path, e) };
                             stats.inc_error_file_delete();
                             (Some(true), ColoredString::red(
                                 format!(" (error removing source: {:?})", e.description()).as_str()))
@@ -1330,7 +1246,7 @@ fn copy_file_if_not_exists(
 
             // Could not create target file, log error and don't even attempt to delete source
             Err(err) => {
-                eprintln!("File copy error: {:?}: ERROR {:?}", file.get_file_path_ref(), err);
+                eprintln!("File copy error: {:?}: ERROR {:?}", &file.file_path, err);
                 // TODO 5c: log error info
                 stats.inc_error_file_create();
                 ColoredString::red("ERROR")
@@ -1345,10 +1261,11 @@ fn create_subdir_if_required(
     stats: &mut FileStats
 ) {
     if target_subdir.exists() {
-        if DBG_ON {
-            println!("> target subdir exists: {}",
-                     &target_subdir.strip_prefix(&args.target_dir).unwrap().display());
-        }
+        println!();
+        println!("{}",
+                 ColoredString::orange(
+                     format!("[Folder {} already exists]",
+                             target_subdir.strip_prefix(&args.target_dir).unwrap().display()).as_str()));
     } else {
         // TODO 5x: same as fs::create_dir_all()
         let subdir_creation = DirBuilder::new()
