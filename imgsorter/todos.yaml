@@ -62,6 +62,7 @@
     [x] h - Fix/refactor/improve padding calculation
     [ ] i - Move operation statuses to map and calculate max header and separator lengths based on them
     [ ] m - move `if args.source_recursive` to Args constructor
+    [ ] n - don't make isolate_single_images consuming
     [ ] RightPadding & ColoredString should take both &str and String
     [ ] cache result of padding length calculations and other improvements
 
@@ -73,13 +74,13 @@
     [x] e - run with debug - optional debug printouts
     [ ] f - handle source path not exists / guard against setting invalid CliArgs values
     [ ] g - fix edge cases for moving assorted files ()
-    [ ] filename padding during dry runs is sometimes bigger
+    [ ] h - filename padding during dry runs is sometimes bigger
+          - should be calculated as max (target_path_len + depth_len)
     [x] create_subdir_if_required shouldn't rely on CWD to strip prefix
     [x] only create device name subdirs if there's more than one
     [x] option to always create device name subdirs even if there's only one
     [x] string padding for dry run
-    [x] device_tree.max_dir_path_len ignores the length of oneoffs dir
-        - having a long dir name leads to panic!
+    [x] device_tree.max_dir_path_len ignores the length of oneoffs dir - having a long dir name leads to panic!
 
 [ ] 7 - Nice to have
     [ ] a - undo ?

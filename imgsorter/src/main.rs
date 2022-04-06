@@ -808,6 +808,7 @@ fn parse_dir_contents(
     }
 
     // This is a consuming call for now, so needs reassignment
+    // TODO 5n: it shouldn't be consuming
     new_dir_tree = new_dir_tree.isolate_single_images(args);
 
     // The max path length can only be computed after the tree has been filled with devices and files
@@ -832,9 +833,8 @@ fn write_target_dir_files(
     // Dry runs will output a dir-tree-like structure, so add the additional
     // indents and markings to the max length to be taken into account when padding
     if is_dry_run {
-        // TODO need to pre-calculate max-depth length
-        // TODO FILE_TREE_INDENT is not required when there's only one level (i.e. one single device throughout)
-
+        // TODO 5h need to pre-calculate max-depth length
+        // TODO 5h FILE_TREE_INDENT is not required when there's only one level (i.e. one single device throughout)
         padder.add_extra_source_chars_from_str(FILE_TREE_INDENT);
         padder.add_extra_source_chars_from_str(FILE_TREE_ENTRY);
 
@@ -1267,14 +1267,8 @@ fn create_subdir_if_required(
                      format!("[Folder {} already exists]",
                              target_subdir.strip_prefix(&args.target_dir).unwrap().display()).as_str()));
     } else {
-        // TODO 5x: same as fs::create_dir_all()
-        let subdir_creation = DirBuilder::new()
-            // create subdirs along the path as required
-            // recursive + create doesn't return Err if dir exists
-            .recursive(true)
-            .create(target_subdir);
 
-        match subdir_creation {
+        match fs::create_dir_all(target_subdir) {
             Ok(_) => {
                 stats.inc_dirs_created();
                 println!();
@@ -1284,7 +1278,7 @@ fn create_subdir_if_required(
                             target_subdir.strip_prefix(&args.target_dir).unwrap().display()).as_str()));
             },
             Err(e) => {
-                // TODO 2f: handle dir creation fail
+                // TODO 2f: handle dir creation fail?
                 stats.inc_error_dir_create();
                 println!("Failed to create folder {}: {:?}",
                          target_subdir.strip_prefix(&args.target_dir).unwrap().display(),

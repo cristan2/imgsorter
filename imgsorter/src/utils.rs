@@ -1,7 +1,5 @@
-use std::collections::hash_set::Iter;
 use std::collections::HashSet;
 use std::cmp::max;
-use std::iter::Cloned;
 use std::ffi::OsString;
 use std::io::Write;
 
@@ -87,8 +85,7 @@ pub struct Padder {
     ///   e.g. `2019.01.28\Canon 100` or just `2019.01.28`
     pub target_relative_path_max_len: usize,
 
-    // Length of any additional glyphs or words which are added to the source file
-    // when printed, such as dir tree indents or other separators
+    // Length of any additional dir tree symbols which are prepended to the target file
     pub extra_source_chars: usize,
 }
 
@@ -214,13 +211,23 @@ impl Padder {
     /// The calculation is based assuming the target file is printed to the left of the separator
     fn get_dryrun_file_separator_padding_len(&self, indented_target_filename: String) -> usize {
         let indented_target_filename_length = get_string_char_count(indented_target_filename);
-        self.get_dryrun_max_target_len()
-            + SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count()
-            - indented_target_filename_length
+
+        let max_target_len =
+            self.get_dryrun_max_target_len()
+                + SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count();
+
+        if max_target_len > indented_target_filename_length {
+            max_target_len - indented_target_filename_length
+        } else {
+            // if for some reason max_target_len is less than indented_target_filename_length,
+            // just return the minimum length for a separator
+            SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count()
+        }
+
     }
 
     /// This should fill the space between the current filename and the maximum source filename length.
-    /// The calculation is based assuming the source path is printed to the left of the separator
+    /// The calculation assumes the source path is printed to the left of the separator
     fn get_write_file_separator_padding_len(&self, source_path: String) -> usize {
         let source_path_length = get_string_char_count(source_path);
         self.get_source_len()
