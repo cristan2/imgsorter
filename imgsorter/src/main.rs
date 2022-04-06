@@ -51,16 +51,12 @@ impl DeviceTree {
 ///  └─ [assorted]
 ///  │   └─ single.file
 /// ```
-/// Additionally, the struct
 struct TargetDateDeviceTree {
     dir_tree: BTreeMap<String, DeviceTree>,
-    max_filename_len: usize,
-    max_source_path_len: usize,
-    max_target_path_len: usize
 }
 
 /// Just output a simple list of filenames for now
-impl fmt::Display for  TargetDateDeviceTree {
+impl fmt::Display for TargetDateDeviceTree {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let file_names: Vec<String> = self.dir_tree
             .iter()
@@ -88,14 +84,11 @@ impl TargetDateDeviceTree {
     fn new() -> TargetDateDeviceTree {
         TargetDateDeviceTree {
             dir_tree: BTreeMap::new(),
-            max_filename_len: 0,
-            max_source_path_len: 0,
-            max_target_path_len: 0,
         }
     }
 
     /// Iterate all files in this this map and move all files which are in a directory with
-    /// less than args.min_files_per_dir into a new separate directory called [DEFAULT_ONEOFFS_DIR_NAME].
+    /// less than args.min_files_per_dir into a new separate directory (see [Args::oneoffs_dir_name])
     ///
     /// In practice, this should avoid creating date dirs which contain a single file. Instead,
     /// all such one-offs will be placed together in a single directory.
@@ -158,13 +151,15 @@ impl TargetDateDeviceTree {
         self
     }
 
-    // Find the maximum length of the path string that may be present in the output
-    // This can only be computed after the tree has been filled with devices and files
-    // because of the requirement to only create device subdirs if there are at least 2 devices
-    // Resulting value covers two cases:
-    // - there's at least one date dir with >1 devices subdirs: compute path length to include `date/device_name/file_name`
-    // - there's no date dir with >1 devices: compute path length to include `date/file_name`
-    fn compute_max_path_len(&mut self) {
+    /// Find the maximum length of the path string that may be present in the output
+    /// This can only be computed after the tree has been filled with devices and files
+    /// because of the requirement to only create device subdirs if there are at least 2 devices
+    /// The resulting value covers two cases:
+    /// - there's at least one date dir with >1 device subdirs -> target path length will be formed of `date/device_name`
+    /// - there's no date dir with >1 devices -> target path will just include `date`
+    /// Note: this must be called AFTER [Self::isolate_single_images()] so that the length of
+    /// the oneoffs directory can be taken into account, if present
+    fn compute_max_path_len(&mut self, args: &Args) -> usize {
         let max_date_dir_path_len = &self.dir_tree.iter()
             // filter only date dirs with at least 2 devices
             .filter(|(_, device_tree)| device_tree.file_tree.keys().clone().len() > 1 )
@@ -172,13 +167,20 @@ impl TargetDateDeviceTree {
             .map(|(_, device_tree)| device_tree.max_dir_path_len)
             .max();
 
-        if max_date_dir_path_len.is_some() {
-            // add +1 for the length of the separator between dirs and filename
-            self.max_target_path_len = max_date_dir_path_len.clone().unwrap() + 1 + &self.max_filename_len;
-        } else {
-            // add +10 for the length of date dirs, e.g. 2016.12.29
-            // add +1 for the length of the separator between date and filename
-            self.max_target_path_len = 10 + 1 + &self.max_filename_len;
+        // We also need to account for the presence of a a oneoff directory. This is computed separately
+        // and would not have been considered when setting `max_dir_path_len` during the initial iteration
+        // If present, we compare its length now to the previous max. If not, assume 0 so we can ignore it
+        let has_oneoffs_dir = &self.dir_tree.contains_key(args.oneoffs_dir_name.as_str());
+        let oneoffs_dir_len = if *has_oneoffs_dir {
+            get_string_char_count(args.oneoffs_dir_name.clone())
+        } else {0};
+
+        match *max_date_dir_path_len {
+            Some(max_dir_path_len) =>
+                max(max_dir_path_len, oneoffs_dir_len),
+            None =>
+                // default 10 for the length of date dirs, e.g. 2016.12.29
+                max(10, oneoffs_dir_len)
         }
     }
 }
@@ -419,29 +421,28 @@ impl SupportedFile {
         self.metadata.is_dir()
     }
 
-    pub fn get_file_name_ref(&self) -> &OsString {
-        &self.file_name
+    pub fn get_file_name_str(&self) -> String {
+        String::from(self.file_name.to_str().unwrap())
     }
 
-    pub fn get_file_path_ref(&self) -> &PathBuf {
-        &self.file_path
-    }
-
-    pub fn get_device_name_ref(&self) -> &Option<String> {
-        &self.device_name
+    /// Return a string representation of the source file or path.
+    /// If there are multiple sources, return the full absolute path
+    /// If there is a single source, return only the filename,
+    /// since the full path will always be the same
+    pub fn get_source_display_name_str(&self, args: &Args) -> String {
+        if args.has_multiple_sources() {
+            format!("{}", self.file_path.display().to_string())
+        } else {
+            format!("{}", self.file_name.to_str().unwrap())
+        }
     }
 }
 
 fn main() -> Result<(), std::io::Error> {
 
-    let mut stats = FileStats::new();
-
-
-    /*****************************************************************************/
-    /* ---                     Read or set args                              --- */
-    /*****************************************************************************/
-
     let mut args = Args::new_from_toml("imgsorter.toml")?;
+
+    let mut stats = FileStats::new();
 
     if DBG_ON {
         dbg!(&args);
@@ -452,6 +453,7 @@ fn main() -> Result<(), std::io::Error> {
     /* ---                        Read source dirs                           --- */
     /*****************************************************************************/
 
+    // TODO 5m: move to Args::new_from_toml
     if args.source_recursive {
 
         if DBG_ON { println!("> Fetching source directories list recursively..."); }
@@ -467,6 +469,11 @@ fn main() -> Result<(), std::io::Error> {
 
         stats.set_time_fetch_dirs(time_fetching_dirs.elapsed());
     }
+
+    // Needs to be created after checking for recursive source dirs,
+    // since we need to pass args.has_multiple_sources()
+    // let mut padder = Padder::new(args.has_multiple_sources());
+    let mut padder = Padder::new(args.has_multiple_sources());
 
     /*****************************************************************************/
     /* ---                        Read source files                          --- */
@@ -576,7 +583,7 @@ fn main() -> Result<(), std::io::Error> {
     // Iterate files, read modified date and create subdirs
     // Copy images and videos to subdirs based on modified date
     let time_parsing_files = Instant::now();
-    let mut target_dir_tree = parse_dir_contents(source_contents, &args, &mut stats);
+    let mut target_dir_tree = parse_dir_contents(source_contents, &args, &mut stats, &mut padder);
 
     stats.set_time_parse_files(time_parsing_files.elapsed());
 
@@ -584,7 +591,7 @@ fn main() -> Result<(), std::io::Error> {
     if !target_dir_tree.dir_tree.is_empty() {
         // Iterate files and either copy/move to subdirs as necessary
         // or do a dry run to simulate a copy/move pass
-        write_target_dir_files(&mut target_dir_tree, source_unique_files, &args, &mut stats);
+        write_target_dir_files(&mut target_dir_tree, source_unique_files, &args, &mut stats, &mut padder);
     }
 
     // Record time taken
@@ -715,7 +722,8 @@ fn read_supported_files(
 fn parse_dir_contents(
     source_dir_contents: Vec<Vec<DirEntry>>,
     args: &Args,
-    stats: &mut FileStats
+    stats: &mut FileStats,
+    padder: &mut Padder
 ) -> TargetDateDeviceTree {
 
     let mut new_dir_tree: TargetDateDeviceTree = TargetDateDeviceTree::new();
@@ -752,29 +760,30 @@ fn parse_dir_contents(
 
                     // TODO 5i: replace these with single method in DateDeviceTree
                     // Attach file's date as a new subdirectory to the current target path
-                    let all_devices_for_this_date = new_dir_tree
-                        .dir_tree
-                        .entry(file_date)
-                        .or_insert(DeviceTree::new());
+                    let devicetree_for_this_date = {
+                        new_dir_tree
+                            .dir_tree
+                            .entry(file_date)
+                            .or_insert(DeviceTree::new())
+                    };
 
                     // TODO 5i: replace these with single method in DeviceTree
-                    let all_files_for_this_device = all_devices_for_this_date
-                        .file_tree
-                        .entry(file_device)
-                        .or_insert(Vec::new());
+                    let all_files_for_this_device = {
+                        devicetree_for_this_date
+                            .file_tree
+                            .entry(file_device)
+                            .or_insert(Vec::new())
+                    };
 
                     // Store the string lengths of the file name and path for padding in stdout
-                    let _filename_len = String::from(current_file.file_name.clone().to_str().unwrap()).chars().count();
-                    let _source_path_len = current_file.file_path.display().to_string().chars().count();
-
                     let _device_name_len = current_file.device_name.clone().map(|d| d.chars().count()).unwrap_or(0);
                     let _date_name_str = &current_file.date_str.chars().count();
                     // add +1 for each path separator character
                     let total_target_path_len = _date_name_str + 1 + _device_name_len;
 
-                    new_dir_tree.max_filename_len = max(new_dir_tree.max_filename_len, _filename_len);
-                    new_dir_tree.max_source_path_len = max(new_dir_tree.max_source_path_len, _source_path_len);
-                    all_devices_for_this_date.max_dir_path_len = max(all_devices_for_this_date.max_dir_path_len, total_target_path_len);
+                    padder.set_max_source_filename_from_str(current_file.file_name.clone().to_str().unwrap());
+                    padder.set_max_source_path(get_string_char_count(current_file.file_path.display().to_string()));
+                    devicetree_for_this_date.max_dir_path_len = max(devicetree_for_this_date.max_dir_path_len, total_target_path_len);
 
                     // Add file to dir tree
                     all_files_for_this_device.push(current_file);
@@ -783,7 +792,7 @@ fn parse_dir_contents(
                 FileType::Unknown => {
                     stats.inc_unknown_skipped();
                     if DBG_ON {
-                        println!("Skipping unknown file {:?}", current_file.get_file_name_ref())
+                        println!("Skipping unknown file {}", current_file.get_file_name_str())
                     }
                 }
             }
@@ -803,7 +812,7 @@ fn parse_dir_contents(
 
     // The max path length can only be computed after the tree has been filled with devices and files
     // because of the requirement to only create device subdirs if there are at least 2 devices
-    new_dir_tree.compute_max_path_len();
+    padder.set_max_target_path(new_dir_tree.compute_max_path_len(args));
 
     return new_dir_tree;
 }
@@ -814,7 +823,8 @@ fn write_target_dir_files(
     // For dry runs, this represents a vector of unique files per each source dir
     source_unique_files: Option<Vec<HashSet<OsString>>>,
     args: &Args,
-    mut stats: &mut FileStats
+    mut stats: &mut FileStats,
+    padder: &mut Padder
 ) {
 
     let is_dry_run = args.dry_run;
@@ -822,65 +832,34 @@ fn write_target_dir_files(
     // Dry runs will output a dir-tree-like structure, so add the additional
     // indents and markings to the max length to be taken into account when padding
     if is_dry_run {
-        let _extra_indents_len =
-            String::from(FILE_TREE_INDENT).chars().count()
-                + String::from(FILE_TREE_ENTRY).chars().count();
+        // TODO need to pre-calculate max-depth length
+        // TODO FILE_TREE_INDENT is not required when there's only one level (i.e. one single device throughout)
 
-        // TODO cand this be a single field instead of two?
-        if args.has_multiple_sources() {
-            new_dir_tree.max_source_path_len = new_dir_tree.max_source_path_len + _extra_indents_len
-        } else {
-            new_dir_tree.max_filename_len = new_dir_tree.max_filename_len + _extra_indents_len
-        }
+        padder.add_extra_source_chars_from_str(FILE_TREE_INDENT);
+        padder.add_extra_source_chars_from_str(FILE_TREE_ENTRY);
+
+        // TODO 5i: Refactor operation statuses and calculate this programatically
+        let status_width = 20;
+        let header_separator = padder.format_dryrun_header_separator(status_width);
+        println!();
+        println!("{}", ColoredString::bold_white(header_separator.as_str()));
+        println!("{}", ColoredString::bold_white(
+            padder.format_dryrun_header(status_width).as_str()));
+        println!("{}", ColoredString::bold_white(header_separator.as_str()));
+
     } else {
         println!();
         let start_status = format!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
         println!("{}", ColoredString::bold_white(start_status.as_str()));
         println!();
+
+        let status_width = 20;
+        let header_separator = padder.format_write_header_separator(status_width);
+        println!("{}", ColoredString::bold_white(header_separator.as_str()));
+        println!("{}", ColoredString::bold_white(
+            padder.format_write_header(status_width).as_str()));
+        println!("{}", ColoredString::bold_white(header_separator.as_str()));
     }
-
-    let dir_padding_width = {
-        if is_dry_run {
-            let _source_len = if args.has_multiple_sources() {
-                new_dir_tree.max_source_path_len
-            } else {
-                new_dir_tree.max_filename_len
-            };
-
-            let _total_padding_width = {
-                _source_len
-                    + 1 // add +1 for the gap between a filename and its padding
-                    + SEPARATOR_DRY_RUN.chars().count()
-                    + new_dir_tree.max_target_path_len
-                    + SEPARATOR_STATUS.chars().count()
-                    + 1 // add +1 for the gap between a path and its padding
-                    + 1 // add +1 for the gap between a path and the operation status
-            };
-
-            // TODO 5h: fix padding
-            // Also print headers now
-            {
-                let source_padding = RightPadding::space(
-                    String::from("SOURCE PATH"),
-                    _source_len
-                        + 1 // add +1 for the gap between a filename and its padding
-                        + SEPARATOR_DRY_RUN.chars().count()
-                );
-                let target_padding = RightPadding::space(
-                    String::from("TARGET FILE"), new_dir_tree.max_target_path_len);
-
-                let heading = "-".repeat(_total_padding_width);
-
-                println!("{}", &heading);
-                println!("{}{}", source_padding, target_padding);
-                println!("{}", heading);
-            }
-
-            Some(_total_padding_width)
-        } else {
-            None
-        }
-    };
 
 
     /*****************************************************************************/
@@ -907,25 +886,28 @@ fn write_target_dir_files(
             let _device_count_str = if device_count_for_date == 1 {"device"} else {"devices"};
             let _file_count_str = if file_count_for_date == 1 {"file"} else {"files"};
 
-            let _dir_name_with_device_status = format!(
-                "[{dirname}] ({devicecount:?} {devicestr}, {filecount:?} {filestr}, {filesize}) ",
-                dirname=date_dir_name.clone(),
-                devicecount=device_count_for_date,
-                devicestr=_device_count_str,
-                filecount=file_count_for_date,
-                filestr=_file_count_str,
-                filesize=get_file_size_string(file_size_for_date));
-
-            let padded_dir_name = RightPadding::dot(
-                _dir_name_with_device_status,
-                // safe to unwrap for dry runs
-                dir_padding_width.unwrap());
+            let date_dir_name_with_device_status = {
+                format!(
+                    "[{dirname}] ({devicecount:?} {devicestr}, {filecount:?} {filestr}, {filesize}) ",
+                    dirname = date_dir_name.clone(),
+                    devicecount = device_count_for_date,
+                    devicestr = _device_count_str,
+                    filecount = file_count_for_date,
+                    filestr = _file_count_str,
+                    filesize = get_file_size_string(file_size_for_date))
+            };
 
             // Check restrictions - if target exists
             let target_dir_exists = dry_run_check_target_exists(&date_destination_path);
 
             // Print everything together
-            println!("{} {}", padded_dir_name, target_dir_exists);
+            println!("{}",
+                ColoredString::bold_white(
+                format!("{dir_devices} {dir_status}",
+                        dir_devices=padder.format_dryrun_date_dir(date_dir_name_with_device_status),
+                        dir_status=target_dir_exists)
+                    .as_str())
+            );
         }
 
 
@@ -938,6 +920,9 @@ fn write_target_dir_files(
             files_and_paths_vec
         ) in &devices_files_and_paths.file_tree {
 
+            // Maximum directory depth inside a date dir, starting from 0
+            // Date Dir > 0. Device Dir > 1. File
+            // Date Dir > 0. File
             let mut indent_level: usize = 0;
 
             // This condition helps prevent creating a redundant device subdir if
@@ -965,7 +950,7 @@ fn write_target_dir_files(
 
             let do_create_device_subdirs = has_at_least_one_distinct_device && !has_double_file;
 
-            // If there's more than one device, attach device dir to destination path, otherwise ignore devices
+            // If there's more than one device (including "None"), attach device dir to destination path
             let device_destination_path = if do_create_device_subdirs {
                 // This is safe to unwrap, since we've already checked the device is_some
                 let dir_name = device_name_opt.clone().unwrap();
@@ -979,21 +964,18 @@ fn write_target_dir_files(
                     indent_level += 1;
 
                     // Add tree indents and padding to dir name
-                    let _indented_dir_name: String = indent_string(0, format!("[{}] ", dir_name));
-
-                    let padded_dir_name = RightPadding::dot(
-                        _indented_dir_name,
-                        // safe to unwrap for dry runs
-                        dir_padding_width.unwrap());
+                    let padded_indented_device_dir_name = padder.format_dryrun_device_dir(dir_name);
 
                     // Check restrictions - if target exists
-                    let target_dir_exists = dry_run_check_target_exists(&device_path);
+                    let target_dir_status_check = dry_run_check_target_exists(&device_path);
 
                     // Print everything together
-                    println!("{} {}", padded_dir_name, target_dir_exists);
+                    println!("{} {}", padded_indented_device_dir_name, target_dir_status_check);
                 }
 
                 device_path
+
+            // otherwise ignore device and just use the date dir
             } else {
                 date_destination_path.clone()
             };
@@ -1011,49 +993,38 @@ fn write_target_dir_files(
 
                 // Attach filename to the directory path
                 let mut file_destination_path = device_destination_path.clone()
-                    .join(file.get_file_name_ref());
+                    .join(&file.file_name);
 
                 let (padded_filename,
                     op_separator,
                     padded_path,
-                    write_result
+                    status_separator,
+                    write_result,
                 ) = {
 
-                    // need this space after the filename so there's a gap until the padding starts
-                    // let _filename_string = format!("{} ", &file.file_name.to_str().unwrap());
-                    let _filename_string = if args.has_multiple_sources() {
-                        format!("{} ", &file.file_path.display().to_string())
-                    } else {
-                        format!("{} ", &file.file_name.to_str().unwrap())
-                    };
-
-                    let _stripped_target_path = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
-                    let padded_path = RightPadding::dot(
-                        format!("{} ", _stripped_target_path),
-                        // add +1 for the space added to the right of _stripped_target_path
-                        new_dir_tree.max_target_path_len + 1);
-
-                    // Check files and print result in this format:
-                    //  └── DSC_0002.JPG ---> 2017.03.12\DSC_0002.JPG... file will be copied
+                    // Output is different for dry-runs and copy/move operations, so print it separately
                     if is_dry_run {
 
-                        // Check restrictions - file exist or read only
+                        // Prepare padded strings for output
+                        let indented_target_filename = indent_string(indent_level, file.get_file_name_str());
+                        let padded_separator = padder.format_dryrun_file_separator(indented_target_filename.clone());
+
+                        let source_path = file.get_source_display_name_str(args);
+                        let status_separator = padder.format_dryrun_status_separator_dotted(source_path.clone());
+
+                        // Check restrictions - file exists or is read-only
                         let file_restrictions = dry_run_check_file_restrictions(&file, &file_destination_path, &source_unique_files, args);
 
-                        // Add tree indents and dry run padding (normal dashes) to file name
-                        let _indented_filename = indent_string(indent_level, _filename_string);
-                        let padded_filename = RightPadding::dash(
-                            _indented_filename,
-                            // add +1 for the space added to the right of filename_string
-                            if args.has_multiple_sources() {new_dir_tree.max_source_path_len} else {new_dir_tree.max_filename_len}
-                            + 1);
-
                         // Return everything to be printed
-                        (padded_filename, SEPARATOR_DRY_RUN, padded_path, file_restrictions)
+                        (indented_target_filename, padded_separator, source_path, status_separator, file_restrictions)
 
-                    // Copy/move files then print result in this format:
-                    // DSC_0002.JPG ───> 2017.03.12\DSC_0002.JPG... ok
                     } else {
+
+                        // Prepare padded strings for output
+                        let source_path = file.get_source_display_name_str(args);
+                        let padded_separator = padder.format_write_file_separator(source_path.clone());
+                        let stripped_target_path = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
+                        let status_separator = padder.format_write_status_separator_dotted(stripped_target_path.clone());
 
                         // Copy/move file
                         let file_write_status = copy_file_if_not_exists(
@@ -1061,29 +1032,22 @@ fn write_target_dir_files(
                             &mut file_destination_path,
                             &args, &mut stats);
 
-                        // Add copy/move padding (em dashes) to file name
-                        let padded_filename = RightPadding::em_dash(
-                            _filename_string,
-                            if args.has_multiple_sources() {new_dir_tree.max_source_path_len} else {new_dir_tree.max_filename_len}
-                            // add +1 for the space added to the right of filename_string
-                             + 1);
-
                         // Return everything to be printed
-                        (padded_filename, SEPARATOR_COPY_MOVE, padded_path, file_write_status)
+                        (source_path, padded_separator, stripped_target_path, status_separator, file_write_status)
                     }
                 };
 
-                // Print operation status
-                println!("{file}{op_separator} {path}{status_separator} {status}",
-                         file=padded_filename,
+                // Print operation status - each separator is responsible for adding its own spaces where necessary
+                println!("{left_side_file}{op_separator}{right_side_file}{status_separator}{status}",
+                         left_side_file=padded_filename,
                          op_separator=op_separator,
-                         path=padded_path,
-                         status_separator=SEPARATOR_STATUS,
+                         right_side_file=padded_path,
+                         status_separator=status_separator,
                          status=write_result);
             } // end loop files
         } // end loop device dirs
 
-        // leave some empty space before the date dir
+        // leave some empty space before the next date dir
         println!();
     } // end loop date dirs
 }
@@ -1212,18 +1176,6 @@ fn ask_for_confirmation() -> ConfirmationType {
     }
 }
 
-// TODO 6c: unused, do we need this?
-// fn print_file_list(dir_tree: HashMap<String, Vec<DirEntry>>) {
-//     dir_tree.iter().for_each(|(dir_name, dir_files)|{
-//         println!("{} ({})", dir_name, dir_files.len());
-//         for file in dir_files {
-//             let filename = &file.file_name();
-//             println!("| + {}", filename.to_str().unwrap());
-//         }
-//         // dbg!(dir_files);
-//     })
-// }
-
 fn copy_file_if_not_exists(
     file: &SupportedFile,
     destination_path: &mut PathBuf,
@@ -1248,7 +1200,7 @@ fn copy_file_if_not_exists(
 
     } else {
 
-        let copy_result = fs::copy(file.get_file_path_ref(), &destination_path);
+        let copy_result = fs::copy(&file.file_path, &destination_path);
 
         match copy_result {
 
@@ -1258,13 +1210,13 @@ fn copy_file_if_not_exists(
                 // If this is a MOVE, delete the source file after a successful copy and append status
                 let (_delete_failed_opt, delete_result_str) = if !args.copy_not_move {
 
-                    let delete_result = fs::remove_file(file.get_file_path_ref());
+                    let delete_result = fs::remove_file(&file.file_path);
 
                     match delete_result {
                         Ok(_) =>
                             (Some(false), String::from(" (source file removed)")),
                         Err(e) => {
-                            if DBG_ON { eprintln!("File delete error: {:?}: ERROR {:?}", file.get_file_path_ref(), e) };
+                            if DBG_ON { eprintln!("File delete error: {:?}: ERROR {:?}", &file.file_path, e) };
                             stats.inc_error_file_delete();
                             (Some(true), ColoredString::red(
                                 format!(" (error removing source: {:?})", e.description()).as_str()))
@@ -1294,7 +1246,7 @@ fn copy_file_if_not_exists(
 
             // Could not create target file, log error and don't even attempt to delete source
             Err(err) => {
-                eprintln!("File copy error: {:?}: ERROR {:?}", file.get_file_path_ref(), err);
+                eprintln!("File copy error: {:?}: ERROR {:?}", &file.file_path, err);
                 // TODO 5c: log error info
                 stats.inc_error_file_create();
                 ColoredString::red("ERROR")
@@ -1309,10 +1261,11 @@ fn create_subdir_if_required(
     stats: &mut FileStats
 ) {
     if target_subdir.exists() {
-        if DBG_ON {
-            println!("> target subdir exists: {}",
-                     &target_subdir.strip_prefix(&args.target_dir).unwrap().display());
-        }
+        println!();
+        println!("{}",
+                 ColoredString::orange(
+                     format!("[Folder {} already exists]",
+                             target_subdir.strip_prefix(&args.target_dir).unwrap().display()).as_str()));
     } else {
         // TODO 5x: same as fs::create_dir_all()
         let subdir_creation = DirBuilder::new()

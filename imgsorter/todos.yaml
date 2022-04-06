@@ -1,9 +1,10 @@
-- reverse paths & arrows for dry runs
 - device list in config
 - clippy
 - stats for dry run
 - additional file formats - amr, etc
 - documentation - readme + main flows
+- verbose option - output more info
+- dry run - option to not print everything, truncate after e.g. 5 files in same folder with same status (but save everything to log)
 
 [ ] 1 - CLI / config file args
     [x] CLI or config file?
@@ -58,7 +59,11 @@
     [ ] i - move map methods to *DeviceTree
     [ ] k - Reimplement is_source_unique
     [ ] g - Store total count of files and maybe file size when reading source files
-    [ ] h - Fix/refactor/improve paddig calculation
+    [x] h - Fix/refactor/improve padding calculation
+    [ ] i - Move operation statuses to map and calculate max header and separator lengths based on them
+    [ ] m - move `if args.source_recursive` to Args constructor
+    [ ] RightPadding & ColoredString should take both &str and String
+    [ ] cache result of padding length calculations and other improvements
 
 [ ] 6 - Misc / bugs
     [x] a - change copy to rename
@@ -73,6 +78,8 @@
     [x] only create device name subdirs if there's more than one
     [x] option to always create device name subdirs even if there's only one
     [x] string padding for dry run
+    [x] device_tree.max_dir_path_len ignores the length of oneoffs dir
+        - having a long dir name leads to panic!
 
 [ ] 7 - Nice to have
     [ ] a - undo ?
@@ -83,7 +90,12 @@
     [ ] how to treat existing files - skip, overwrite, rename
     [ ] how to treat files without EXIF (e.g. images received over WhatsApp)
     [ ] colored separator arrows
+    [ ] show dir tree when presenting the source paths before confirmation, instead of a simple list of paths
+        - show full path only for the sources in config, not for the recursively found subdirs
+        - maybe show no of files next to each dir
     [ ] after move, leave a txt file in place named "where are my photos" which explains where they were moved (process summary); have option to disable this
     [x] colored text
+    [ ] more comments and examples for Padder methods + rearrange more logically
+    [ ] increase padding spaces from 1 to 2
 
 [ ] 8 - Cleanup
