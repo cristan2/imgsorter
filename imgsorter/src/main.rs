@@ -283,10 +283,9 @@ impl FileStats {
 
     pub fn print_stats(&self, args: &Args) {
         let general_stats = format!(
-"---------------------------------
-Total files:             {total}
-Total size:              {size}
----------------------------------
+"-----------------------------------------
+Total files:             {total} ({size})
+-----------------------------------------
 Images moved:            {img_move}
 Images copied:           {img_copy}
 Images skipped:          {img_skip}
@@ -301,12 +300,12 @@ File create errors:      {fc_err}
 File delete errors:      {fd_err}
 Directory create errors: {dc_err}
 ---------------------------------
-Time fetching folders:   {tfetch_dir}s
-Time parsing files:      {tparse_file}s
-Time writing files:      {twrite_file}s
----------------------------------
-Total time taken:        {t_total}s
----------------------------------",
+Time fetching folders:   {tfetch_dir} sec
+Time parsing files:      {tparse_file} sec
+Time writing files:      {twrite_file} sec
+-----------------------------------------
+Total time taken:        {t_total} sec
+-----------------------------------------",
                                     total=FileStats::color_if_non_zero(self.files_count_total, OutputColor::Neutral),
                                     size=ColoredString::bold_white(get_file_size_string(self.file_size_total).as_str()),
 
