@@ -14,7 +14,7 @@ use rexif::{ExifTag, ExifResult};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use filesize::PathExt;
 
-use imgsorter::config::Args;
+use imgsorter::config::*;
 use imgsorter::utils::*;
 
 const DEFAULT_NO_DATE_STR: &'static str = "no date";
@@ -190,6 +190,7 @@ pub enum FileType {
     Unknown,
     Image,
     Video,
+    Audio,
 }
 
 pub enum ConfirmationType {
@@ -209,6 +210,9 @@ pub struct FileStats {
     vid_moved: i32,
     vid_copied: i32,
     vid_skipped: i32,
+    aud_moved: i32,
+    aud_copied: i32,
+    aud_skipped: i32,
     unknown_skipped: i32,
     dirs_ignored: i32,
     dirs_created: i32,
@@ -232,6 +236,9 @@ impl FileStats {
             vid_moved: 0,
             vid_copied: 0,
             vid_skipped: 0,
+            aud_moved: 0,
+            aud_copied: 0,
+            aud_skipped: 0,
             unknown_skipped: 0,
             dirs_ignored: 0,
             dirs_created: 0,
@@ -253,6 +260,9 @@ impl FileStats {
     pub fn inc_vid_moved(&mut self) { self.vid_moved += 1 }
     pub fn inc_vid_copied(&mut self) { self.vid_copied += 1 }
     pub fn inc_vid_skipped(&mut self) { self.vid_skipped += 1 }
+    pub fn inc_aud_moved(&mut self) { self.aud_moved += 1 }
+    pub fn inc_aud_copied(&mut self) { self.aud_copied += 1 }
+    pub fn inc_aud_skipped(&mut self) { self.aud_skipped += 1 }
     pub fn inc_unknown_skipped(&mut self) { self.unknown_skipped += 1 }
     pub fn inc_dirs_ignored(&mut self) { self.dirs_ignored += 1 }
     pub fn inc_dirs_created(&mut self) { self.dirs_created += 1 }
@@ -292,6 +302,9 @@ Images skipped:          {img_skip}
 Videos moved:            {vid_move}
 Videos copied:           {vid_copy}
 Videos skipped:          {vid_skip}
+Audio moved:             {aud_move}
+Audio copied:            {aud_copy}
+Audio skipped:           {aud_skip}
 Directories ignored:     {dir_ignore}
 Directories created:     {dir_create}
 Unknown files skipped:   {f_skip}
@@ -315,6 +328,9 @@ Total time taken:        {t_total} sec
                                     vid_move=FileStats::color_if_non_zero(self.vid_moved,OutputColor::Neutral),
                                     vid_copy=FileStats::color_if_non_zero(self.vid_copied,OutputColor::Neutral),
                                     vid_skip=FileStats::color_if_non_zero(self.vid_skipped, OutputColor::Warning),
+                                    aud_move=FileStats::color_if_non_zero(self.aud_moved,OutputColor::Neutral),
+                                    aud_copy=FileStats::color_if_non_zero(self.aud_copied,OutputColor::Neutral),
+                                    aud_skip=FileStats::color_if_non_zero(self.aud_skipped, OutputColor::Warning),
                                     dir_create=FileStats::color_if_non_zero(self.dirs_created, OutputColor::Neutral),
                                     dir_ignore=FileStats::color_if_non_zero(self.dirs_ignored, OutputColor::Warning),
                                     f_skip=FileStats::color_if_non_zero(self.unknown_skipped, OutputColor::Warning),
@@ -381,7 +397,7 @@ pub struct SupportedFile {
 impl SupportedFile {
     pub fn parse_from(dir_entry: DirEntry, source_index: usize, args: &Args) -> SupportedFile {
         let _extension = get_extension(&dir_entry);
-        let _file_type = get_file_type(&_extension);
+        let _file_type = get_file_type(&_extension, args);
         let _metadata = dir_entry.metadata().unwrap();
 
         let mut _empty_exif = ExifDateDevice {
@@ -718,7 +734,7 @@ fn parse_dir_contents(
 
             // Build final target path for this file
             match current_file.file_type {
-                FileType::Image | FileType::Video => {
+                FileType::Image | FileType::Video | FileType::Audio => {
                     let file_date = current_file.date_str.clone();
                     let file_device = current_file.device_name.clone();
 
@@ -1165,6 +1181,7 @@ fn copy_file_if_not_exists(
         match file.file_type {
             FileType::Image   => stats.inc_img_skipped(),
             FileType::Video   => stats.inc_vid_skipped(),
+            FileType::Audio   => stats.inc_aud_skipped(),
             // don't record any stats for this, shouldn't get one here anyway
             FileType::Unknown => ()
         }
@@ -1207,6 +1224,8 @@ fn copy_file_if_not_exists(
                         if args.copy_not_move || _delete_failed_opt.unwrap_or(false) { stats.inc_img_copied() } else { stats.inc_img_moved() },
                     FileType::Video   =>
                         if args.copy_not_move || _delete_failed_opt.unwrap_or(false) { stats.inc_vid_copied() } else { stats.inc_vid_moved() },
+                    FileType::Audio   =>
+                        if args.copy_not_move || _delete_failed_opt.unwrap_or(false) { stats.inc_aud_copied() } else { stats.inc_aud_moved() },
                     // don't record any stats for this, shouldn't get one here anyway
                     FileType::Unknown =>()
                 }
@@ -1282,16 +1301,40 @@ fn get_extension(file: &DirEntry) -> Option<String> {
 
 /// Determine the type of file based on the file extension
 /// Return one of Image|Video|Unknown enum types
-fn get_file_type(extension_opt: &Option<String>) -> FileType {
+fn get_file_type(extension_opt: &Option<String>, args: &Args) -> FileType {
+
+    // Closure which checks if the file's extension is defined in the custom extensions
+    let is_custom_extension = |ext: &String, file_type: &str| {
+        args.custom_extensions.get(file_type).unwrap().contains(ext)
+    };
+
     match extension_opt {
         Some(extension) => {
             match extension.to_lowercase().as_str() {
+                // "Supported" extensions
                 "jpg" | "jpeg" | "png" | "tiff" | "crw"| "nef" =>
                     FileType::Image,
                 "mp4" | "mov" | "3gp" =>
                     FileType::Video,
-                _ =>
-                    FileType::Unknown
+                "amr" =>
+                    FileType::Audio,
+
+                // User-configured extensions
+                _ => {
+                    if !args.custom_extensions.is_empty() {
+                        if is_custom_extension(extension, IMAGE) {
+                            FileType::Image
+                        } else if is_custom_extension(extension, VIDEO) {
+                            FileType::Video
+                        } else if is_custom_extension(extension, AUDIO) {
+                            FileType::Audio
+                        } else {
+                            FileType::Unknown
+                        }
+                    } else {
+                        FileType::Unknown
+                    }
+                }
             }
         }
         None =>

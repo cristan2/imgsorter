@@ -17,9 +17,9 @@ const DEFAULT_VERBOSE: bool = false;
 const DEFAULT_SOURCE_RECURSIVE: bool = false;
 static DEFAULT_ONEOFFS_DIR_NAME: &str = "Miscellaneous";
 
-const IMAGE: &str = "image";
-const VIDEO: &str = "video";
-const AUDIO: &str = "audio";
+pub const IMAGE: &str = "image";
+pub const VIDEO: &str = "video";
+pub const AUDIO: &str = "audio";
 
 // Unexposed defaults
 const DBG_ON: bool = false;

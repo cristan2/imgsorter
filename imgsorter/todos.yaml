@@ -3,9 +3,7 @@
 
 - clippy
 - stats for dry run
-- additional file formats - amr, etc
 - documentation - readme + main flows
-- verbose option - output more info
 - replace exif crate with kamadak-exif (support for HEIF)
 
 [ ] 1 - CLI / config file args
@@ -18,7 +16,8 @@
     [ ] arg flag for logfile
     [ ] skip files without EXIF (videos, images from other programs, etc.)?
     [ ] allow configurable target_sorted_subdir_name = 'imgsorted'
-    [ ] use args.debug instead of DBG_ON
+    [x] use args.debug instead of DBG_ON
+    [x] use custom extensions
 
 [x] 2 - File handling
     [x] a - subdirs by device name
@@ -45,6 +44,8 @@
     [ ] dry run specific statistics
     [ ] differentiate 'dirs created' stat between "date dirs" and "device dirs"
     [ ] stats for "could not read EXIF"
+    [ ] table-like stats instead of simple list (e.g. "Images moved/copied/skipped    0 | 10 | 2" )
+    [ ] don't include move/copy stats for copy/move operations
     [x] stats for file size
     [x] stats for time taken - prefetching dirs, parsing files, copying files
 
