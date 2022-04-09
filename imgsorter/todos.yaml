@@ -1,8 +1,12 @@
+- implement Display for Args and print before confirmation
+- dry run show unsupported extensions
+
 - clippy
 - stats for dry run
 - additional file formats - amr, etc
 - documentation - readme + main flows
 - verbose option - output more info
+- replace exif crate with kamadak-exif (support for HEIF)
 
 [ ] 1 - CLI / config file args
     [x] CLI or config file?

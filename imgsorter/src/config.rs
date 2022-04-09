@@ -20,7 +20,7 @@ const VIDEO: &str = "video";
 const AUDIO: &str = "audio";
 
 // Unexposed defaults
-pub const DBG_ON: bool = false;
+const DBG_ON: bool = false;
 const DEFAULT_TARGET_SUBDIR: &str = "imgsorted";
 
 #[derive(Debug)]
@@ -174,56 +174,64 @@ impl Args {
 
         type TomlMap = toml::map::Map<String, toml::Value>;
 
-        fn print_missing_value(value: &str) {
-            // TODO if debug_on is read from args, this should be set first
-            if DBG_ON {
-                println!("> Config key '{}' is empty, invalid or missing. Using preset default.", value);
-            }
-        }
+        // temporarily store missing keys so we can print them once we've checked all config values
+        let mut missing_vals: Vec<String> = Vec::new();
+        let mut invalid_vals: Vec<(String, String)> = Vec::new();
 
-        fn print_invalid_value(key: &str, message: &str) {
-            println!("> Config key '{}' is invalid: {}", key, message);
-        }
-
-        fn get_boolean_value(toml_table: &TomlMap, key: &str) -> Option<bool> {
+        fn get_boolean_value(toml_table: &TomlMap, key: &str, missing_vals: &mut Vec<String>) -> Option<bool> {
             let bool_opt = toml_table.get(key)
                 .map(|toml_value| toml_value.as_bool())
                 .flatten();
             
-            if bool_opt.is_none() { print_missing_value(key) };
+            if bool_opt.is_none() { missing_vals.push(String::from(key))  };
             bool_opt
         }
 
+        // Same as [get_boolean_value], but don't print if missing.
+        // Used for unexposed config values
+        fn get_boolean_value_silent(toml_table: &TomlMap, key: &str) -> Option<bool> {
+            toml_table.get(key)
+                .map(|toml_value| toml_value.as_bool())
+                .flatten()
+        }
+
         // Will always return a positive integer. If the number is negative, will return None
-        fn get_positive_integer_value(toml_table: &TomlMap, key: &str) -> Option<i64> {
+        fn get_positive_integer_value(
+            toml_table: &TomlMap,
+            key: &str,
+            missing_vals: &mut Vec<String>,
+            invalid_vals: &mut Vec<(String, String)>
+        ) -> Option<i64> {
             let value = toml_table.get(key)
                 .map(|toml_value| toml_value.as_integer())
                 .flatten();
 
             match value {
                 None => {
-                    print_missing_value(key);
+                    missing_vals.push(String::from(key));
                     None
                 },
                 Some(x) if x < 0 => {
-                    print_invalid_value(key, "Number must be greater than 0");
+                    invalid_vals.push(
+                        (String::from(key), String::from("Number must be greater than 0"))
+                    );
                     None
                 },
                 Some(x) => Some(x)
             }
         }
 
-        fn get_string_value(toml_table: &TomlMap, key: &str) -> Option<String> {
+        fn get_string_value(toml_table: &TomlMap, key: &str, missing_vals: &mut Vec<String>) -> Option<String> {
             let string_opt = toml_table.get(key)
                 .map(|toml_value| toml_value.as_str())
                 .flatten()
                 .map(|str_val| String::from(str_val));
 
-            if string_opt.is_none() { print_missing_value(key) };
+            if string_opt.is_none() { missing_vals.push(String::from(key)) };
             string_opt
         }
 
-        fn get_array_value(toml_table: &TomlMap, key: &str) -> Option<Vec<String>> {
+        fn get_array_value(toml_table: &TomlMap, key: &str, missing_vals: &mut Vec<String>) -> Option<Vec<String>> {
             let vec_opt = toml_table.get(key)
                 .map(|toml_value| toml_value.as_array())
                 .flatten()
@@ -234,11 +242,11 @@ impl Args {
                         .collect::<Vec<_>>()
                 });
 
-            if vec_opt.is_none() { print_missing_value(key) };
+            if vec_opt.is_none() { missing_vals.push(String::from(key)) };
             vec_opt
         }
 
-        fn get_strings_dict_value(toml_table: &TomlMap, key: &str) -> Option<HashMap<String, String>> {
+        fn get_strings_dict_value(toml_table: &TomlMap, key: &str, missing_vals: &mut Vec<String>) -> Option<HashMap<String, String>> {
             let dict_opt = toml_table.get(key)
                 .map(|toml_dict|{ toml_dict.as_table()})
                 .flatten()
@@ -255,7 +263,7 @@ impl Args {
                         .collect::<HashMap<String, String>>()
                 });
 
-            if dict_opt.is_none() { print_missing_value(key) };
+            if dict_opt.is_none() { missing_vals.push(String::from(key)) };
             dict_opt
         }
 
@@ -287,7 +295,7 @@ impl Args {
 
                                             // args.set_source_paths will return an error and we exit if no valid
                                             // source directories are found - there's nothing to do without a source
-                                            if let Some(source_paths) = get_array_value(&folders, "source_dirs") {
+                                            if let Some(source_paths) = get_array_value(&folders, "source_dirs", &mut missing_vals) {
                                                 args.set_source_paths(get_paths(source_paths))?;
                                             // TODO run in CWD??
                                             } else {
@@ -304,25 +312,25 @@ impl Args {
 
                                             // Not exposed in config; use for dev only
                                             // source_subdir = 'test_pics'
-                                            if let Some(source_subdir) = get_string_value(&folders, "source_subdir") {
+                                            if let Some(source_subdir) = get_string_value(&folders, "source_subdir", &mut missing_vals) {
                                                 // get_string_value already filters out empty strings, but just to be safe
                                                 if !source_subdir.is_empty() {
                                                     args.append_source_subdir(source_subdir.as_str());
                                                 }
                                             }
 
-                                            if let Some(target_dir) = get_string_value(&folders, "target_dir") {
+                                            if let Some(target_dir) = get_string_value(&folders, "target_dir", &mut missing_vals) {
                                                 // get_string_value already filters out empty strings, but just to be safe
                                                 if !target_dir.is_empty() {
                                                     args.set_target_dir(target_dir);
                                                 }
                                             }
 
-                                            if let Some(min_files_per_dir) = get_positive_integer_value(&folders, "min_files_per_dir") {
+                                            if let Some(min_files_per_dir) = get_positive_integer_value(&folders, "min_files_per_dir", &mut missing_vals, &mut invalid_vals) {
                                                 args.min_files_per_dir = min_files_per_dir;
                                             }
 
-                                            if let Some(oneoffs_dir_name) = get_string_value(&folders, "target_oneoffs_subdir_name") {
+                                            if let Some(oneoffs_dir_name) = get_string_value(&folders, "target_oneoffs_subdir_name", &mut missing_vals) {
                                                 // get_string_value already filters out empty strings, but just to be safe
                                                 if !oneoffs_dir_name.is_empty() {
                                                     args.oneoffs_dir_name = oneoffs_dir_name;
@@ -331,7 +339,7 @@ impl Args {
                                         } // end if let Some(folders)
                                     } // end Some(folders_opt)
                                     None =>
-                                        print_missing_value("folders")
+                                      missing_vals.push(String::from("folders"))
                                 } // end config folders
 
                                 /* --- Parse options --- */
@@ -340,35 +348,35 @@ impl Args {
                                     Some(options_opt) => {
                                         if let Some(options) = options_opt.as_table() {
 
-                                            if let Some(source_recursive) = get_boolean_value(&options, "source_recursive") {
+                                            if let Some(source_recursive) = get_boolean_value(&options, "source_recursive", &mut missing_vals) {
                                                 args.source_recursive = source_recursive;
                                             }
 
-                                            if let Some(dry_run) = get_boolean_value(&options, "dry_run") {
+                                            if let Some(dry_run) = get_boolean_value(&options, "dry_run", &mut missing_vals) {
                                                 args.dry_run = dry_run;
                                             }
 
-                                            if let Some(verbose) = get_boolean_value(&options, "verbose") {
+                                            if let Some(verbose) = get_boolean_value(&options, "verbose", &mut missing_vals) {
                                                 args.verbose = verbose;
                                             }
 
-                                            if let Some(copy_not_move) = get_boolean_value(&options, "copy_not_move") {
+                                            if let Some(copy_not_move) = get_boolean_value(&options, "copy_not_move", &mut missing_vals) {
                                                 args.copy_not_move = copy_not_move;
                                             }
 
-                                            if let Some(silent) = get_boolean_value(&options, "silent") {
+                                            if let Some(silent) = get_boolean_value(&options, "silent", &mut missing_vals) {
                                                 args.silent = silent;
                                             }
 
                                             // Not exposed in config; use for dev only
                                             // debug_on = true
-                                            if let Some(debug_on) = get_boolean_value(&options, "debug_on") {
+                                            if let Some(debug_on) = get_boolean_value_silent(&options, "debug_on") {
                                                 args.debug = debug_on;
                                             }
                                         }
                                     },
                                     None =>
-                                        print_missing_value("options")
+                                        missing_vals.push(String::from("options"))
 
                                 } // end config options
 
@@ -378,7 +386,7 @@ impl Args {
                                     Some(custom_data_opt) => {
                                         if let Some(custom_data) = custom_data_opt.as_table() {
 
-                                            if let Some(devices_dict) = get_strings_dict_value(custom_data, "devices") {
+                                            if let Some(devices_dict) = get_strings_dict_value(custom_data, "devices", &mut missing_vals) {
                                                 args.custom_device_names = devices_dict;
                                             }
 
@@ -386,27 +394,27 @@ impl Args {
                                                 Some(custom_extensions_opt) => {
                                                     if let Some(custom_extensions) = custom_extensions_opt.as_table() {
 
-                                                        if let Some(custom_image_ext) = get_array_value(&custom_extensions, "image") {
+                                                        if let Some(custom_image_ext) = get_array_value(&custom_extensions, "image", &mut missing_vals) {
                                                             args.custom_extensions.insert(IMAGE.to_lowercase(), vec_to_lowercase(custom_image_ext));
                                                         }
 
-                                                        if let Some(custom_video_ext) = get_array_value(&custom_extensions, "video") {
+                                                        if let Some(custom_video_ext) = get_array_value(&custom_extensions, "video", &mut missing_vals) {
                                                             args.custom_extensions.insert(VIDEO.to_lowercase(), vec_to_lowercase(custom_video_ext));
                                                         }
 
-                                                        if let Some(custom_audio_ext) = get_array_value(&custom_extensions, "audio") {
+                                                        if let Some(custom_audio_ext) = get_array_value(&custom_extensions, "audio", &mut missing_vals) {
                                                             args.custom_extensions.insert(AUDIO.to_lowercase(), vec_to_lowercase(custom_audio_ext));
                                                         }
                                                     } // end if let Some(custom_extensions)
                                                 },
                                                 None =>
-                                                    print_missing_value("extensions")
+                                                    missing_vals.push(String::from("extensions"))
                                             } // end match extensions
 
                                         } // end if let Some(custom_data)
                                     } // if let Some(custom_data_opt)
                                     None =>
-                                        print_missing_value("custom")
+                                        missing_vals.push(String::from("custom"))
                                 } // end config custom data
                             },
                             None => {
@@ -427,6 +435,18 @@ impl Args {
                 eprintln!("{}", e);
             }
         };
+
+        // Print missing and invalid values
+        if args.verbose {
+            missing_vals.iter().for_each(|key|
+                println!("> Config key '{}' is empty, invalid or missing. Using preset default.", key)
+            );
+
+            invalid_vals.iter().for_each(|(key, message)|
+                println!("> Config key '{}' is invalid: {}", key, message)
+            );
+        }
+
         Ok(args)
     }
 
@@ -467,7 +487,7 @@ impl Args {
             .iter()
             .flat_map(|s|s.to_str())
             .collect::<Vec<_>>()
-            .join("\n> ");
+            .join("\n  ");
 
         if valid_paths.is_empty() {
             println!("{}", ColoredString::red(
@@ -479,7 +499,7 @@ impl Args {
             if !list_of_invalid.is_empty() {
                 println!("{}", ColoredString::orange(
                     format!(
-                        "Some source folders were invalid and were ignored:\n> {}",
+                        "> Some source folders were invalid and were ignored:\n  {}",
                         list_of_invalid).as_str()));
             }
             self.source_dir = valid_paths;

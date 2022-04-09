@@ -6,7 +6,7 @@ use std::error::Error;
 use std::ffi::OsString;
 use std::fmt::Formatter;
 use std::iter::FromIterator;
-use std::fs::{DirEntry, DirBuilder, File, Metadata};
+use std::fs::{DirEntry, File, Metadata};
 use std::io::{Read, Seek, SeekFrom};
 use std::time::{Duration, Instant};
 
@@ -14,7 +14,7 @@ use rexif::{ExifTag, ExifResult};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use filesize::PathExt;
 
-use imgsorter::config::{DBG_ON, Args};
+use imgsorter::config::Args;
 use imgsorter::utils::*;
 
 const DEFAULT_NO_DATE_STR: &'static str = "no date";
@@ -393,7 +393,7 @@ impl SupportedFile {
         let _exif_data = match _file_type {
             // It's much faster if we only try to read EXIF for image files
             FileType::Image =>
-                read_exif_date_and_device(&dir_entry, _empty_exif),
+                read_exif_date_and_device(&dir_entry, _empty_exif, args),
             _ =>
                 _empty_exif
         };
@@ -452,7 +452,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut stats = FileStats::new();
 
-    if DBG_ON {
+    if args.debug {
         dbg!(&args);
     }
 
@@ -464,7 +464,7 @@ fn main() -> Result<(), std::io::Error> {
     // TODO 5m: move to Args::new_from_toml
     if args.source_recursive {
 
-        if DBG_ON { println!("> Fetching source directories list recursively..."); }
+        if args.verbose { println!("> Fetching source directories list recursively..."); }
         let time_fetching_dirs = Instant::now();
 
         let new_source_dirs = walk_source_dirs_recursively(&args);
@@ -472,6 +472,7 @@ fn main() -> Result<(), std::io::Error> {
             // TODO replace with Err
             panic!("Source folders are empty or don't exist");
         } else {
+            if args.verbose { println!("> ... setting {} source folder(s)", new_source_dirs.len()); }
             args.source_dir = new_source_dirs;
         }
 
@@ -561,7 +562,7 @@ fn main() -> Result<(), std::io::Error> {
             println!("> This is a dry run. No folders will be created. No files will be copied or moved.");
         }
     } else {
-        match ask_for_confirmation() {
+        match ask_for_confirmation(&args) {
             ConfirmationType::Cancel => {
                 println!("Cancelled by user, exiting.");
                 return Ok(());
@@ -624,11 +625,12 @@ fn walk_source_dirs_recursively(args: &Args) -> Vec<PathBuf> {
 
     fn walk_dir(
         source_dir: PathBuf,
-        vec_accum: &mut Vec<PathBuf>
+        vec_accum: &mut Vec<PathBuf>,
+        args: &Args
     ) -> Result<(), std::io::Error> {
 
-        if DBG_ON {
-            println!("> Reading {:?}...", &source_dir);
+        if args.verbose {
+            println!("> Reading {}...", &source_dir.display().to_string());
         }
 
         let subdirs: Vec<DirEntry> = fs::read_dir(&source_dir)?
@@ -643,7 +645,7 @@ fn walk_source_dirs_recursively(args: &Args) -> Vec<PathBuf> {
             subdirs
                 .iter()
                 .for_each(|dir_entry| {
-                    let _ = walk_dir(dir_entry.path(), vec_accum); 
+                    let _ = walk_dir(dir_entry.path(), vec_accum, args);
                 });
         };
 
@@ -655,7 +657,7 @@ fn walk_source_dirs_recursively(args: &Args) -> Vec<PathBuf> {
     args.source_dir.clone()
         .into_iter()
         .for_each(|d| {
-            walk_dir(d, &mut new_source_dirs).ok();
+            walk_dir(d, &mut new_source_dirs, args).ok();
         });
 
     new_source_dirs
@@ -681,7 +683,7 @@ fn get_source_unique_files(
             .collect::<HashSet<_>>())
         .collect::<Vec<_>>();
 
-    if DBG_ON { print_sets_with_index("source file sets before filtering", &sets_of_files); }
+    if args.debug { print_sets_with_index("source file sets before filtering for uniques", &sets_of_files); }
 
     let all_unique_files = sets_of_files
         .iter().enumerate()
@@ -690,7 +692,7 @@ fn get_source_unique_files(
             keep_unique_across_sets(&sets_of_files[0..=curr_ix]))
         .collect::<Vec<_>>();
 
-    if DBG_ON { print_sets_with_index("source file sets after filtering", &all_unique_files); }
+    if args.debug { print_sets_with_index("source file sets after filtering for uniques", &all_unique_files); }
 
     Option::from(all_unique_files)
 }
@@ -720,7 +722,7 @@ fn read_supported_files(
                 if entry.path().is_file() {
                     true
                 } else {
-                    if DBG_ON {
+                    if args.verbose {
                         println!("Recursive option is off, skipping subfolder {:?} in {:?}", entry.file_name(), source_dir.file_name().unwrap());
                     }
                     stats.inc_dirs_ignored();
@@ -750,17 +752,28 @@ fn parse_dir_contents(
 
     let mut count_so_far = 0;
 
+    // If verbose is not enabled, print a generic message to show it's working
+    // Otherwise, we'll print a progress message for each source directory
+    if !args.verbose {
+        println!("Reading source files...")
+    }
+
     for (source_ix, source_dir) in source_dir_contents.into_iter().enumerate() {
 
         let time_parsing_dir = Instant::now();
 
         let current_file_count = source_dir.len();
 
-        print_progress(format!("[{}/{}] Parsing {} files from {}... ",
-                               count_so_far,
-                               total_no_files,
-                               current_file_count,
-                               args.source_dir[source_ix].display()));
+        if args.verbose {
+            // This is the first part of the progres line for this directory
+            // See also the next [print_progress] call which prints the time taken to this same line
+            // e.g. `[3566/4239] Parsing 2 files from D:\Temp\source_path\... done (0.018 sec)`
+            print_progress(format!("[{}/{}] Parsing {} files from {}... ",
+                                   count_so_far,
+                                   total_no_files,
+                                   current_file_count,
+                                   args.source_dir[source_ix].display()));
+        }
 
         // Parse each file into its internal representation and add it to the target tree
         for entry in source_dir {
@@ -806,7 +819,7 @@ fn parse_dir_contents(
 
                 FileType::Unknown => {
                     stats.inc_unknown_skipped();
-                    if DBG_ON {
+                    if args.verbose {
                         println!("Skipping unknown file {}", current_file.get_file_name_str())
                     }
                 }
@@ -816,10 +829,15 @@ fn parse_dir_contents(
         // Record progress
         count_so_far += current_file_count;
 
-        print_progress(format!("done ({}.{} sec)",
-                               time_parsing_dir.elapsed().as_secs(),
-                               LeftPadding::zeroes3(time_parsing_dir.elapsed().subsec_millis())));
-        println!();
+        if args.verbose {
+            // This is the second part of the progres line for this directory
+            // See also the previous [print_progress] call which prints the first part of this line
+            // e.g. `[3566/4239] Parsing 2 files from D:\Temp\source_path\... done (0.018 sec)`
+            print_progress(format!("done ({}.{} sec)",
+                                   time_parsing_dir.elapsed().as_secs(),
+                                   LeftPadding::zeroes3(time_parsing_dir.elapsed().subsec_millis())));
+            println!();
+        }
     }
 
     // This is a consuming call for now, so needs reassignment
@@ -844,6 +862,9 @@ fn write_target_dir_files(
 ) {
 
     let is_dry_run = args.dry_run;
+
+    println!();
+    println!("Writing files to target...");
 
     // Dry runs will output a dir-tree-like structure, so add the additional
     // indents and markings to the max length to be taken into account when padding
@@ -1158,7 +1179,7 @@ fn dry_run_check_file_restrictions(
     }
 }
 
-fn ask_for_confirmation() -> ConfirmationType {
+fn ask_for_confirmation(args: &Args) -> ConfirmationType {
     println!("{}",
              // TODO 5f: replace '\n' with system newlines
              ColoredString::magenta(
@@ -1170,7 +1191,7 @@ fn ask_for_confirmation() -> ConfirmationType {
         let mut user_input = String::new();
         match io::stdin().read_line(&mut user_input) {
             Ok(input) =>
-                if DBG_ON {
+                if args.debug {
                     println!("User input: '{:?}'", input)
                 },
             Err(err) => {
@@ -1199,7 +1220,7 @@ fn copy_file_if_not_exists(
 ) -> String {
 
     if destination_path.exists() {
-        if DBG_ON {
+        if args.debug {
             println!("> target file exists: {}",
                      &destination_path.strip_prefix(&args.target_dir).unwrap().display());
         }
@@ -1231,7 +1252,7 @@ fn copy_file_if_not_exists(
                         Ok(_) =>
                             (Some(false), String::from(" (source file removed)")),
                         Err(e) => {
-                            if DBG_ON { eprintln!("File delete error: {:?}: ERROR {:?}", &file.file_path, e) };
+                            if args.verbose { eprintln!("File delete error: {:?}: ERROR {:?}", &file.file_path, e) };
                             stats.inc_error_file_delete();
                             (Some(true), ColoredString::red(
                                 format!(" (error removing source: {:?})", e.description()).as_str()))
@@ -1344,7 +1365,7 @@ fn get_file_type(extension_opt: &Option<String>) -> FileType {
 
 /// Read a String in standard EXIF format "YYYY:MM:DD HH:MM:SS"
 /// and try to parse it into the date format for our directories: "YYYY.MM.DD"
-fn parse_exif_date(date_str: String) -> Option<String> {
+fn parse_exif_date(date_str: String, args: &Args) -> Option<String> {
     let parsed_date_result = NaiveDateTime::parse_from_str(date_str.as_str(), "%Y:%m:%d %H:%M:%S");
     match parsed_date_result {
         Ok(date) => {
@@ -1352,7 +1373,7 @@ fn parse_exif_date(date_str: String) -> Option<String> {
             Some(formatted_date)
         }
         Err(err) => {
-            if DBG_ON { println!("> could not parse EXIF date {}: {:?}", date_str, err) }
+            if args.debug { println!("> could not parse EXIF date {}: {:?}", date_str, err) }
             None
         }
     }
@@ -1360,7 +1381,8 @@ fn parse_exif_date(date_str: String) -> Option<String> {
 
 fn read_exif_date_and_device(
     file: &DirEntry,
-    mut file_exif: ExifDateDevice
+    mut file_exif: ExifDateDevice,
+    args: &Args
 ) -> ExifDateDevice {
 
     // TODO 5d: handle this unwrap
@@ -1394,13 +1416,13 @@ fn read_exif_date_and_device(
                         // The String returned by rexif has the standard EXIF format "YYYY:MM:DD HH:MM:SS"
                         ExifTag::DateTime => {
                             let tag_value = exif_entry.value.to_string();
-                            file_exif.date_time = parse_exif_date(tag_value);
+                            file_exif.date_time = parse_exif_date(tag_value, args);
                         }
 
                         // EXIF:DateTimeOriginal: When the shutter was clicked. Windows File Explorer will display it as Date Taken.
                         ExifTag::DateTimeOriginal => {
                             let tag_value = exif_entry.value.to_string();
-                            file_exif.date_original = parse_exif_date(tag_value);
+                            file_exif.date_original = parse_exif_date(tag_value, args);
                         }
 
                         // EXIF:DateTimeDigitized: When the image was converted to digital form.
@@ -1422,7 +1444,7 @@ fn read_exif_date_and_device(
 
         Err(e) => {
             // TODO 5c: log this error?
-            if DBG_ON {
+            if args.verbose {
                 println!("{} could not read EXIF for {:?}: {}", ColoredString::warn_arrow(), file.file_name(), e.to_string());
             }
         }
