@@ -41,8 +41,9 @@
     [x] a - show in progress statistics
     [x] b - show final statistics - x files found, x dirs created, x files moved, x files left untouched...
     [!] c - img count in dir name - not feasible, prone to errors; is included in dry run output only
+    [ ] d - reenable 
     [ ] dry run specific statistics
-    [ ] separate dirs created into "date dirs" and "device dirs"
+    [ ] differentiate 'dirs created' stat between "date dirs" and "device dirs"
     [ ] stats for "could not read EXIF"
     [x] stats for file size
     [x] stats for time taken - prefetching dirs, parsing files, copying files
@@ -65,7 +66,7 @@
     [ ] g - Store total count of files and maybe file size when reading source files
     [x] h - Fix/refactor/improve padding calculation
     [ ] i - Move operation statuses to map and calculate max header and separator lengths based on them
-    [ ] m - move `if args.source_recursive` to Args constructor
+    [x] m - move `if args.source_recursive` to Args constructor
     [ ] n - don't make isolate_single_images consuming
     [ ] RightPadding & ColoredString should take both &str and String
     [ ] cache result of padding length calculations and other improvements

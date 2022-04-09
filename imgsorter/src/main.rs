@@ -456,33 +456,11 @@ fn main() -> Result<(), std::io::Error> {
         dbg!(&args);
     }
 
-
-    /*****************************************************************************/
-    /* ---                        Read source dirs                           --- */
-    /*****************************************************************************/
-
-    // TODO 5m: move to Args::new_from_toml
-    if args.source_recursive {
-
-        if args.verbose { println!("> Fetching source directories list recursively..."); }
-        let time_fetching_dirs = Instant::now();
-
-        let new_source_dirs = walk_source_dirs_recursively(&args);
-        if new_source_dirs.is_empty() {
-            // TODO replace with Err
-            panic!("Source folders are empty or don't exist");
-        } else {
-            if args.verbose { println!("> ... setting {} source folder(s)", new_source_dirs.len()); }
-            args.source_dir = new_source_dirs;
-        }
-
-        stats.set_time_fetch_dirs(time_fetching_dirs.elapsed());
-    }
-
     // Needs to be created after checking for recursive source dirs,
     // since we need to pass args.has_multiple_sources()
     // let mut padder = Padder::new(args.has_multiple_sources());
     let mut padder = Padder::new(args.has_multiple_sources());
+
 
     /*****************************************************************************/
     /* ---                        Read source files                          --- */
@@ -619,48 +597,6 @@ fn main() -> Result<(), std::io::Error> {
     stats.print_stats(&args);
 
     Ok(())
-}
-
-fn walk_source_dirs_recursively(args: &Args) -> Vec<PathBuf> {
-
-    fn walk_dir(
-        source_dir: PathBuf,
-        vec_accum: &mut Vec<PathBuf>,
-        args: &Args
-    ) -> Result<(), std::io::Error> {
-
-        if args.verbose {
-            println!("> Reading {}...", &source_dir.display().to_string());
-        }
-
-        let subdirs: Vec<DirEntry> = fs::read_dir(&source_dir)?
-            .into_iter()
-            .filter_map(|s| s.ok())
-            .filter(|entry| entry.path().is_dir())
-            .collect::<Vec<_>>();
-
-        vec_accum.push(source_dir);            
-
-        if !subdirs.is_empty() {
-            subdirs
-                .iter()
-                .for_each(|dir_entry| {
-                    let _ = walk_dir(dir_entry.path(), vec_accum, args);
-                });
-        };
-
-        Ok(())
-    }
-
-    let mut new_source_dirs = Vec::new();
-
-    args.source_dir.clone()
-        .into_iter()
-        .for_each(|d| {
-            walk_dir(d, &mut new_source_dirs, args).ok();
-        });
-
-    new_source_dirs
 }
 
 /// For dry runs over multiple source dirs we want to show if there are duplicate files across all sources.

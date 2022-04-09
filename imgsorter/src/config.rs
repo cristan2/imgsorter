@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::{fs, env};
 use std::collections::HashMap;
+use std::fs::DirEntry;
+use std::time::Instant;
 
 use crate::utils::*;
 
@@ -447,6 +449,28 @@ impl Args {
             );
         }
 
+
+        // Once all source folders and options are read, check if we need to
+        // recursively read subdirectories and set all sources
+
+        if args.source_recursive {
+
+            if args.verbose { println!("> Fetching source directories list recursively..."); }
+            let time_fetching_dirs = Instant::now();
+
+            let new_source_dirs = walk_source_dirs_recursively(&args);
+            if new_source_dirs.is_empty() {
+                // TODO replace with Err
+                panic!("Source folders are empty or don't exist");
+            } else {
+                if args.verbose { println!("> Setting {} source folder(s)", new_source_dirs.len()); }
+                args.source_dir = new_source_dirs;
+            }
+
+            // TODO 3d: import FileStats and reenable this
+            // stats.set_time_fetch_dirs(time_fetching_dirs.elapsed());
+        }
+
         Ok(args)
     }
 
@@ -532,4 +556,46 @@ impl Args {
     pub fn has_multiple_sources(&self) -> bool {
         self.source_dir.len() > 1
     }
+}
+
+fn walk_source_dirs_recursively(args: &Args) -> Vec<PathBuf> {
+
+    fn walk_dir(
+        source_dir: PathBuf,
+        vec_accum: &mut Vec<PathBuf>,
+        args: &Args
+    ) -> Result<(), std::io::Error> {
+
+        if args.verbose {
+            println!("> Reading '{}'", &source_dir.display().to_string());
+        }
+
+        let subdirs: Vec<DirEntry> = fs::read_dir(&source_dir)?
+            .into_iter()
+            .filter_map(|s| s.ok())
+            .filter(|entry| entry.path().is_dir())
+            .collect::<Vec<_>>();
+
+        vec_accum.push(source_dir);
+
+        if !subdirs.is_empty() {
+            subdirs
+                .iter()
+                .for_each(|dir_entry| {
+                    let _ = walk_dir(dir_entry.path(), vec_accum, args);
+                });
+        };
+
+        Ok(())
+    }
+
+    let mut new_source_dirs = Vec::new();
+
+    args.source_dir.clone()
+        .into_iter()
+        .for_each(|d| {
+            walk_dir(d, &mut new_source_dirs, args).ok();
+        });
+
+    new_source_dirs
 }
