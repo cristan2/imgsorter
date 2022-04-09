@@ -1,4 +1,5 @@
 [folders]
+
 # This are the folders where the images to be sorted are located.
 # If this option is missing, the directory from which the program is launched will be used.
 source_dirs = [
@@ -28,6 +29,7 @@ min_files_per_dir = 1
 target_oneoffs_subdir_name = 'Miscellaneous'
 
 [options]
+
 # Whether to do a simulation of the process, without writing any files.
 # This will display additional information, like the resulting dir structure,
 #   including the total number of devices, files and file size.
@@ -37,7 +39,7 @@ dry_run = false
 # Whether to read any subfolders in the source folders.
 # This will progressively read all subfolders, including subfolders of subfolders.
 # If this option is missing, the default "false" will be used.
-source_recursive = false
+source_recursive = true
 
 # Whether files are copied instead of moved to the destination folder.
 # If this option is true or missing, files will be *copied* to
@@ -49,3 +51,12 @@ copy_not_move = true
 # If this option is missing, the default "false" will be used.
 # !! Be careful when using this when "copy_no_move" is true, as files will be moved without confirmation.
 silent = false
+
+[custom]
+
+# Replace model names of camera as retrieved from EXIF info with
+# custom names for improved clarity, e.g. "Samsung A41" instead of "SM-A415F"
+[custom.devices]
+#'HUAWEI VNS-L21'="Huawei P9 Lite"
+#'SM-A415F'="Samsung A41"
+

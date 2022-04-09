@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::{fs, env};
+use std::collections::HashMap;
 
 use crate::utils::*;
 
@@ -57,7 +58,13 @@ pub struct Args {
     pub dry_run: bool,
 
     /// Whether to print additional information during processing
-    pub debug: bool
+    pub debug: bool,
+
+    /// EXIF-retrieved names of device models can be replaced with custom names
+    /// for improved clarity, e.g. "Samsung A41" instead of "SM-A415F"
+    /// This is a simple mapping from device name to custom name.
+    /// Keys should always be stored in lowercase for case-insensitive retrieval
+    pub custom_device_names: HashMap<String, String>
 }
 
 impl Args {
@@ -79,7 +86,8 @@ impl Args {
                 silent: DEFAULT_SILENT,
                 copy_not_move: DEFAULT_COPY,
                 dry_run: DEFAULT_DRY_RUN,
-                debug: DBG_ON
+                debug: DBG_ON,
+                custom_device_names: HashMap::new()
             })
     }
 
@@ -159,12 +167,12 @@ impl Args {
         }
 
         fn get_boolean_value(toml_table: &TomlMap, key: &str) -> Option<bool> {
-            let value = toml_table.get(key)
+            let bool_opt = toml_table.get(key)
                 .map(|toml_value| toml_value.as_bool())
                 .flatten();
             
-            if value.is_none() { print_missing_value(key) };
-            value
+            if bool_opt.is_none() { print_missing_value(key) };
+            bool_opt
         }
 
         // Will always return a positive integer. If the number is negative, will return None
@@ -187,19 +195,17 @@ impl Args {
         }
 
         fn get_string_value(toml_table: &TomlMap, key: &str) -> Option<String> {
-            let value = toml_table.get(key)
+            let string_opt = toml_table.get(key)
                 .map(|toml_value| toml_value.as_str())
                 .flatten()
-                .map(|str_val| String::from(str_val))
-                .filter(|s| !s.is_empty());
+                .map(|str_val| String::from(str_val));
 
-            // We've already filtered out empty strings, so it's ok to just check for none
-            if value.is_none() { print_missing_value(key) };
-            value
+            if string_opt.is_none() { print_missing_value(key) };
+            string_opt
         }
 
         fn get_array_value(toml_table: &TomlMap, key: &str) -> Option<Vec<String>> {
-            let value_vec = toml_table.get(key)
+            let vec_opt = toml_table.get(key)
                 .map(|toml_value| toml_value.as_array())
                 .flatten()
                 .map(|strings_vec|{
@@ -207,12 +213,31 @@ impl Args {
                         .flat_map(|value| value.as_str())
                         .map(|s|String::from(s))
                         .collect::<Vec<_>>()
-                })
-                .filter(|v| !v.is_empty());
+                });
 
-            // We've already filtered out empty vecs, so it's ok to just check for none
-            if value_vec.is_none() { print_missing_value(key) };
-            value_vec
+            if vec_opt.is_none() { print_missing_value(key) };
+            vec_opt
+        }
+
+        fn get_dict_value(toml_table: &TomlMap, key: &str) -> Option<HashMap<String, String>> {
+            let dict_opt = toml_table.get(key)
+                .map(|toml_dict|{ toml_dict.as_table()})
+                .flatten()
+                .map(|custom_devices| {
+                    custom_devices
+                        .into_iter()
+                        .map(|(dict_key, dict_value)|
+                            (dict_key, dict_value.as_str()))
+                        .filter(|(_, dict_value)| dict_value.is_some())
+                        .map(|(dict_key, dict_value)|
+                            // When the dict_key is used as key in the resulting hashmap,
+                            // transform it to lowercase to allow case-insensitive retrievals
+                            (dict_key.to_lowercase(), String::from(dict_value.unwrap())))
+                        .collect::<HashMap<String, String>>()
+                });
+
+            if dict_opt.is_none() { print_missing_value(key) };
+            dict_opt
         }
 
         fn get_paths(path_strs: Vec<String>) -> Vec<PathBuf> {
@@ -228,11 +253,12 @@ impl Args {
                     Ok(raw_toml) => {
 
                         match raw_toml.as_table() {
+
                             Some(toml_content) => {
 
-                                /* --- Parse source/target --- */
+                                /* --- Parse source/target folders --- */
 
-                                match &toml_content.get("folders") {
+                                match toml_content.get("folders") {
                                     Some(folders_opt) => {
                                         if let Some(folders) = folders_opt.as_table() {
 
@@ -273,21 +299,21 @@ impl Args {
                                                 args.min_files_per_dir = min_files_per_dir;
                                             }
 
-                                            if let Some(oneoffs_name) = get_string_value(&folders, "target_oneoffs_subdir_name") {
+                                            if let Some(oneoffs_dir_name) = get_string_value(&folders, "target_oneoffs_subdir_name") {
                                                 // get_string_value already filters out empty strings, but just to be safe
-                                                if !oneoffs_name.is_empty() {
-                                                    args.oneoffs_dir_name = oneoffs_name;
+                                                if !oneoffs_dir_name.is_empty() {
+                                                    args.oneoffs_dir_name = oneoffs_dir_name;
                                                 }
                                             }
                                         } // end if let Some(folders)
                                     } // end Some(folders_opt)
                                     None =>
                                         print_missing_value("folders")
-                                }
+                                } // end config folders
 
                                 /* --- Parse options --- */
 
-                                match &toml_content.get("options") {
+                                match toml_content.get("options") {
                                     Some(options_opt) => {
                                         if let Some(options) = options_opt.as_table() {
 
@@ -317,19 +343,33 @@ impl Args {
                                     None =>
                                         print_missing_value("options")
 
-                                }
+                                } // end config options
+
+                                /* --- Parse custom data --- */
+
+                                match toml_content.get("custom") {
+                                    Some(custom_data_opt) => {
+                                        if let Some(custom_data) = custom_data_opt.as_table() {
+                                            if let Some(devices_dict) = get_dict_value(custom_data, "devices") {
+                                                args.custom_device_names = devices_dict;
+                                            }
+                                        } // end if let Some(custom_data)
+                                    } // if let Some(custom_data_opt)
+                                    None =>
+                                        print_missing_value("custom")
+                                } // end config custom data
                             },
                             None => {
                                 println!("Could not parse TOML into a key-value object");
                             }
-                        }
+                        } // end reading raw toml data
                     }
                     Err(err) => {
                         println!("{}", ColoredString::red(
                             "Could not parse config file, not valid TOML. Continuing with defaults."));
                         eprintln!("{}", err);
                     }
-                }
+                } // end reading config file contents
             }
             Err(e) => {
                 println!("{}", ColoredString::red(format!(

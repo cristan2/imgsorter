@@ -379,7 +379,7 @@ pub struct SupportedFile {
 
 // TODO 5e: find better name
 impl SupportedFile {
-    pub fn parse_from(dir_entry: DirEntry, source_index: usize) -> SupportedFile {
+    pub fn parse_from(dir_entry: DirEntry, source_index: usize, args: &Args) -> SupportedFile {
         let _extension = get_extension(&dir_entry);
         let _file_type = get_file_type(&_extension);
         let _metadata = dir_entry.metadata().unwrap();
@@ -404,6 +404,15 @@ impl SupportedFile {
                 .unwrap_or(get_system_modified_date(&_metadata)
                     .unwrap_or(DEFAULT_NO_DATE_STR.to_string())));
 
+
+        // Replace EXIF camera model with a custom name, if one was defined in config
+        let _camera_name: Option<String> = match _exif_data.camera_model {
+            Some(camera_model) => args.custom_device_names
+                .get(camera_model.to_lowercase().as_str())
+                .map_or(Some(camera_model), |s|Some(s.clone())),
+            None => None
+        };
+
         SupportedFile {
             file_name: dir_entry.file_name(),
             file_path: dir_entry.path(),
@@ -411,7 +420,7 @@ impl SupportedFile {
             extension: _extension,
             date_str: _image_date,
             metadata: _metadata,
-            device_name: _exif_data.camera_model,
+            device_name: _camera_name,
             source_dir_index: source_index
         }
     }
@@ -749,7 +758,7 @@ fn parse_dir_contents(
         // Parse each file into its internal representation and add it to the target tree
         for entry in source_dir {
 
-            let current_file: SupportedFile = SupportedFile::parse_from(entry, source_ix);
+            let current_file: SupportedFile = SupportedFile::parse_from(entry, source_ix, args);
 
             // Build final target path for this file
             match current_file.file_type {

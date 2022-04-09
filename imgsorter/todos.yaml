@@ -1,10 +1,8 @@
-- device list in config
 - clippy
 - stats for dry run
 - additional file formats - amr, etc
 - documentation - readme + main flows
 - verbose option - output more info
-- dry run - option to not print everything, truncate after e.g. 5 files in same folder with same status (but save everything to log)
 
 [ ] 1 - CLI / config file args
     [x] CLI or config file?
@@ -15,7 +13,7 @@
     [x] f - print options before confirmation
     [ ] arg flag for logfile
     [ ] skip files without EXIF (videos, images from other programs, etc.)?
-    [ ] target_sorted_subdir_name = 'imgsorted'
+    [ ] allow configurable target_sorted_subdir_name = 'imgsorted'
     [ ] use args.debug instead of DBG_ON
 
 [x] 2 - File handling
@@ -30,8 +28,10 @@
     [x] dry run/copy output - sort dirs by name (see https://stackoverflow.com/questions/59799388/sort-hashmap-data-by-keys)
     [ ] EXIF for video data
     [ ] depth limit for source recursive subdirs
+    [ ] additional file formats - amr, etc
     [x] calculate total file size
     [x] don't create device subdirs if only one file per device (even if device count > 1)
+    [ ] verbose option - output more info (less than debug)
 
 [ ] 3 - Stats
     [x] a - show in progress statistics
@@ -44,7 +44,7 @@
     [x] stats for time taken - prefetching dirs, parsing files, copying files
 
 [ ] 4 - Config
-    [ ] a - config file - rename device with custom name (i.e. personal name instead of camera name) - see 7d
+    [x] a - config file - rename device with custom name (i.e. personal name instead of camera name) - see 7d
     [x] config file - instead of CLI?
 
 [ ] 5 - Optimize code
@@ -65,6 +65,7 @@
     [ ] n - don't make isolate_single_images consuming
     [ ] RightPadding & ColoredString should take both &str and String
     [ ] cache result of padding length calculations and other improvements
+    [ ] run clippy
 
 [ ] 6 - Misc / bugs
     [x] a - change copy to rename
@@ -98,5 +99,6 @@
     [x] colored text
     [ ] more comments and examples for Padder methods + rearrange more logically
     [ ] increase padding spaces from 1 to 2
+    [ ] dry run - option to not print everything, truncate after e.g. 5 files in same folder with same status (but save everything to log)
 
 [ ] 8 - Cleanup
