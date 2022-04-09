@@ -502,11 +502,18 @@ fn main() -> Result<(), std::io::Error> {
     /* ---                 Print options before confirmation                 --- */
     /*****************************************************************************/
 
-    {
-        let total_source_files: usize = source_contents.iter()
-            .map(|dir|dir.len())
-            .sum();
+    let total_source_files: usize = source_contents.iter()
+        .map(|dir|dir.len())
+        .sum();
 
+
+    // Exit early if there are no source files
+    if total_source_files < 1 {
+        println!("{}", ColoredString::red("There are no source files, exiting."));
+        return Ok(());
+    }
+
+    {
         let copy_status = if args.copy_not_move {
             ColoredString::orange("copied:")
         } else {

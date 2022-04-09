@@ -426,10 +426,12 @@ impl Args {
                     list_of_invalid).as_str()));
             Err(std::io::Error::from(std::io::ErrorKind::NotFound))
         } else {
-            println!("{}", ColoredString::orange(
-                format!(
-                    "Some source folders were invalid and were ignored:\n> {}",
-                    list_of_invalid).as_str()));
+            if !list_of_invalid.is_empty() {
+                println!("{}", ColoredString::orange(
+                    format!(
+                        "Some source folders were invalid and were ignored:\n> {}",
+                        list_of_invalid).as_str()));
+            }
             self.source_dir = valid_paths;
             Ok(())
         }
