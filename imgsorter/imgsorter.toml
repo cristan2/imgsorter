@@ -36,6 +36,9 @@ target_oneoffs_subdir_name = 'Miscellaneous'
 # If this option is missing, the default "false" will be used.
 dry_run = false
 
+# Whether to print additional information during processing
+verbose = false
+
 # Whether to read any subfolders in the source folders.
 # This will progressively read all subfolders, including subfolders of subfolders.
 # If this option is missing, the default "false" will be used.
@@ -60,3 +63,10 @@ silent = false
 #'HUAWEI VNS-L21'="Huawei P9 Lite"
 #'SM-A415F'="Samsung A41"
 
+# Additional file extensions to be recognized and processed
+# Note: these are not supported and only basic metadata
+# will be available (i.e. modified date)
+[custom.extensions]
+image = [ "heic" ]
+video = []
+audio = [ "amr"]

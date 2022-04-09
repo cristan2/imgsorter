@@ -11,12 +11,17 @@ const DEFAULT_MIN_COUNT: i64 = 1;
 const DEFAULT_COPY: bool = true;
 const DEFAULT_SILENT: bool = false;
 const DEFAULT_DRY_RUN: bool = false;
+const DEFAULT_VERBOSE: bool = false;
 const DEFAULT_SOURCE_RECURSIVE: bool = false;
 static DEFAULT_ONEOFFS_DIR_NAME: &str = "Miscellaneous";
 
+const IMAGE: &str = "image";
+const VIDEO: &str = "video";
+const AUDIO: &str = "audio";
+
 // Unexposed defaults
 pub const DBG_ON: bool = false;
-const DEFAULT_TARGET_SUBDIR: &'static str = "imgsorted";
+const DEFAULT_TARGET_SUBDIR: &str = "imgsorted";
 
 #[derive(Debug)]
 pub struct Args {
@@ -58,13 +63,20 @@ pub struct Args {
     pub dry_run: bool,
 
     /// Whether to print additional information during processing
+    pub verbose: bool,
+
+    /// Whether to print much more additional information during processing
+    /// Not exposed in config, for dev-only
     pub debug: bool,
 
     /// EXIF-retrieved names of device models can be replaced with custom names
     /// for improved clarity, e.g. "Samsung A41" instead of "SM-A415F"
     /// This is a simple mapping from device name to custom name.
     /// Keys should always be stored in lowercase for case-insensitive retrieval
-    pub custom_device_names: HashMap<String, String>
+    pub custom_device_names: HashMap<String, String>,
+
+    /// User-defined extensions for files to be processed which otherwise the program would skip
+    pub custom_extensions: HashMap<String, Vec<String>>
 }
 
 impl Args {
@@ -74,6 +86,11 @@ impl Args {
     pub fn new() -> Result<Args, std::io::Error> {
 
         let cwd = env::current_dir()?;
+
+        let mut custom_extensions: HashMap<String, Vec<String>> = HashMap::new();
+        custom_extensions.insert(IMAGE.to_lowercase(), Vec::new());
+        custom_extensions.insert(VIDEO.to_lowercase(), Vec::new());
+        custom_extensions.insert(AUDIO.to_lowercase(), Vec::new());
 
         Ok(
             Args {
@@ -86,8 +103,10 @@ impl Args {
                 silent: DEFAULT_SILENT,
                 copy_not_move: DEFAULT_COPY,
                 dry_run: DEFAULT_DRY_RUN,
+                verbose: DEFAULT_VERBOSE,
                 debug: DBG_ON,
-                custom_device_names: HashMap::new()
+                custom_device_names: HashMap::new(),
+                custom_extensions
             })
     }
 
@@ -219,12 +238,12 @@ impl Args {
             vec_opt
         }
 
-        fn get_dict_value(toml_table: &TomlMap, key: &str) -> Option<HashMap<String, String>> {
+        fn get_strings_dict_value(toml_table: &TomlMap, key: &str) -> Option<HashMap<String, String>> {
             let dict_opt = toml_table.get(key)
                 .map(|toml_dict|{ toml_dict.as_table()})
                 .flatten()
-                .map(|custom_devices| {
-                    custom_devices
+                .map(|key_values| {
+                    key_values
                         .into_iter()
                         .map(|(dict_key, dict_value)|
                             (dict_key, dict_value.as_str()))
@@ -245,6 +264,10 @@ impl Args {
                 .iter()
                 .map(|s|PathBuf::from(s))
                 .collect::<Vec<_>>()
+        }
+
+        fn vec_to_lowercase(vec_strings: Vec<String>) -> Vec<String> {
+            vec_strings.into_iter().map(|s|s.to_lowercase()).collect()
         }
 
         match fs::read_to_string(config_file) {
@@ -325,6 +348,10 @@ impl Args {
                                                 args.dry_run = dry_run;
                                             }
 
+                                            if let Some(verbose) = get_boolean_value(&options, "verbose") {
+                                                args.verbose = verbose;
+                                            }
+
                                             if let Some(copy_not_move) = get_boolean_value(&options, "copy_not_move") {
                                                 args.copy_not_move = copy_not_move;
                                             }
@@ -350,9 +377,32 @@ impl Args {
                                 match toml_content.get("custom") {
                                     Some(custom_data_opt) => {
                                         if let Some(custom_data) = custom_data_opt.as_table() {
-                                            if let Some(devices_dict) = get_dict_value(custom_data, "devices") {
+
+                                            if let Some(devices_dict) = get_strings_dict_value(custom_data, "devices") {
                                                 args.custom_device_names = devices_dict;
                                             }
+
+                                            match custom_data.get("extensions") {
+                                                Some(custom_extensions_opt) => {
+                                                    if let Some(custom_extensions) = custom_extensions_opt.as_table() {
+
+                                                        if let Some(custom_image_ext) = get_array_value(&custom_extensions, "image") {
+                                                            args.custom_extensions.insert(IMAGE.to_lowercase(), vec_to_lowercase(custom_image_ext));
+                                                        }
+
+                                                        if let Some(custom_video_ext) = get_array_value(&custom_extensions, "video") {
+                                                            args.custom_extensions.insert(VIDEO.to_lowercase(), vec_to_lowercase(custom_video_ext));
+                                                        }
+
+                                                        if let Some(custom_audio_ext) = get_array_value(&custom_extensions, "audio") {
+                                                            args.custom_extensions.insert(AUDIO.to_lowercase(), vec_to_lowercase(custom_audio_ext));
+                                                        }
+                                                    } // end if let Some(custom_extensions)
+                                                },
+                                                None =>
+                                                    print_missing_value("extensions")
+                                            } // end match extensions
+
                                         } // end if let Some(custom_data)
                                     } // if let Some(custom_data_opt)
                                     None =>
@@ -365,9 +415,9 @@ impl Args {
                         } // end reading raw toml data
                     }
                     Err(err) => {
+                        println!("{}", ColoredString::red(format!("Error: {}", err).as_str()));
                         println!("{}", ColoredString::red(
-                            "Could not parse config file, not valid TOML. Continuing with defaults."));
-                        eprintln!("{}", err);
+                            "Could not parse config file, continuing with defaults."));
                     }
                 } // end reading config file contents
             }
