@@ -49,3 +49,11 @@ Output:
 * Only the files in the root of the source directory are read at the moment. Any subdirectories will be ignored.
 * Multiple runs on different source dirs with the *same* target dir may result in mixed images from several devices placed in the same folder
 * Unsupported files are ignored
+
+## FAQ
+### The width of the output is too big
+Yes. The width of the printed messages for dry runs is based on the maximum length of the source paths
+to align everything prettily. If the printed messages are too big for your screen, you can disable
+this feature by setting the `align_file_output` config option to false. It won't look as nice, but 
+most of the lines should fit in your screen (unless the sources paths are very long, in which case you
+could just copy them one at a time - this will trim the path to just the source file name).

@@ -3,6 +3,8 @@ use std::cmp::max;
 use std::ffi::OsString;
 use std::io::Write;
 
+use crate::config::*;
+
 pub struct ColoredString;
 
 /// Provides static methods for formatting colored text based on ANSI codes
@@ -314,35 +316,47 @@ impl Padder {
 
     /// Adds dot padding to the maximum padding length for the date dir, e.g.:
     /// `[2019.01.28] (2 devices, 3 files, 3.34 MB) .................`
-    pub fn format_dryrun_date_dir(&self, date_dir_name_with_device_status: String) -> String {
-        RightPadding::dot(
-            date_dir_name_with_device_status,
-            self.get_dryrun_total_padding_len())
+    pub fn format_dryrun_date_dir(&self, date_dir_name_with_device_status: String, args: &Args) -> String {
+        if args.align_file_output {
+            RightPadding::dot(
+                date_dir_name_with_device_status,
+                self.get_dryrun_total_padding_len())
+        } else {
+            format!("{} {} ", date_dir_name_with_device_status, SEPARATOR_OP_STATUS)
+        }
     }
 
     /// Adds dot padding to the maximum padding length for the device dir.
     /// The device dirs will always have a single dir tree symbol prefix,
     /// since we don't expect additional sublevels for the devices, e.g.:
     /// `└── [Canon 100D] ..............................`
-    pub fn format_dryrun_device_dir(&self, device_dir_name: String) -> String {
+    pub fn format_dryrun_device_dir(&self, device_dir_name: String, args: &Args) -> String {
         let indented_device_dir_name: String = indent_string(
             // There are no indent levels for device dirs, just add
             0, format!("[{}] ", device_dir_name));
 
-        RightPadding::dot(
-            indented_device_dir_name,
-            // safe to unwrap for dry runs
-            self.get_dryrun_total_padding_len())
+        if args.align_file_output {
+            RightPadding::dot(
+                indented_device_dir_name,
+                // safe to unwrap for dry runs
+                self.get_dryrun_total_padding_len())
+        } else {
+            format!("{} {}", indented_device_dir_name, SEPARATOR_OP_STATUS)
+        }
     }
 
-    pub fn format_dryrun_file_separator(&self, left_file: String) -> String {
-        let padded_separator = RightPadding::dash(
-            // Add a space to the left so there's a gap between the previous file and the separator
-            format!(" {}", SEPARATOR_DRY_RUN_RIGHT_TO_LEFT),
-            // add +1 for the space added before the separator
-            self.get_dryrun_file_separator_padding_len(left_file) + 1);
-        // Add a space to the right so there's a gap between the separator and the next file
-        ColoredString::cyan(format!("{} ", padded_separator).as_str())
+    pub fn format_dryrun_file_separator(&self, left_file: String, args: &Args) -> String {
+        if args.align_file_output {
+            let padded_separator = RightPadding::dash(
+                // Add a space to the left so there's a gap between the previous file and the separator
+                format!(" {}", SEPARATOR_DRY_RUN_RIGHT_TO_LEFT),
+                // add +1 for the space added before the separator
+                self.get_dryrun_file_separator_padding_len(left_file) + 1);
+            // Add a space to the right so there's a gap between the separator and the next file
+            ColoredString::cyan(format!("{} ", padded_separator).as_str())
+        } else {
+            ColoredString::cyan(format!(" {} ", SEPARATOR_DRY_RUN_RIGHT_TO_LEFT).as_str())
+        }
     }
 
     pub fn format_write_file_separator(&self, left_file: String) -> String {
@@ -355,14 +369,18 @@ impl Padder {
         format!(" {}", padded_separator)
     }
 
-    pub fn format_dryrun_status_separator_dotted(&self, left_file: String) -> String {
-        let padded_separator = RightPadding::dot(
-            // Add a space to the left so there's a gap between the target file and the separator
-            format!(" {}", SEPARATOR_OP_STATUS),
-            // add +1 for the space added before the separator
-            self.get_dryrun_status_separator_padding_len(left_file) + 1);
-        // Add a space to the right so there's a gap between the separator and the source file
-        format!("{} ", padded_separator)
+    pub fn format_dryrun_status_separator_dotted(&self, left_file: String, args: &Args) -> String {
+        if args.align_file_output {
+            let padded_separator = RightPadding::dot(
+                // Add a space to the left so there's a gap between the target file and the separator
+                format!(" {}", SEPARATOR_OP_STATUS),
+                // add +1 for the space added before the separator
+                self.get_dryrun_status_separator_padding_len(left_file) + 1);
+            // Add a space to the right so there's a gap between the separator and the source file
+            format!("{} ", padded_separator)
+        } else {
+            ColoredString::cyan(format!(" {} ", SEPARATOR_OP_STATUS).as_str())
+        }
     }
 
     pub fn format_write_status_separator_dotted(&self, left_file: String) -> String {

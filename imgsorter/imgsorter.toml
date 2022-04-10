@@ -37,7 +37,20 @@ target_oneoffs_subdir_name = 'Miscellaneous'
 dry_run = false
 
 # Whether to print additional information during processing
-verbose = false
+verbose = true
+
+# Whether to align file lists for pretty outputs
+# Disable this if output is too wide for your screen
+# Example output if true:
+#  [2015.10.04] (1 device, 2 files, 1.34 MB)  ............................ [new folder will be created]
+#   └── IMG_0001.JPG <--------- E:\Pics\IMG_0001.JPG ...................... file will be copied
+#   └── IMG_0002_0943a.JPG <--- E:\Pics\To sort\New folder\IMG_0002.JPG ... duplicate source file, will be skipped
+# Example output if false:
+#  [2015.10.04] (1 device, 2 files, 1.34 MB)  ...  [new folder will be created]
+#   └── IMG_0001.JPG <--- E:\Pics\IMG_0001.JPG ... file will be copied
+#   └── IMG_0002.JPG_0943a <--- E:\Pics\To sort\New folder\IMG_0002.JPG ... duplicate source file, will be skipped
+# If this option is missing, the default "true" will be used.
+align_file_output = true
 
 # Whether to read any subfolders in the source folders.
 # This will progressively read all subfolders, including subfolders of subfolders.

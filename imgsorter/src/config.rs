@@ -14,6 +14,7 @@ const DEFAULT_COPY: bool = true;
 const DEFAULT_SILENT: bool = false;
 const DEFAULT_DRY_RUN: bool = false;
 const DEFAULT_VERBOSE: bool = false;
+const DEFAULT_ALIGN_OUTPUT: bool = true;
 const DEFAULT_SOURCE_RECURSIVE: bool = false;
 static DEFAULT_ONEOFFS_DIR_NAME: &str = "Miscellaneous";
 
@@ -67,6 +68,9 @@ pub struct Args {
     /// Whether to print additional information during processing
     pub verbose: bool,
 
+    /// Whether to align file lists for pretty outputs
+    pub align_file_output: bool,
+
     /// Whether to print much more additional information during processing
     /// Not exposed in config, for dev-only
     pub debug: bool,
@@ -106,6 +110,7 @@ impl Args {
                 copy_not_move: DEFAULT_COPY,
                 dry_run: DEFAULT_DRY_RUN,
                 verbose: DEFAULT_VERBOSE,
+                align_file_output: DEFAULT_ALIGN_OUTPUT,
                 debug: DBG_ON,
                 custom_device_names: HashMap::new(),
                 custom_extensions
@@ -360,6 +365,10 @@ impl Args {
 
                                             if let Some(verbose) = get_boolean_value(&options, "verbose", &mut missing_vals) {
                                                 args.verbose = verbose;
+                                            }
+
+                                            if let Some(align_file_output) = get_boolean_value(&options, "align_file_output", &mut missing_vals) {
+                                                args.align_file_output = align_file_output;
                                             }
 
                                             if let Some(copy_not_move) = get_boolean_value(&options, "copy_not_move", &mut missing_vals) {

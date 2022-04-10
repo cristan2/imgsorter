@@ -911,7 +911,7 @@ fn write_target_dir_files(
             println!("{}",
                 ColoredString::bold_white(
                 format!("{dir_devices} {dir_status}",
-                        dir_devices=padder.format_dryrun_date_dir(date_dir_name_with_device_status),
+                        dir_devices=padder.format_dryrun_date_dir(date_dir_name_with_device_status, args),
                         dir_status=target_dir_exists)
                     .as_str())
             );
@@ -971,13 +971,13 @@ fn write_target_dir_files(
                     indent_level += 1;
 
                     // Add tree indents and padding to dir name
-                    let padded_indented_device_dir_name = padder.format_dryrun_device_dir(dir_name);
+                    let indented_device_dir_name = padder.format_dryrun_device_dir(dir_name, args);
 
                     // Check restrictions - if target exists
                     let target_dir_status_check = dry_run_check_target_exists(&device_path);
 
                     // Print everything together
-                    println!("{} {}", padded_indented_device_dir_name, target_dir_status_check);
+                    println!("{} {}", indented_device_dir_name, target_dir_status_check);
                 }
 
                 device_path
@@ -1014,16 +1014,16 @@ fn write_target_dir_files(
 
                         // Prepare padded strings for output
                         let indented_target_filename = indent_string(indent_level, file.get_file_name_str());
-                        let padded_separator = padder.format_dryrun_file_separator(indented_target_filename.clone());
+                        let file_separator = padder.format_dryrun_file_separator(indented_target_filename.clone(), args);
 
                         let source_path = file.get_source_display_name_str(args);
-                        let status_separator = padder.format_dryrun_status_separator_dotted(source_path.clone());
+                        let status_separator = padder.format_dryrun_status_separator_dotted(source_path.clone(), args);
 
                         // Check restrictions - file exists or is read-only
                         let file_restrictions = dry_run_check_file_restrictions(&file, &file_destination_path, &source_unique_files, args);
 
                         // Return everything to be printed
-                        (indented_target_filename, padded_separator, source_path, status_separator, file_restrictions)
+                        (indented_target_filename, file_separator, source_path, status_separator, file_restrictions)
 
                     } else {
 
