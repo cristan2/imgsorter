@@ -22,15 +22,15 @@ impl ColoredString {
     // * BOLD      = '\x1b[1m'
     // * UNDERLINE = '\x1b[4m'
 
-    pub fn magenta(s: &str) -> String { format!("\x1b[95m{}\x1b[0m", s) }
-    pub fn blue(s: &str) -> String { format!("\x1b[94m{}\x1b[0m", s) }
-    pub fn cyan(s: &str) -> String { format!("\x1b[96m{}\x1b[0m", s) }
-    pub fn green(s: &str) -> String { format!("\x1b[92m{}\x1b[0m", s) }
-    pub fn red(s: &str) -> String { format!("\x1b[91m{}\x1b[0m", s) }
-    pub fn no_color(s: &str) -> String { format!("\x1b[0m{}\x1b[0m", s) }
-    pub fn orange(s: &str) -> String { format!("\x1b[93m{}\x1b[0m", s) }
-    pub fn bold_white(s: &str) -> String { format!("\x1b[1m{}\x1b[0m", s) }
-    pub fn underline(s: &str) -> String { format!("\x1b[4m{}\x1b[0m", s) }
+    pub fn magenta(s: &str)    -> String { format!("\x1b[95m{}\x1b[0m", s) }
+    pub fn blue(s: &str)       -> String { format!("\x1b[94m{}\x1b[0m", s) }
+    pub fn cyan(s: &str)       -> String { format!("\x1b[96m{}\x1b[0m", s) }
+    pub fn green(s: &str)      -> String { format!("\x1b[92m{}\x1b[0m", s) }
+    pub fn red(s: &str)        -> String { format!("\x1b[91m{}\x1b[0m", s) }
+    pub fn no_color(s: &str)   -> String { format!("\x1b[0m{}\x1b[0m",  s) }
+    pub fn orange(s: &str)     -> String { format!("\x1b[93m{}\x1b[0m", s) }
+    pub fn bold_white(s: &str) -> String { format!("\x1b[1m{}\x1b[0m",  s) }
+    pub fn underline(s: &str)  -> String { format!("\x1b[4m{}\x1b[0m",  s) }
 
     pub fn warn_arrow() -> String { Self::orange(">") }
 }
@@ -342,7 +342,7 @@ impl Padder {
             // add +1 for the space added before the separator
             self.get_dryrun_file_separator_padding_len(left_file) + 1);
         // Add a space to the right so there's a gap between the separator and the next file
-        format!("{} ", padded_separator)
+        ColoredString::cyan(format!("{} ", padded_separator).as_str())
     }
 
     pub fn format_write_file_separator(&self, left_file: String) -> String {
