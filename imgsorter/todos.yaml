@@ -1,5 +1,4 @@
 - implement Display for Args and print before confirmation
-- dry run show unsupported extensions
 
 - clippy
 - stats for dry run
@@ -89,7 +88,10 @@
     [x] string padding for dry run
     [x] device_tree.max_dir_path_len ignores the length of oneoffs dir - having a long dir name leads to panic!
 
-[ ] 7 - Nice to have
+[ ] 7 - Output
+    [x] print unknown extensions for skipped files
+
+[ ] 8 - Nice to have
     [ ] a - undo ?
     [ ] b - maybe don't read file list into memory?
     [ ] c - search recursively into existing subdirs (but skip "imgsorted" target subdir)
@@ -107,4 +109,4 @@
     [ ] increase padding spaces from 1 to 2
     [ ] dry run - option to not print everything, truncate after e.g. 5 files in same folder with same status (but save everything to log)
 
-[ ] 8 - Cleanup
+[ ] 9 - Cleanup

@@ -53,6 +53,7 @@ impl DeviceTree {
 /// ```
 struct TargetDateDeviceTree {
     dir_tree: BTreeMap<String, DeviceTree>,
+    unknown_extensions: HashSet<String>
 }
 
 /// Just output a simple list of filenames for now
@@ -84,6 +85,7 @@ impl TargetDateDeviceTree {
     fn new() -> TargetDateDeviceTree {
         TargetDateDeviceTree {
             dir_tree: BTreeMap::new(),
+            unknown_extensions: HashSet::new()
         }
     }
 
@@ -187,7 +189,7 @@ impl TargetDateDeviceTree {
 
 #[derive(Debug)]
 pub enum FileType {
-    Unknown,
+    Unknown(String),
     Image,
     Video,
     Audio,
@@ -609,6 +611,14 @@ fn main() -> Result<(), std::io::Error> {
     stats.set_time_write_files(time_writing_files.elapsed());
     stats.set_time_total(time_processing.elapsed() + stats.time_fetch_dirs);
 
+    // Print unknown extensions
+    println!("Skipped files with these unknown extensions: {}",
+             target_dir_tree.unknown_extensions
+                 .into_iter()
+                 .filter(|s|!s.is_empty())
+                 .collect::<Vec<String>>().join(", "));
+    println!();
+
     // Print final stats
     stats.print_stats(&args);
 
@@ -716,11 +726,13 @@ fn parse_dir_contents(
 
         let current_file_count = source_dir.len();
 
+        let mut skipped_files: Vec<String> = Vec::new();
+
         if args.verbose {
             // This is the first part of the progres line for this directory
             // See also the next [print_progress] call which prints the time taken to this same line
             // e.g. `[3566/4239] Parsing 2 files from D:\Temp\source_path\... done (0.018 sec)`
-            print_progress(format!("[{}/{}] Parsing {} files from {}... ",
+            print_progress(format!("[{}/{}] Parsing {} files from '{}'... ",
                                    count_so_far,
                                    total_no_files,
                                    current_file_count,
@@ -733,7 +745,7 @@ fn parse_dir_contents(
             let current_file: SupportedFile = SupportedFile::parse_from(entry, source_ix, args);
 
             // Build final target path for this file
-            match current_file.file_type {
+            match &current_file.file_type {
                 FileType::Image | FileType::Video | FileType::Audio => {
                     let file_date = current_file.date_str.clone();
                     let file_device = current_file.device_name.clone();
@@ -769,11 +781,10 @@ fn parse_dir_contents(
                     all_files_for_this_device.push(current_file);
                 }
 
-                FileType::Unknown => {
+                FileType::Unknown(ext) => {
                     stats.inc_unknown_skipped();
-                    if args.verbose {
-                        println!("Skipping unknown file {}", current_file.get_file_name_str())
-                    }
+                    new_dir_tree.unknown_extensions.insert(ext.to_lowercase());
+                    skipped_files.push(current_file.get_file_name_str());
                 }
             }
         }
@@ -789,6 +800,14 @@ fn parse_dir_contents(
                                    time_parsing_dir.elapsed().as_secs(),
                                    LeftPadding::zeroes3(time_parsing_dir.elapsed().subsec_millis())));
             println!();
+            // Print files intented with two spaces
+            let skipped = skipped_files.into_iter()
+                .filter(|s|!s.is_empty())
+                .collect::<Vec<String>>();
+
+            if !skipped.is_empty() {
+                println!("Skipped unknown files:\n {}", skipped.join("\n "));
+            }
         }
     }
 
@@ -1183,7 +1202,7 @@ fn copy_file_if_not_exists(
             FileType::Video   => stats.inc_vid_skipped(),
             FileType::Audio   => stats.inc_aud_skipped(),
             // don't record any stats for this, shouldn't get one here anyway
-            FileType::Unknown => ()
+            FileType::Unknown(_) => ()
         }
         ColoredString::orange("already exists")
 
@@ -1227,7 +1246,7 @@ fn copy_file_if_not_exists(
                     FileType::Audio   =>
                         if args.copy_not_move || _delete_failed_opt.unwrap_or(false) { stats.inc_aud_copied() } else { stats.inc_aud_moved() },
                     // don't record any stats for this, shouldn't get one here anyway
-                    FileType::Unknown =>()
+                    FileType::Unknown(_) =>()
                 }
 
                 format!("{}{}",
@@ -1329,16 +1348,16 @@ fn get_file_type(extension_opt: &Option<String>, args: &Args) -> FileType {
                         } else if is_custom_extension(extension, AUDIO) {
                             FileType::Audio
                         } else {
-                            FileType::Unknown
+                            FileType::Unknown(extension.clone())
                         }
                     } else {
-                        FileType::Unknown
+                        FileType::Unknown(extension.clone())
                     }
                 }
             }
         }
         None =>
-            FileType::Unknown,
+            FileType::Unknown("".to_owned()),
     }
 }
 
