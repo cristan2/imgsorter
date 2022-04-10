@@ -41,7 +41,7 @@
     [x] dry run specific statistics
     [ ] 'dirs created' stat - differentiate between "date dirs" and "device dirs"
     [ ] stats for "could not read EXIF"
-    [ ] table-like stats instead of simple list (e.g. "Images moved/copied/skipped    0 | 10 | 2" )
+    [x] table-like stats instead of simple list (e.g. "Images moved/copied/skipped    0 | 10 | 2" )
     [!] don't include move/copy stats for copy/move operations - not doing, it's relevant in case of delete errors
     [x] stats for file size
     [x] stats for time taken - prefetching dirs, parsing files, copying files
@@ -69,6 +69,7 @@
     [ ] cache result of padding length calculations and other improvements
     [ ] improve performance of parse_dir_contents (150-218 secs for 6000 files)
     [ ] run clippy
+    [ ] single method for printing stats instead of two almost identical?
 
 [ ] 6 - Misc / bugs
     [x] a - change copy to rename

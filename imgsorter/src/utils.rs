@@ -432,6 +432,10 @@ impl LeftPadding {
     pub fn dash(str: String, pad_width: usize) -> String {
         format!("{:->width$}", str, width=pad_width)
     }
+
+    pub fn space(str: String, pad_width: usize) -> String {
+        format!("{:>width$}", str, width=pad_width)
+    }
 }
 
 pub const SEPARATOR_OP_STATUS: &'static str = "...";
@@ -495,6 +499,10 @@ pub fn print_progress(msg: String) {
 
 pub fn get_string_char_count(s: String) -> usize {
     s.chars().count()
+}
+
+pub fn get_integer_char_count(i: i32) -> usize {
+    get_string_char_count(i.to_string())
 }
 
 /// Convert bytes to an appropriate multiple (MB or GB) and append its unit

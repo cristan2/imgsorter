@@ -307,6 +307,26 @@ impl FileStats {
         }
     }
 
+    pub fn padded_color_if_non_zero(err_stat: i32, level: OutputColor, padding_width: usize) -> String {
+
+        let padded_int = LeftPadding::space(err_stat.to_string(), padding_width);
+
+        if err_stat > 0 {
+            match level {
+                OutputColor::Error =>
+                    ColoredString::red(padded_int.as_str()),
+                OutputColor::Warning =>
+                    ColoredString::orange(padded_int.as_str()),
+                Neutral =>
+                    ColoredString::bold_white(padded_int.as_str()),
+                OutputColor::Good =>
+                    ColoredString::green(padded_int.as_str()),
+            }
+        } else {
+            String::from(padded_int.to_string())
+        }
+    }
+
     pub fn color_if_non_zero(err_stat: i32, level: OutputColor) -> String {
         if err_stat > 0 {
             match level {
@@ -326,47 +346,44 @@ impl FileStats {
 
     pub fn print_stats(&self, args: &Args) {
 
+        // add +1 for larger spacing
+        let max_digits = get_integer_char_count(self.files_count_total) + 1;
+
         let write_general_stats = || { format!(
-"---------------------------------------
-Total files:           {total} ({size})
----------------------------------------
-Images moved:          {img_move}
-Images copied:         {img_copy}
-Images skipped:        {img_skip}
-Videos moved:          {vid_move}
-Videos copied:         {vid_copy}
-Videos skipped:        {vid_skip}
-Audio moved:           {aud_move}
-Audio copied:          {aud_copy}
-Audio skipped:         {aud_skip}
-Folders created:       {dir_create}
-Folders ignored:       {dir_ignore}
-Unknown files skipped: {f_skip}
----------------------------------------
-File delete errors:    {fd_err}
-File create errors:    {fc_err}
-Folder create errors:  {dc_err}
----------------------------------------
-Time fetching folders: {tfetch_dir} sec
-Time parsing files:    {tparse_file} sec
-Time writing files:    {twrite_file} sec
----------------------------------------
-Total time taken:      {t_total} sec
----------------------------------------",
+"----------------------------------------------
+Total files:                  {total} ({size})
+----------------------------------------------
+Images moved|copied|skipped:  |{p_img_move}|{p_img_copy}|{p_img_skip}|
+Videos moved|copied|skipped:  |{p_vid_move}|{p_vid_copy}|{p_vid_skip}|
+Audios moved|copied|skipped:  |{p_aud_move}|{p_aud_copy}|{p_aud_skip}|
+----------------------------------------------
+Folders created:              {dir_create}
+Folders ignored:              {dir_ignore}
+Unknown files skipped:        {f_skip}
+File delete errors:           {fd_err}
+File create errors:           {fc_err}
+Folder create errors:         {dc_err}
+----------------------------------------------
+Time fetching folders:        {tfetch_dir} sec
+Time parsing files:           {tparse_file} sec
+Time writing files:           {twrite_file} sec
+----------------------------------------------
+Total time taken:             {t_total} sec
+----------------------------------------------",
             total=FileStats::color_if_non_zero(self.files_count_total, Neutral),
             size=ColoredString::bold_white(get_file_size_string(self.file_size_total).as_str()),
 
-            img_move=FileStats::color_if_non_zero(self.img_moved, Neutral),
-            img_copy=FileStats::color_if_non_zero(self.img_copied, Neutral),
-            img_skip=FileStats::color_if_non_zero(self.img_skipped, Warning),
+            p_img_move=FileStats::padded_color_if_non_zero(self.img_moved, Neutral, max_digits),
+            p_img_copy=FileStats::padded_color_if_non_zero(self.img_copied, Neutral, max_digits),
+            p_img_skip=FileStats::padded_color_if_non_zero(self.img_skipped, Warning, max_digits),
 
-            vid_move=FileStats::color_if_non_zero(self.vid_moved,Neutral),
-            vid_copy=FileStats::color_if_non_zero(self.vid_copied,Neutral),
-            vid_skip=FileStats::color_if_non_zero(self.vid_skipped,Warning),
+            p_vid_move=FileStats::padded_color_if_non_zero(self.vid_moved, Neutral, max_digits),
+            p_vid_copy=FileStats::padded_color_if_non_zero(self.vid_copied, Neutral, max_digits),
+            p_vid_skip=FileStats::padded_color_if_non_zero(self.vid_skipped, Warning, max_digits),
 
-            aud_move=FileStats::color_if_non_zero(self.aud_moved,Neutral),
-            aud_copy=FileStats::color_if_non_zero(self.aud_copied, Neutral),
-            aud_skip=FileStats::color_if_non_zero(self.aud_skipped, Warning),
+            p_aud_move=FileStats::padded_color_if_non_zero(self.aud_moved, Neutral, max_digits),
+            p_aud_copy=FileStats::padded_color_if_non_zero(self.aud_copied, Neutral, max_digits),
+            p_aud_skip=FileStats::padded_color_if_non_zero(self.aud_skipped, Warning, max_digits),
 
             dir_create=FileStats::color_if_non_zero(self.dirs_created, Neutral),
             dir_ignore=FileStats::color_if_non_zero(self.dirs_ignored, Warning),
@@ -392,46 +409,40 @@ Total time taken:      {t_total} sec
         )}; // end write_general_stats
 
         let dryrun_general_stats = || { format!(
-"---------------------------------------
-Total files:           {total} ({size})
----------------------------------------
-Images to be moved:    {img_move}
-Images to be copied:   {img_copy}
-Images to be skipped:  {img_skip}
-Videos to be moved:    {vid_move}
-Videos to be copied:   {vid_copy}
-Videos to be skipped:  {vid_skip}
-Audios to be moved:    {aud_move}
-Audios to be copied:   {aud_copy}
-Audios to be skipped:  {aud_skip}
-Folders to be created: {dir_create}
-Folders to be skipped: {dir_ignore}
-Unknown files to skip: {f_skip}
----------------------------------------
-File delete errors:    {fd_err}
-File create errors:    n/a
-Folder create errors:  n/a
----------------------------------------
-Time fetching folders: {tfetch_dir} sec
-Time parsing files:    {tparse_file} sec
-Time printing files:   {twrite_file} sec
----------------------------------------
-Total time taken:      {t_total} sec
----------------------------------------",
+"-----------------------------------------------
+Total files:               {total} ({size})
+-----------------------------------------------
+Images to move|copy|skip:  |{p_img_move}|{p_img_copy}|{p_img_skip}|
+Videos to move|copy|skip:  |{p_vid_move}|{p_vid_copy}|{p_vid_skip}|
+Audios to move|copy|skip:  |{p_aud_move}|{p_aud_copy}|{p_aud_skip}|
+-----------------------------------------------
+Target folders to create:  {dir_create}
+Source folders to skip:    {dir_ignore}
+Unknown files to skip:     {f_skip}
+File delete errors:        {fd_err}
+File create errors:        n/a
+Folder create errors:      n/a
+-----------------------------------------------
+Time fetching folders:     {tfetch_dir} sec
+Time parsing files:        {tparse_file} sec
+Time printing files:       {twrite_file} sec
+-----------------------------------------------
+Total time taken:          {t_total} sec
+-----------------------------------------------",
             total=FileStats::color_if_non_zero(self.files_count_total, Neutral),
             size=ColoredString::bold_white(get_file_size_string(self.file_size_total).as_str()),
 
-            img_move=FileStats::color_if_non_zero(self.img_moved, Neutral),
-            img_copy=FileStats::color_if_non_zero(self.img_copied, Neutral),
-            img_skip=FileStats::color_if_non_zero(self.img_skipped, Warning),
+            p_img_move=FileStats::padded_color_if_non_zero(self.img_moved, Neutral, max_digits),
+            p_img_copy=FileStats::padded_color_if_non_zero(self.img_copied, Neutral, max_digits),
+            p_img_skip=FileStats::padded_color_if_non_zero(self.img_skipped, Warning, max_digits),
 
-            vid_move=FileStats::color_if_non_zero(self.vid_moved,Neutral),
-            vid_copy=FileStats::color_if_non_zero(self.vid_copied,Neutral),
-            vid_skip=FileStats::color_if_non_zero(self.vid_skipped, Warning),
+            p_vid_move=FileStats::padded_color_if_non_zero(self.vid_moved, Neutral, max_digits),
+            p_vid_copy=FileStats::padded_color_if_non_zero(self.vid_copied, Neutral, max_digits),
+            p_vid_skip=FileStats::padded_color_if_non_zero(self.vid_skipped, Warning, max_digits),
 
-            aud_move=FileStats::color_if_non_zero(self.aud_moved,Neutral),
-            aud_copy=FileStats::color_if_non_zero(self.aud_copied, Neutral),
-            aud_skip=FileStats::color_if_non_zero(self.aud_skipped, Warning),
+            p_aud_move=FileStats::padded_color_if_non_zero(self.aud_moved, Neutral, max_digits),
+            p_aud_copy=FileStats::padded_color_if_non_zero(self.aud_copied, Neutral, max_digits),
+            p_aud_skip=FileStats::padded_color_if_non_zero(self.aud_skipped, Warning, max_digits),
 
             dir_create=FileStats::color_if_non_zero(self.dirs_created, Neutral),
             dir_ignore=FileStats::color_if_non_zero(self.dirs_ignored, Warning),
