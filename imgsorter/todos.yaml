@@ -74,8 +74,8 @@
 [ ] 6 - Misc / bugs
     [x] a - change copy to rename
     [x] c - fix warnings
-    [x] d - fix eroare "Access is denied." daca rulezi a doua oara si target files exista 
-          - eroare cand target dir exista si se incearca citire metadate
+    [x] d - fix eroare "Access is denied." when running the program a second time and target files exist 
+          - the error happens when the target dir exists and attempting to read metadate
     [x] e - run with debug - optional debug printouts
     [ ] f - handle source path not exists / guard against setting invalid CliArgs values
     [ ] g - fix edge cases for moving assorted files ()

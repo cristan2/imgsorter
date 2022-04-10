@@ -37,7 +37,7 @@ target_oneoffs_subdir_name = 'Miscellaneous'
 dry_run = false
 
 # Whether to print additional information during processing
-verbose = true
+verbose = false
 
 # Whether to align file lists for pretty outputs
 # Disable this if output is too wide for your screen
@@ -82,4 +82,4 @@ silent = false
 [custom.extensions]
 image = [ "heic" ]
 video = []
-audio = [ "amr"]
+audio = []

@@ -217,6 +217,7 @@ pub struct FileStats {
     aud_copied: i32,
     aud_skipped: i32,
     unknown_skipped: i32,
+    // source dirs which are skipped from reading
     dirs_ignored: i32,
     dirs_created: i32,
     error_file_create: i32,
@@ -729,12 +730,14 @@ fn main() -> Result<(), std::io::Error> {
     stats.set_time_total(time_processing.elapsed() + stats.time_fetch_dirs);
 
     // Print unknown extensions
-    println!("Skipped files with these unknown extensions: {}",
-             target_dir_tree.unknown_extensions
-                 .into_iter()
-                 .filter(|s|!s.is_empty())
-                 .collect::<Vec<String>>().join(", "));
-    println!();
+    if !target_dir_tree.unknown_extensions.is_empty() {
+        println!("Skipped files with these unknown extensions: {}",
+                 target_dir_tree.unknown_extensions
+                     .into_iter()
+                     .filter(|s|!s.is_empty())
+                     .collect::<Vec<String>>().join(", "));
+        println!();
+    }
 
     // Print final stats
     stats.print_stats(&args);
@@ -953,9 +956,6 @@ fn write_target_dir_files(
 ) {
 
     let is_dry_run = args.dry_run;
-
-    println!();
-    println!("Writing files to target...");
 
     // Dry runs will output a dir-tree-like structure, so add the additional
     // indents and markings to the max length to be taken into account when padding
@@ -1198,8 +1198,9 @@ fn get_files_size(files: &Vec<SupportedFile>) -> u64 {
 /// Read a directory path and return a string signalling if the path exists
 fn dry_run_check_target_dir_exists(path: &PathBuf, stats: &mut FileStats) -> String {
     if path.exists() {
-        stats.inc_dirs_ignored();
-        String::from("[target folder exists, will be skipped]")
+        // don't increase stats.inc_dirs_ignored() since it's not equivalent
+        // a source directory which is skipped from reading
+        String::from("[target folder exists, will not create]")
     } else {
         stats.inc_dirs_created();
         String::from("[new folder will be created]")
@@ -1459,9 +1460,9 @@ fn get_file_type(extension_opt: &Option<String>, args: &Args) -> FileType {
                 // "Supported" extensions
                 "jpg" | "jpeg" | "png" | "tiff" | "crw"| "nef" =>
                     FileType::Image,
-                "mp4" | "mov" | "3gp" =>
+                "mp4" | "mov" | "3gp" | "avi" =>
                     FileType::Video,
-                "amr" =>
+                "amr" | "ogg" =>
                     FileType::Audio,
 
                 // User-configured extensions
