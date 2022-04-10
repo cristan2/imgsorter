@@ -1,6 +1,5 @@
 - implement Display for Args and print before confirmation
 - clippy
-- stats for dry run
 - documentation - readme + main flows
 - replace exif crate with kamadak-exif (support for HEIF)
 
@@ -30,7 +29,7 @@
     [x] dry run/copy output - sort dirs by name (see https://stackoverflow.com/questions/59799388/sort-hashmap-data-by-keys)
     [ ] EXIF for video data?
     [ ] depth limit for source recursive subdirs
-    [ ] additional file formats - amr, etc
+    [x] additional file formats - amr, etc
     [x] calculate total file size
     [x] don't create device subdirs if only one file per device (even if device count > 1)
 
@@ -39,11 +38,11 @@
     [x] b - show final statistics - x files found, x dirs created, x files moved, x files left untouched...
     [!] c - img count in dir name - not feasible, prone to errors; is included in dry run output only
     [ ] d - reenable Stats.time_fetching_dirs
-    [ ] dry run specific statistics
+    [x] dry run specific statistics
     [ ] 'dirs created' stat - differentiate between "date dirs" and "device dirs"
     [ ] stats for "could not read EXIF"
     [ ] table-like stats instead of simple list (e.g. "Images moved/copied/skipped    0 | 10 | 2" )
-    [ ] don't include move/copy stats for copy/move operations
+    [!] don't include move/copy stats for copy/move operations - not doing, it's relevant in case of delete errors
     [x] stats for file size
     [x] stats for time taken - prefetching dirs, parsing files, copying files
 
@@ -81,6 +80,8 @@
     [ ] g - fix edge cases for moving assorted files ()
     [ ] h - filename padding during dry runs is sometimes bigger
           - should be calculated as max (target_path_len + depth_len)
+    [ ] i - get_source_unique_files only looks at file names, not date or device 
+            - dry runs might report more skipped duplicates than will actually be found when writing 
     [x] create_subdir_if_required shouldn't rely on CWD to strip prefix
     [x] only create device name subdirs if there's more than one
     [x] option to always create device name subdirs even if there's only one

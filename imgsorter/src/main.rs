@@ -16,6 +16,7 @@ use filesize::PathExt;
 
 use imgsorter::config::*;
 use imgsorter::utils::*;
+use OutputColor::*;
 
 const DEFAULT_NO_DATE_STR: &'static str = "no date";
 const DATE_DIR_FORMAT: &'static str = "%Y.%m.%d";
@@ -256,15 +257,15 @@ impl FileStats {
 
     pub fn inc_files_total(&mut self, count: usize) { self.files_count_total += count as i32}
     pub fn inc_files_size(&mut self, size: u64) { self.file_size_total += size }
-    pub fn inc_img_moved(&mut self) { self.img_moved += 1 }
-    pub fn inc_img_copied(&mut self) { self.img_copied += 1 }
-    pub fn inc_img_skipped(&mut self) { self.img_skipped += 1 }
-    pub fn inc_vid_moved(&mut self) { self.vid_moved += 1 }
-    pub fn inc_vid_copied(&mut self) { self.vid_copied += 1 }
-    pub fn inc_vid_skipped(&mut self) { self.vid_skipped += 1 }
-    pub fn inc_aud_moved(&mut self) { self.aud_moved += 1 }
-    pub fn inc_aud_copied(&mut self) { self.aud_copied += 1 }
-    pub fn inc_aud_skipped(&mut self) { self.aud_skipped += 1 }
+    fn inc_img_moved(&mut self) { self.img_moved += 1 }
+    fn inc_img_copied(&mut self) { self.img_copied += 1 }
+    fn inc_img_skipped(&mut self) { self.img_skipped += 1 }
+    fn inc_vid_moved(&mut self) { self.vid_moved += 1 }
+    fn inc_vid_copied(&mut self) { self.vid_copied += 1 }
+    fn inc_vid_skipped(&mut self) { self.vid_skipped += 1 }
+    fn inc_aud_moved(&mut self) { self.aud_moved += 1 }
+    fn inc_aud_copied(&mut self) { self.aud_copied += 1 }
+    fn inc_aud_skipped(&mut self) { self.aud_skipped += 1 }
     pub fn inc_unknown_skipped(&mut self) { self.unknown_skipped += 1 }
     pub fn inc_dirs_ignored(&mut self) { self.dirs_ignored += 1 }
     pub fn inc_dirs_created(&mut self) { self.dirs_created += 1 }
@@ -276,6 +277,36 @@ impl FileStats {
     pub fn set_time_write_files(&mut self, elapsed: Duration) { self.time_write_files = elapsed }
     pub fn set_time_total(&mut self, elapsed: Duration) { self.time_total = elapsed }
 
+    pub fn inc_copied_by_type(&mut self, file: &SupportedFile) {
+        match file.file_type {
+            FileType::Image   => self.inc_img_copied(),
+            FileType::Video   => self.inc_vid_copied(),
+            FileType::Audio   => self.inc_aud_copied(),
+            // don't record any stats for this, shouldn't get one here anyway
+            FileType::Unknown(_) => ()
+        }
+    }
+
+    pub fn inc_moved_by_type(&mut self, file: &SupportedFile) {
+        match file.file_type {
+            FileType::Image   => self.inc_img_moved(),
+            FileType::Video   => self.inc_vid_moved(),
+            FileType::Audio   => self.inc_aud_moved(),
+            // don't record any stats for this, shouldn't get one here anyway
+            FileType::Unknown(_) => ()
+        }
+    }
+
+    pub fn inc_skipped_by_type(&mut self, file: &SupportedFile) {
+        match file.file_type {
+            FileType::Image   => self.inc_img_skipped(),
+            FileType::Video   => self.inc_vid_skipped(),
+            FileType::Audio   => self.inc_aud_skipped(),
+            // don't record any stats for this, shouldn't get one here anyway
+            FileType::Unknown(_) => ()
+        }
+    }
+
     pub fn color_if_non_zero(err_stat: i32, level: OutputColor) -> String {
         if err_stat > 0 {
             match level {
@@ -283,7 +314,7 @@ impl FileStats {
                     ColoredString::red(err_stat.to_string().as_str()),
                 OutputColor::Warning =>
                     ColoredString::orange(err_stat.to_string().as_str()),
-                OutputColor::Neutral =>
+                Neutral =>
                     ColoredString::bold_white(err_stat.to_string().as_str()),
                 OutputColor::Good =>
                     ColoredString::green(err_stat.to_string().as_str()),
@@ -294,78 +325,153 @@ impl FileStats {
     }
 
     pub fn print_stats(&self, args: &Args) {
-        let general_stats = format!(
-"-----------------------------------------
-Total files:             {total} ({size})
------------------------------------------
-Images moved:            {img_move}
-Images copied:           {img_copy}
-Images skipped:          {img_skip}
-Videos moved:            {vid_move}
-Videos copied:           {vid_copy}
-Videos skipped:          {vid_skip}
-Audio moved:             {aud_move}
-Audio copied:            {aud_copy}
-Audio skipped:           {aud_skip}
-Directories ignored:     {dir_ignore}
-Directories created:     {dir_create}
-Unknown files skipped:   {f_skip}
----------------------------------
-File create errors:      {fc_err}
-File delete errors:      {fd_err}
-Directory create errors: {dc_err}
----------------------------------
-Time fetching folders:   {tfetch_dir} sec
-Time parsing files:      {tparse_file} sec
-Time writing files:      {twrite_file} sec
------------------------------------------
-Total time taken:        {t_total} sec
------------------------------------------",
-                                    total=FileStats::color_if_non_zero(self.files_count_total, OutputColor::Neutral),
-                                    size=ColoredString::bold_white(get_file_size_string(self.file_size_total).as_str()),
 
-                                    img_move=FileStats::color_if_non_zero(self.img_moved, OutputColor::Neutral),
-                                    img_copy=FileStats::color_if_non_zero(self.img_copied, OutputColor::Neutral),
-                                    img_skip=FileStats::color_if_non_zero(self.img_skipped, OutputColor::Warning),
-                                    vid_move=FileStats::color_if_non_zero(self.vid_moved,OutputColor::Neutral),
-                                    vid_copy=FileStats::color_if_non_zero(self.vid_copied,OutputColor::Neutral),
-                                    vid_skip=FileStats::color_if_non_zero(self.vid_skipped, OutputColor::Warning),
-                                    aud_move=FileStats::color_if_non_zero(self.aud_moved,OutputColor::Neutral),
-                                    aud_copy=FileStats::color_if_non_zero(self.aud_copied,OutputColor::Neutral),
-                                    aud_skip=FileStats::color_if_non_zero(self.aud_skipped, OutputColor::Warning),
-                                    dir_create=FileStats::color_if_non_zero(self.dirs_created, OutputColor::Neutral),
-                                    dir_ignore=FileStats::color_if_non_zero(self.dirs_ignored, OutputColor::Warning),
-                                    f_skip=FileStats::color_if_non_zero(self.unknown_skipped, OutputColor::Warning),
+        let write_general_stats = || { format!(
+"---------------------------------------
+Total files:           {total} ({size})
+---------------------------------------
+Images moved:          {img_move}
+Images copied:         {img_copy}
+Images skipped:        {img_skip}
+Videos moved:          {vid_move}
+Videos copied:         {vid_copy}
+Videos skipped:        {vid_skip}
+Audio moved:           {aud_move}
+Audio copied:          {aud_copy}
+Audio skipped:         {aud_skip}
+Folders created:       {dir_create}
+Folders ignored:       {dir_ignore}
+Unknown files skipped: {f_skip}
+---------------------------------------
+File delete errors:    {fd_err}
+File create errors:    {fc_err}
+Folder create errors:  {dc_err}
+---------------------------------------
+Time fetching folders: {tfetch_dir} sec
+Time parsing files:    {tparse_file} sec
+Time writing files:    {twrite_file} sec
+---------------------------------------
+Total time taken:      {t_total} sec
+---------------------------------------",
+            total=FileStats::color_if_non_zero(self.files_count_total, Neutral),
+            size=ColoredString::bold_white(get_file_size_string(self.file_size_total).as_str()),
 
-                                    fc_err=FileStats::color_if_non_zero(self.error_file_create, OutputColor::Error),
-                                    fd_err=FileStats::color_if_non_zero(self.error_file_delete, OutputColor::Error),
-                                    dc_err=FileStats::color_if_non_zero(self.error_dir_create, OutputColor::Error),
+            img_move=FileStats::color_if_non_zero(self.img_moved, Neutral),
+            img_copy=FileStats::color_if_non_zero(self.img_copied, Neutral),
+            img_skip=FileStats::color_if_non_zero(self.img_skipped, Warning),
 
-                                    tfetch_dir=ColoredString::bold_white(format!("{}:{}",
-                                                                                 self.time_fetch_dirs.as_secs(),
-                                                                                 LeftPadding::zeroes3(self.time_fetch_dirs.subsec_millis())).as_str()),
-                                    tparse_file=ColoredString::bold_white(format!("{}:{}",
-                                                                                  self.time_parse_files.as_secs(),
-                                                                                  LeftPadding::zeroes3(self.time_parse_files.subsec_millis())).as_str()),
-                                    twrite_file=ColoredString::bold_white(format!("{}:{}",
-                                                                                  self.time_write_files.as_secs(),
-                                                                                  LeftPadding::zeroes3(self.time_write_files.subsec_millis())).as_str()),
-                                    t_total=ColoredString::bold_white(format!("{}:{}",
-                                                                                  self.time_total.as_secs(),
-                                                                                  LeftPadding::zeroes3(self.time_total.subsec_millis())).as_str()),
-        );
+            vid_move=FileStats::color_if_non_zero(self.vid_moved,Neutral),
+            vid_copy=FileStats::color_if_non_zero(self.vid_copied,Neutral),
+            vid_skip=FileStats::color_if_non_zero(self.vid_skipped,Warning),
 
-        println!("{}", general_stats);
+            aud_move=FileStats::color_if_non_zero(self.aud_moved,Neutral),
+            aud_copy=FileStats::color_if_non_zero(self.aud_copied, Neutral),
+            aud_skip=FileStats::color_if_non_zero(self.aud_skipped, Warning),
 
-        if self.files_count_total == self.unknown_skipped {
-            println!("{}", ColoredString::orange("No supported files found in source folder."))
+            dir_create=FileStats::color_if_non_zero(self.dirs_created, Neutral),
+            dir_ignore=FileStats::color_if_non_zero(self.dirs_ignored, Warning),
+
+            f_skip=FileStats::color_if_non_zero(self.unknown_skipped, Warning),
+
+            fd_err=FileStats::color_if_non_zero(self.error_file_delete, Error),
+            fc_err=FileStats::color_if_non_zero(self.error_file_create, Error),
+            dc_err=FileStats::color_if_non_zero(self.error_dir_create, Error),
+
+            tfetch_dir=ColoredString::bold_white(format!("{}:{}",
+                self.time_fetch_dirs.as_secs(),
+                LeftPadding::zeroes3(self.time_fetch_dirs.subsec_millis())).as_str()),
+            tparse_file=ColoredString::bold_white(format!("{}:{}",
+                self.time_parse_files.as_secs(),
+                LeftPadding::zeroes3(self.time_parse_files.subsec_millis())).as_str()),
+            twrite_file=ColoredString::bold_white(format!("{}:{}",
+                self.time_write_files.as_secs(),
+                LeftPadding::zeroes3(self.time_write_files.subsec_millis())).as_str()),
+            t_total=ColoredString::bold_white(format!("{}:{}",
+                self.time_total.as_secs(),
+                LeftPadding::zeroes3(self.time_total.subsec_millis())).as_str()),
+        )}; // end write_general_stats
+
+        let dryrun_general_stats = || { format!(
+"---------------------------------------
+Total files:           {total} ({size})
+---------------------------------------
+Images to be moved:    {img_move}
+Images to be copied:   {img_copy}
+Images to be skipped:  {img_skip}
+Videos to be moved:    {vid_move}
+Videos to be copied:   {vid_copy}
+Videos to be skipped:  {vid_skip}
+Audios to be moved:    {aud_move}
+Audios to be copied:   {aud_copy}
+Audios to be skipped:  {aud_skip}
+Folders to be created: {dir_create}
+Folders to be skipped: {dir_ignore}
+Unknown files to skip: {f_skip}
+---------------------------------------
+File delete errors:    {fd_err}
+File create errors:    n/a
+Folder create errors:  n/a
+---------------------------------------
+Time fetching folders: {tfetch_dir} sec
+Time parsing files:    {tparse_file} sec
+Time printing files:   {twrite_file} sec
+---------------------------------------
+Total time taken:      {t_total} sec
+---------------------------------------",
+            total=FileStats::color_if_non_zero(self.files_count_total, Neutral),
+            size=ColoredString::bold_white(get_file_size_string(self.file_size_total).as_str()),
+
+            img_move=FileStats::color_if_non_zero(self.img_moved, Neutral),
+            img_copy=FileStats::color_if_non_zero(self.img_copied, Neutral),
+            img_skip=FileStats::color_if_non_zero(self.img_skipped, Warning),
+
+            vid_move=FileStats::color_if_non_zero(self.vid_moved,Neutral),
+            vid_copy=FileStats::color_if_non_zero(self.vid_copied,Neutral),
+            vid_skip=FileStats::color_if_non_zero(self.vid_skipped, Warning),
+
+            aud_move=FileStats::color_if_non_zero(self.aud_moved,Neutral),
+            aud_copy=FileStats::color_if_non_zero(self.aud_copied, Neutral),
+            aud_skip=FileStats::color_if_non_zero(self.aud_skipped, Warning),
+
+            dir_create=FileStats::color_if_non_zero(self.dirs_created, Neutral),
+            dir_ignore=FileStats::color_if_non_zero(self.dirs_ignored, Warning),
+
+            f_skip=FileStats::color_if_non_zero(self.unknown_skipped, Warning),
+
+            fd_err=FileStats::color_if_non_zero(self.error_file_delete, Error),
+
+            tfetch_dir=ColoredString::bold_white(format!("{}:{}",
+                self.time_fetch_dirs.as_secs(),
+                LeftPadding::zeroes3(self.time_fetch_dirs.subsec_millis())).as_str()),
+            tparse_file=ColoredString::bold_white(format!("{}:{}",
+                self.time_parse_files.as_secs(),
+                LeftPadding::zeroes3(self.time_parse_files.subsec_millis())).as_str()),
+            twrite_file=ColoredString::bold_white(format!("{}:{}",
+                self.time_write_files.as_secs(),
+                LeftPadding::zeroes3(self.time_write_files.subsec_millis())).as_str()),
+            t_total=ColoredString::bold_white(format!("{}:{}",
+                self.time_total.as_secs(),
+                LeftPadding::zeroes3(self.time_total.subsec_millis())).as_str()),
+        )}; // end dryrun_general_stats
+
+        // Print dry run stats
+        if args.dry_run {
+            println!("{}", dryrun_general_stats());
+
+        // Print actual stats and other errors encountered when writing files
         } else {
-            if self.error_file_create > 0 {
-                println!("{} Some files could not be created in the target path", ColoredString::warn_arrow())
-            }
-    
-            if !args.copy_not_move && self.error_file_delete > 0  {
-                println!("{} Some files were copied but the source files could not be removed", ColoredString::warn_arrow())
+            println!("{}", write_general_stats());
+
+            if self.files_count_total == self.unknown_skipped {
+                println!("{}", ColoredString::orange("No supported files found in source folder."))
+            } else {
+                if self.error_file_create > 0 {
+                    println!("{} Some files could not be created in the target path", ColoredString::warn_arrow())
+                }
+
+                if !args.copy_not_move && self.error_file_delete > 0  {
+                    println!("{} Some files were copied but the source files could not be removed", ColoredString::warn_arrow())
+                }
             }
         }
     }
@@ -633,6 +739,9 @@ fn get_source_unique_files(
     source_dir_contents: &Vec<Vec<DirEntry>>,
     args: &Args
 ) -> Option<Vec<HashSet<OsString>>> {
+
+    // TODO 6i: this method only takes filename into consideration, should also consider date / device
+    //   maybe even use [TargetDateDeviceTree] for this instead of source vecs?
 
     // This method is only useful for dry runs, return early otherwise
     if !args.dry_run {
@@ -905,7 +1014,7 @@ fn write_target_dir_files(
             };
 
             // Check restrictions - if target exists
-            let target_dir_exists = dry_run_check_target_exists(&date_destination_path);
+            let target_dir_exists = dry_run_check_target_dir_exists(&date_destination_path, stats);
 
             // Print everything together
             println!("{}",
@@ -974,7 +1083,7 @@ fn write_target_dir_files(
                     let indented_device_dir_name = padder.format_dryrun_device_dir(dir_name, args);
 
                     // Check restrictions - if target exists
-                    let target_dir_status_check = dry_run_check_target_exists(&device_path);
+                    let target_dir_status_check = dry_run_check_target_dir_exists(&device_path, stats);
 
                     // Print everything together
                     println!("{} {}", indented_device_dir_name, target_dir_status_check);
@@ -1020,7 +1129,12 @@ fn write_target_dir_files(
                         let status_separator = padder.format_dryrun_status_separator_dotted(source_path.clone(), args);
 
                         // Check restrictions - file exists or is read-only
-                        let file_restrictions = dry_run_check_file_restrictions(&file, &file_destination_path, &source_unique_files, args);
+                        let file_restrictions = dry_run_check_file_restrictions(
+                            &file,
+                            &file_destination_path,
+                            &source_unique_files,
+                            args,
+                            stats);
 
                         // Return everything to be printed
                         (indented_target_filename, file_separator, source_path, status_separator, file_restrictions)
@@ -1071,10 +1185,12 @@ fn get_files_size(files: &Vec<SupportedFile>) -> u64 {
 }
 
 /// Read a directory path and return a string signalling if the path exists
-fn dry_run_check_target_exists(path: &PathBuf) -> String {
+fn dry_run_check_target_dir_exists(path: &PathBuf, stats: &mut FileStats) -> String {
     if path.exists() {
+        stats.inc_dirs_ignored();
         String::from("[target folder exists, will be skipped]")
     } else {
+        stats.inc_dirs_created();
         String::from("[new folder will be created]")
     }
 }
@@ -1088,7 +1204,8 @@ fn dry_run_check_file_restrictions(
     source_file: &SupportedFile,
     target_path: &PathBuf,
     source_unique_files: &Option<Vec<HashSet<OsString>>>,
-    args: &Args
+    args: &Args,
+    stats: &mut FileStats
 ) -> String {
 
     // TODO 5d: Pre-filtering is not the best method to skip duplicate files.
@@ -1119,11 +1236,16 @@ fn dry_run_check_file_restrictions(
         // for skipping it will not be accurate. If the target file actually exists,
         // only the first of the duplicates should show as skipped for that reason.
         if !is_source_unique() {
+            stats.inc_skipped_by_type(source_file);
             ColoredString::orange("duplicate source file, will be skipped")
+
         } else if target_path.exists() {
+            stats.inc_skipped_by_type(source_file);
             ColoredString::orange("target file exists, will be skipped")
+
         } else if args.copy_not_move {
-          ColoredString::green("file will be copied")
+            stats.inc_copied_by_type(source_file);
+            ColoredString::green("file will be copied")
 
         } else {
 
@@ -1132,9 +1254,13 @@ fn dry_run_check_file_restrictions(
             match source_file.file_path.metadata() {
                 Ok(metadata) => {
                     let is_read_only = metadata.permissions().readonly();
+
                     if !args.copy_not_move && is_read_only {
+                        stats.inc_error_file_delete();
+                        stats.inc_copied_by_type(source_file);
                         ColoredString::red("source is read only, file will be copied")
                     } else {
+                        stats.inc_moved_by_type(source_file);
                         ColoredString::green("file will be moved")
                     }
                 },
@@ -1196,14 +1322,8 @@ fn copy_file_if_not_exists(
                      &destination_path.strip_prefix(&args.target_dir).unwrap().display());
         }
 
-        // Record stats for skipped files
-        match file.file_type {
-            FileType::Image   => stats.inc_img_skipped(),
-            FileType::Video   => stats.inc_vid_skipped(),
-            FileType::Audio   => stats.inc_aud_skipped(),
-            // don't record any stats for this, shouldn't get one here anyway
-            FileType::Unknown(_) => ()
-        }
+        stats.inc_skipped_by_type(file);
+
         ColoredString::orange("already exists")
 
     } else {
@@ -1238,15 +1358,10 @@ fn copy_file_if_not_exists(
                 // Record stats for copied or moved files. Pay special attention to cases when the operation
                 // is a move, the target file was created, but the source file was not deleted
                 // If operation is a move, the delete_failed is *defined* and *true* if the deletion failed
-                match file.file_type {
-                    FileType::Image   =>
-                        if args.copy_not_move || _delete_failed_opt.unwrap_or(false) { stats.inc_img_copied() } else { stats.inc_img_moved() },
-                    FileType::Video   =>
-                        if args.copy_not_move || _delete_failed_opt.unwrap_or(false) { stats.inc_vid_copied() } else { stats.inc_vid_moved() },
-                    FileType::Audio   =>
-                        if args.copy_not_move || _delete_failed_opt.unwrap_or(false) { stats.inc_aud_copied() } else { stats.inc_aud_moved() },
-                    // don't record any stats for this, shouldn't get one here anyway
-                    FileType::Unknown(_) =>()
+                if args.copy_not_move || _delete_failed_opt.unwrap_or(false) {
+                    stats.inc_copied_by_type(file);
+                } else {
+                    stats.inc_moved_by_type(file);
                 }
 
                 format!("{}{}",
