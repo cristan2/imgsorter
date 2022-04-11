@@ -99,6 +99,7 @@
     [ ] separator arrow color should match file copy status (needs rework of how statuses are returned and colored)
     [ ] increase padding spaces from 1 to 2
     [ ] dry run - option to not print everything, truncate after e.g. 5 files in same folder with same status (but save everything to log)
+    [x] prettier dir trees (show branches ending when reaching last entry)
     [ ] show dir tree when presenting the source paths before confirmation, instead of a simple list of paths
         - show full path only for the sources in config, not for the recursively found subdirs
         - maybe show no of files next to each dir

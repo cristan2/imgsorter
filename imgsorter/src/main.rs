@@ -43,14 +43,14 @@ impl DeviceTree {
 /// Use BTreeMap's to have the keys sorted
 /// ```
 /// [target_dir]          // wrapper struct
-///  └─ [date_dir]        // wrapped top-level map; key of type String
-///  │   └─ [device_dir]  // inner map; key of type Option<String>
-///  │   │   └─ file.ext  // inner map; value is Vec of supported files
+///  ├─ [date_dir]        // wrapped top-level map; key of type String
+///  │   ├─ [device_dir]  // inner map; key of type Option<String>
+///  │   │   ├─ file.ext  // inner map; value is Vec of supported files
 ///  │   │   └─ file.ext
 ///  │   └─ device_dir
-///  │   │   └─ ...
+///  │       └─ ...
 ///  └─ [assorted]
-///  │   └─ single.file
+///      └─ single.file
 /// ```
 struct TargetDateDeviceTree {
     dir_tree: BTreeMap<String, DeviceTree>,
@@ -347,30 +347,30 @@ impl FileStats {
 
     pub fn print_stats(&self, args: &Args) {
 
-        // add +1 for larger spacing
+        // add some empty space for wider spacing
         let max_digits = get_integer_char_count(self.files_count_total) + 1;
 
         let write_general_stats = || { format!(
-"----------------------------------------------
+"──────────────────────────────────────────────
 Total files:                  {total} ({size})
-----------------------------------------------
-Images moved|copied|skipped:  |{p_img_move}|{p_img_copy}|{p_img_skip}|
-Videos moved|copied|skipped:  |{p_vid_move}|{p_vid_copy}|{p_vid_skip}|
-Audios moved|copied|skipped:  |{p_aud_move}|{p_aud_copy}|{p_aud_skip}|
-----------------------------------------------
+──────────────────────────────────────────────
+Images moved|copied|skipped:  │{p_img_move} │{p_img_copy} │{p_img_skip} │
+Videos moved|copied|skipped:  │{p_vid_move} │{p_vid_copy} │{p_vid_skip} │
+Audios moved|copied|skipped:  │{p_aud_move} │{p_aud_copy} │{p_aud_skip} │
+──────────────────────────────────────────────
 Folders created:              {dir_create}
 Folders ignored:              {dir_ignore}
 Unknown files skipped:        {f_skip}
 File delete errors:           {fd_err}
 File create errors:           {fc_err}
 Folder create errors:         {dc_err}
-----------------------------------------------
+──────────────────────────────────────────────
 Time fetching folders:        {tfetch_dir} sec
 Time parsing files:           {tparse_file} sec
 Time writing files:           {twrite_file} sec
-----------------------------------------------
+──────────────────────────────────────────────
 Total time taken:             {t_total} sec
-----------------------------------------------",
+──────────────────────────────────────────────",
             total=FileStats::color_if_non_zero(self.files_count_total, Neutral),
             size=ColoredString::bold_white(get_file_size_string(self.file_size_total).as_str()),
 
@@ -410,12 +410,12 @@ Total time taken:             {t_total} sec
         )}; // end write_general_stats
 
         let dryrun_general_stats = || { format!(
-"-----------------------------------------------
+"–––––––––––––––––––––––––––––––––––––––––––––––
 Total files:               {total} ({size})
------------------------------------------------
-Images to move|copy|skip:  |{p_img_move}|{p_img_copy}|{p_img_skip}|
-Videos to move|copy|skip:  |{p_vid_move}|{p_vid_copy}|{p_vid_skip}|
-Audios to move|copy|skip:  |{p_aud_move}|{p_aud_copy}|{p_aud_skip}|
+–––––––––––––––––––––––––––––––––––––––––––––––
+Images to move|copy|skip:  │{p_img_move} │{p_img_copy} │{p_img_skip} │
+Videos to move|copy|skip:  │{p_vid_move} │{p_vid_copy} │{p_vid_skip} │
+Audios to move|copy|skip:  │{p_aud_move} │{p_aud_copy} │{p_aud_skip} │
 -----------------------------------------------
 Target folders to create:  {dir_create}
 Source folders to skip:    {dir_ignore}
@@ -427,9 +427,9 @@ Folder create errors:      n/a
 Time fetching folders:     {tfetch_dir} sec
 Time parsing files:        {tparse_file} sec
 Time printing files:       {twrite_file} sec
------------------------------------------------
+–––––––––––––––––––––––––––––––––––––––––––––––
 Total time taken:          {t_total} sec
------------------------------------------------",
+–––––––––––––––––––––––––––––––––––––––––––––––",
             total=FileStats::color_if_non_zero(self.files_count_total, Neutral),
             size=ColoredString::bold_white(get_file_size_string(self.file_size_total).as_str()),
 
@@ -680,13 +680,13 @@ fn main() -> Result<(), std::io::Error> {
             }
         };
 
-        println!("===========================================================================");
+        println!("═══════════════════════════════════════════════════════════════════════════");
         // TODO This would only be relevant if we're saving any files or reading config
         // println!("Current working directory: {}", &args.cwd.display());
         println!("{}", source_dirs);
         println!("Target directory:   {}", &args.target_dir.display());
         println!("Files to be {} {}", copy_status, total_source_files);
-        println!("===========================================================================");
+        println!("═══════════════════════════════════════════════════════════════════════════");
         // TODO 1f: print all options for this run?
     }
 
@@ -718,7 +718,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let time_processing = Instant::now();
 
-    println!("---------------------------------------------------------------------------");
+    println!("–––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––");
     println!();
 
 
@@ -988,8 +988,8 @@ fn write_target_dir_files(
     if is_dry_run {
         // TODO 5h need to pre-calculate max-depth length
         // TODO 5h FILE_TREE_INDENT is not required when there's only one level (i.e. one single device throughout)
-        padder.add_extra_source_chars_from_str(FILE_TREE_INDENT);
-        padder.add_extra_source_chars_from_str(FILE_TREE_ENTRY);
+        padder.add_extra_source_chars_from_str(DIR_TREE_INDENT_MID);
+        padder.add_extra_source_chars_from_str(DIR_TREE_ENTRY_LAST);
 
         // TODO 5i: Refactor operation statuses and calculate this programatically
         let status_width = 20;
@@ -1068,10 +1068,18 @@ fn write_target_dir_files(
         /* ---            Iterate each device directory to be created            --- */
         /*****************************************************************************/
 
+        // Count dirs to know which symbols to use for the dir tree
+        // i.e. last entry is prefixed by └ and the rest by ├
+        let dir_count_total = devices_files_and_paths.file_tree.len();
+        let mut curr_dir_ix = 0 as usize;
+
         for (
             device_name_opt,
             files_and_paths_vec
         ) in &devices_files_and_paths.file_tree {
+
+            curr_dir_ix += 1;
+            let is_last_dir = curr_dir_ix == dir_count_total;
 
             // Maximum directory depth inside a date dir, starting from 0
             // Date Dir > 0. Device Dir > 1. File
@@ -1083,8 +1091,8 @@ fn write_target_dir_files(
             // Before                 After
             // ------                 -----
             // [date_dir]             [date_dir]
-            //  └─ [device_dir]        |
-            //      └─ file01.ext      └─ file01.ext
+            //  └─ [device_dir]        │
+            //      ├─ file01.ext      ├─ file01.ext
             //      └─ file02.ext      └─ file02.ext
             let has_at_least_one_distinct_device = {
                 let _is_dir = device_name_opt.clone() != DirEntryType::Files;
@@ -1116,11 +1124,17 @@ fn write_target_dir_files(
 
                 // Print device dir name
                 if is_dry_run {
-                    // If dry run, increase indent for subsequent files
+
+                    // Increase indent for subsequent files
                     indent_level += 1;
 
                     // Add tree indents and padding to dir name
-                    let indented_device_dir_name = padder.format_dryrun_device_dir(dir_name, args);
+                    let indented_device_dir_name = padder.format_dryrun_device_dir(
+                        device_dir_name,
+                        is_last_dir,
+                        // if it's last dir, it's also the last element of type dir
+                        is_last_dir,
+                        args);
 
                     // Check restrictions - if target exists
                     let target_dir_status_check = dry_run_check_target_dir_exists(&device_path, stats);
@@ -1145,7 +1159,14 @@ fn write_target_dir_files(
             /* --- Iterate each file in a device directory and print or copy/move it --- */
             /*****************************************************************************/
 
-            for file in files_and_paths_vec {
+            // Count files to know which symbols to use for the dir tree
+            // i.e. last entry is prefixed by └ and the rest by ├
+            let file_count_total = files_and_paths_vec.len();
+
+            for (file_index, file) in files_and_paths_vec.iter().enumerate() {
+
+                let is_last_dir = curr_dir_ix == dir_count_total;
+                let is_last_element = file_index == file_count_total - 1;
 
                 // Attach filename to the directory path
                 let mut file_destination_path = device_destination_path.clone()
@@ -1162,7 +1183,11 @@ fn write_target_dir_files(
                     if is_dry_run {
 
                         // Prepare padded strings for output
-                        let indented_target_filename = indent_string(indent_level, file.get_file_name_str());
+                        let indented_target_filename = indent_string(
+                            indent_level,
+                            file.get_file_name_str(),
+                            is_last_dir,
+                            is_last_element);
                         let file_separator = padder.format_dryrun_file_separator(indented_target_filename.clone(), args);
 
                         let source_path = file.get_source_display_name_str(args);

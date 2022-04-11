@@ -51,10 +51,10 @@ pub enum OutputColor {
 /// TARGET FILE                     SOURCE PATH                  OPERATION STATUS    
 /// ---------------------------------------------------------------------------------
 /// [2019.01.28] (2 devices, 3 files, 3.34 MB) ................. [new folder will be created]
+///  ├── [Canon 100D] .......................................... [new folder will be created]
+///  │    ├── IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ... target file exists, will be skipped
+///  │    └── IMG-20190129.jpg <--- D:\Pics\IMG-20190129.jpg ... file will be copied
 ///  └── IMG-20190127.jpg <-------- D:\Pics\IMG-20190127.jpg ... file will be copied
-///  └── [Canon 100D] .......................................... [new folder will be created]
-///  |    └── IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ... target file exists, will be skipped
-///  |    └── IMG-20190129.jpg <--- D:\Pics\IMG-20190129.jpg ... file will be copied
 /// ```
 /// Sample output for copy/move operations
 /// ```
@@ -266,7 +266,8 @@ impl Padder {
     /* --- Formatter methods - produce padded strings for printing --- */
 
     pub fn format_dryrun_header_separator(&self, status_width: usize) -> String {
-        format!("{}", "-".repeat(
+        // this is an en-dash, not a dash
+        format!("{}", "–".repeat(
             self.get_dryrun_total_padding_len()
             +1 // add +1 for the gap between the status separator and the status
             + status_width)
@@ -330,10 +331,10 @@ impl Padder {
     /// The device dirs will always have a single dir tree symbol prefix,
     /// since we don't expect additional sublevels for the devices, e.g.:
     /// `└── [Canon 100D] ..............................`
-    pub fn format_dryrun_device_dir(&self, device_dir_name: String, args: &Args) -> String {
+    pub fn format_dryrun_device_dir(&self, device_dir_name: String, is_last_dir: bool, is_last_elem: bool, args: &Args) -> String {
         let indented_device_dir_name: String = indent_string(
             // There are no indent levels for device dirs, just add
-            0, format!("[{}] ", device_dir_name));
+            0, format!("[{}] ", device_dir_name), is_last_dir, is_last_elem);
 
         if args.align_file_output {
             RightPadding::dot(
@@ -438,28 +439,30 @@ impl LeftPadding {
     }
 }
 
-pub const SEPARATOR_OP_STATUS: &'static str = "...";
-pub const SEPARATOR_DRY_RUN_LEFT_TO_RIGHT: &'static str = "--->";
-pub const SEPARATOR_DRY_RUN_RIGHT_TO_LEFT: &'static str = "<---";
-pub const SEPARATOR_COPY_MOVE: &'static str = "───>";
-pub const FILE_TREE_ENTRY: &'static str = " └── ";
-pub const FILE_TREE_INDENT: &'static str = " |   ";
+pub const SEPARATOR_OP_STATUS: &str = "...";
+pub const SEPARATOR_DRY_RUN_LEFT_TO_RIGHT: &str = "--->";
+pub const SEPARATOR_DRY_RUN_RIGHT_TO_LEFT: &str = "<---";
+pub const SEPARATOR_COPY_MOVE: &str = "───>";
+pub const DIR_TREE_ENTRY_MID: &str = " ├── ";
+pub const DIR_TREE_ENTRY_LAST: &str = " └── ";
+pub const DIR_TREE_INDENT_MID: &str = " │   ";
+pub const DIR_TREE_INDENT_LAST: &str = "     ";
 
 /// Adds dir tree symbols in front of the string based on the indent level.
-/// If level > 0, string gets an equal number of [FILE_TREE_INDENT] prefixes.
-/// All strings get a [FILE_TREE_ENTRY] prefix. For example:
+/// If level > 0, string gets an equal number of [FILE_TREE_INDENT_*] prefixes.
+/// All strings get a [FILE_TREE_ENTRY_*] prefix. For example:
 /// ```
 /// [2019.01.28]
+/// ├── [Canon 100D]
+/// │    ├── IMG-20190128.jpg
+/// │    └── IMG-20190128.jpg
 /// └── IMG-20190128.jpg
-/// └── [Canon 100D]
-/// |    └── IMG-20190128.jpg
-/// |    └── IMG-20190128.jpg
 /// ```
-pub fn indent_string(indent_level: usize, file_name: String) -> String {
-    let indents = FILE_TREE_INDENT.repeat(indent_level);
-    format!("{}{}{}", indents, FILE_TREE_ENTRY.to_string(), file_name)
+pub fn indent_string(indent_level: usize, file_name: String, is_last_dir: bool, is_last_element: bool) -> String {
+    let indents_symbols = if is_last_dir {DIR_TREE_INDENT_LAST} else {DIR_TREE_INDENT_MID};
+    let entry_symbol = if is_last_element {DIR_TREE_ENTRY_LAST.to_string()} else {DIR_TREE_ENTRY_MID.to_string()};
+    format!("{}{}{}", indents_symbols.repeat(indent_level), entry_symbol, file_name)
 }
-
 
 /// For any given vec of sets of filenames, check the last set against
 /// all previous sets successively remove duplicates, thus ensuring
