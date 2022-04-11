@@ -1,6 +1,6 @@
 use std::path::{PathBuf, Path};
 use std::{fs, io, fmt};
-use std::cmp::max;
+use std::cmp::{max, Ordering};
 use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
 use std::ffi::OsString;
@@ -24,7 +24,7 @@ const DATE_DIR_FORMAT: &'static str = "%Y.%m.%d";
 /// Convenience wrapper over a map holding all files for a given device
 /// where the string representation of the optional device is the map key
 struct DeviceTree {
-    file_tree: BTreeMap<Option<String>, Vec<SupportedFile>>,
+    file_tree: BTreeMap<DirEntryType, Vec<SupportedFile>>,
     max_dir_path_len: usize
 }
 
@@ -69,7 +69,7 @@ impl fmt::Display for TargetDateDeviceTree {
                     .flat_map(|(device_dir, files)| {
                         let device_files = files.iter()
                             .map(|file|
-                                format!("{:?} | {}", device_dir, file.file_path.display().to_string()))
+                                format!("{} | {}", device_dir, file.file_path.display().to_string()))
                             .collect::<Vec<String>>();
                         device_files
                     })
@@ -146,7 +146,7 @@ impl TargetDateDeviceTree {
             });
 
         let mut oneoffs_tree = DeviceTree::new();
-        oneoffs_tree.file_tree.insert(None, oneoff_files);
+        oneoffs_tree.file_tree.insert(DirEntryType::Files, oneoff_files);
         devices_tree.insert(args.oneoffs_dir_name.clone(), oneoffs_tree);
 
         self.dir_tree = devices_tree;
@@ -498,6 +498,25 @@ pub struct ExifDateDevice {
     camera_model: Option<String>
 }
 
+/// Enum entires meant to represent the target directories
+/// named after the device name. Derive ordering and
+/// equality traits for more natural ordering when used
+/// as keys in a BTreeMap (will show files after directories)
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
+pub enum DirEntryType {
+    Directory(String),
+    Files
+}
+
+impl fmt::Display for DirEntryType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", match self {
+            Self::Directory(dir_name) => dir_name.clone(),
+            Self::Files => "".to_owned()
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct SupportedFile {
     file_name: OsString,
@@ -507,7 +526,7 @@ pub struct SupportedFile {
     // file's modified date in YYYY-MM-DD format
     date_str: String,
     metadata: Metadata,
-    device_name: Option<String>,
+    device_name: DirEntryType,
     // index of the vec holding the files in the original source dir of this file
     // this is used to detect duplicates across multiple source dirs when doing dry runs
     source_dir_index: usize
@@ -535,18 +554,20 @@ impl SupportedFile {
         };
 
         // Read image date - prefer EXIF tags over system date
-        let _image_date = _exif_data.date_original
-            .unwrap_or(_exif_data.date_time
-                .unwrap_or(get_system_modified_date(&_metadata)
-                    .unwrap_or(DEFAULT_NO_DATE_STR.to_string())));
-
+        let _image_date = {
+            _exif_data.date_original
+                .unwrap_or(_exif_data.date_time
+                    .unwrap_or(get_system_modified_date(&_metadata)
+                        .unwrap_or(DEFAULT_NO_DATE_STR.to_string()))) };
 
         // Replace EXIF camera model with a custom name, if one was defined in config
-        let _camera_name: Option<String> = match _exif_data.camera_model {
+        let _camera_name: DirEntryType = match _exif_data.camera_model {
             Some(camera_model) => args.custom_device_names
                 .get(camera_model.to_lowercase().as_str())
-                .map_or(Some(camera_model), |s|Some(s.clone())),
-            None => None
+                .map_or(DirEntryType::Directory(camera_model),
+                        |custom_camera_name|DirEntryType::Directory(custom_camera_name.clone())),
+            None =>
+                DirEntryType::Files
         };
 
         SupportedFile {
@@ -891,7 +912,12 @@ fn parse_dir_contents(
                     };
 
                     // Store the string lengths of the file name and path for padding in stdout
-                    let _device_name_len = current_file.device_name.clone().map(|d| d.chars().count()).unwrap_or(0);
+                    let _device_name_len = match &current_file.device_name {
+                        DirEntryType::Directory(dir_name) =>
+                            get_string_char_count(dir_name.clone()),
+                        DirEntryType::Files =>
+                            0
+                    };
                     let _date_name_str = &current_file.date_str.chars().count();
                     // add +1 for each path separator character
                     let total_target_path_len = _date_name_str + 1 + _device_name_len;
@@ -1060,7 +1086,10 @@ fn write_target_dir_files(
             //  └─ [device_dir]        |
             //      └─ file01.ext      └─ file01.ext
             //      └─ file02.ext      └─ file02.ext
-            let has_at_least_one_distinct_device = device_count_for_date > 1 && device_name_opt.is_some();
+            let has_at_least_one_distinct_device = {
+                let _is_dir = device_name_opt.clone() != DirEntryType::Files;
+                device_count_for_date > 1 && _is_dir
+            };
 
             // This condition helps prevent creating a device subdir for a single file, if there's also
             // a "None" device with a single file. In practice, this is most likely to be a situation where
@@ -1077,13 +1106,13 @@ fn write_target_dir_files(
 
             let do_create_device_subdirs = has_at_least_one_distinct_device && !has_double_file;
 
-            // If there's more than one device (including "None"), attach device dir to destination path
+            // If there's more than one DirEntryType, attach device dir to destination path
             let device_destination_path = if do_create_device_subdirs {
-                // This is safe to unwrap, since we've already checked the device is_some
-                let dir_name = device_name_opt.clone().unwrap();
+                // This is safe, since we've already checked the device is a Directory
+                let device_dir_name = device_name_opt.to_string();
 
                 // Attach device name as a new subdirectory to the current target path
-                let device_path = date_destination_path.join(dir_name.clone()); // we only need clone here to be able to print it out later
+                let device_path = date_destination_path.join(device_dir_name.clone()); // we only need clone here to be able to print it out later
 
                 // Print device dir name
                 if is_dry_run {
