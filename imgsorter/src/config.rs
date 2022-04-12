@@ -25,6 +25,8 @@ pub const AUDIO: &str = "audio";
 // Unexposed defaults
 const DBG_ON: bool = false;
 const DEFAULT_TARGET_SUBDIR: &str = "imgsorted";
+pub const DEFAULT_NO_DATE_STR: &str = "no date";
+pub const DATE_DIR_FORMAT: &str = "%Y.%m.%d";
 
 #[derive(Debug)]
 pub struct Args {

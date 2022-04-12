@@ -1,25 +1,21 @@
-use std::path::{PathBuf, Path};
+use std::path::{PathBuf};
 use std::{fs, io, fmt};
-use std::cmp::{max, Ordering};
+use std::cmp::max;
 use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
 use std::ffi::OsString;
 use std::fmt::Formatter;
 use std::iter::FromIterator;
-use std::fs::{DirEntry, File, Metadata};
-use std::io::{Read, Seek, SeekFrom};
+use std::fs::{DirEntry, Metadata};
 use std::time::{Duration, Instant};
 
-use rexif::{ExifTag, ExifResult};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use filesize::PathExt;
 
 use imgsorter::config::*;
+use imgsorter::exif::*;
 use imgsorter::utils::*;
 use OutputColor::*;
-
-const DEFAULT_NO_DATE_STR: &'static str = "no date";
-const DATE_DIR_FORMAT: &'static str = "%Y.%m.%d";
 
 /// Convenience wrapper over a map holding all files for a given device
 /// where the string representation of the optional device is the map key
@@ -487,15 +483,6 @@ Total time taken:          {t_total} sec
             }
         }
     }
-}
-
-/// Selected EXIF Data for a [[SupportedFile]]
-/// Currently includes only the image date and camera model
-#[derive(Debug)]
-pub struct ExifDateDevice {
-    date_time: Option<String>,
-    date_original: Option<String>,
-    camera_model: Option<String>
 }
 
 /// Enum entires meant to represent the target directories
@@ -1540,107 +1527,4 @@ fn get_file_type(extension_opt: &Option<String>, args: &Args) -> FileType {
         None =>
             FileType::Unknown("".to_owned()),
     }
-}
-
-/// Read a String in standard EXIF format "YYYY:MM:DD HH:MM:SS"
-/// and try to parse it into the date format for our directories: "YYYY.MM.DD"
-fn parse_exif_date(date_str: String, args: &Args) -> Option<String> {
-    let parsed_date_result = NaiveDateTime::parse_from_str(date_str.as_str(), "%Y:%m:%d %H:%M:%S");
-    match parsed_date_result {
-        Ok(date) => {
-            let formatted_date = date.format(DATE_DIR_FORMAT).to_string();
-            Some(formatted_date)
-        }
-        Err(err) => {
-            if args.debug { println!("> could not parse EXIF date {}: {:?}", date_str, err) }
-            None
-        }
-    }
-}
-
-fn read_exif_date_and_device(
-    file: &DirEntry,
-    mut file_exif: ExifDateDevice,
-    args: &Args
-) -> ExifDateDevice {
-
-    // TODO 5d: handle this unwrap
-    // Return early if this is not a file, there's no device name to read
-    if file.metadata().unwrap().is_dir() {
-        return file_exif
-    }
-
-    // Normally we'd simply call `rexif::parse_file`,
-    // but this prints pointless warnings to stderr
-    // match rexif::parse_file(&file_name) {
-    match read_exif(file.path()) {
-
-        Ok(exif) => {
-            // Iterate all EXIF entries and filter only the Model and certain *Date tags
-            let _ = &exif.entries.iter()
-                .for_each(|exif_entry| {
-                    match exif_entry.tag {
-
-                        // Camera model
-                        ExifTag::Model => {
-                            let tag_value = exif_entry.value.to_string().trim().to_string();
-                            file_exif.camera_model = Some(tag_value)
-                        },
-
-                        // Comments based on https://feedback-readonly.photoshop.com/conversations/lightroom-classic/date-time-digitized-and-date-time-differ-from-date-modified-and-date-created/5f5f45ba4b561a3d425c6f77
-
-                        // EXIF:DateTime: When photo software last modified the image or its metadata.
-                        // Operating system Date Modified: The time that any application or the camera or
-                        // operating system itself modified the file.
-                        // The String returned by rexif has the standard EXIF format "YYYY:MM:DD HH:MM:SS"
-                        ExifTag::DateTime => {
-                            let tag_value = exif_entry.value.to_string();
-                            file_exif.date_time = parse_exif_date(tag_value, args);
-                        }
-
-                        // EXIF:DateTimeOriginal: When the shutter was clicked. Windows File Explorer will display it as Date Taken.
-                        ExifTag::DateTimeOriginal => {
-                            let tag_value = exif_entry.value.to_string();
-                            file_exif.date_original = parse_exif_date(tag_value, args);
-                        }
-
-                        // EXIF:DateTimeDigitized: When the image was converted to digital form.
-                        // For digital cameras, DateTimeDigitized will be the same as DateTimeOriginal.
-                        // For scans of analog pics, DateTimeDigitized is the date of the scan,
-                        // while DateTimeOriginal was when the shutter was clicked on the film camera.
-
-                        // We don't need this for now
-                        // ExifTag::DateTimeDigitized => {
-                        //     ()
-                        // }
-
-                        // Ignore other EXIF tags
-                        _ =>
-                            ()
-                    }
-                });
-        },
-
-        Err(e) => {
-            // TODO 5c: log this error?
-            if args.verbose {
-                println!("{} could not read EXIF for {:?}: {}", ColoredString::warn_arrow(), file.file_name(), e.to_string());
-            }
-        }
-    }
-
-    return file_exif;
-}
-
-/// Replicate implementation of `rexif::parse_file` and `rexif::read_file`
-/// to bypass `rexif::parse_buffer` which prints warnings to stderr
-fn read_exif<P: AsRef<Path>>(file_name: P) -> ExifResult {
-    // let file_name = file_entry.path();
-    // TODO 5d: handle these unwraps
-    let mut file = File::open(file_name).unwrap();
-    let _ = &file.seek(SeekFrom::Start(0)).unwrap();
-    let mut contents: Vec<u8> = Vec::new();
-    let _ = &file.read_to_end(&mut contents);
-    let (res, _) = rexif::parse_buffer_quiet(&contents);
-    res
 }
