@@ -17,6 +17,16 @@ pub struct ExifDateDevice {
     pub camera_model: Option<String>
 }
 
+impl ExifDateDevice {
+    pub fn new() -> ExifDateDevice {
+        ExifDateDevice {
+            date_original: None,
+            date_time: None,
+            camera_model: None
+        }
+    }
+}
+
 /// Read a String in standard EXIF format "YYYY:MM:DD HH:MM:SS"
 /// and try to parse it into the date format for our directories: "YYYY.MM.DD"
 fn parse_exif_date(date_str: String, args: &Args) -> Option<String> {
@@ -35,14 +45,19 @@ fn parse_exif_date(date_str: String, args: &Args) -> Option<String> {
 
 pub fn read_exif_date_and_device(
     file: &DirEntry,
-    mut file_exif: ExifDateDevice,
     args: &Args
 ) -> ExifDateDevice {
+
+    let mut exif_data = ExifDateDevice {
+        date_original: None,
+        date_time: None,
+        camera_model: None
+    };
 
     // TODO 5d: handle this unwrap
     // Return early if this is not a file, there's no device name to read
     if file.metadata().unwrap().is_dir() {
-        return file_exif
+        return exif_data
     }
 
     // Normally we'd simply call `rexif::parse_file`,
@@ -59,7 +74,7 @@ pub fn read_exif_date_and_device(
                         // Camera model
                         ExifTag::Model => {
                             let tag_value = exif_entry.value.to_string().trim().to_string();
-                            file_exif.camera_model = Some(tag_value)
+                            exif_data.camera_model = Some(tag_value)
                         },
 
                         // Comments based on https://feedback-readonly.photoshop.com/conversations/lightroom-classic/date-time-digitized-and-date-time-differ-from-date-modified-and-date-created/5f5f45ba4b561a3d425c6f77
@@ -70,13 +85,13 @@ pub fn read_exif_date_and_device(
                         // The String returned by rexif has the standard EXIF format "YYYY:MM:DD HH:MM:SS"
                         ExifTag::DateTime => {
                             let tag_value = exif_entry.value.to_string();
-                            file_exif.date_time = parse_exif_date(tag_value, args);
+                            exif_data.date_time = parse_exif_date(tag_value, args);
                         }
 
                         // EXIF:DateTimeOriginal: When the shutter was clicked. Windows File Explorer will display it as Date Taken.
                         ExifTag::DateTimeOriginal => {
                             let tag_value = exif_entry.value.to_string();
-                            file_exif.date_original = parse_exif_date(tag_value, args);
+                            exif_data.date_original = parse_exif_date(tag_value, args);
                         }
 
                         // EXIF:DateTimeDigitized: When the image was converted to digital form.
@@ -104,7 +119,7 @@ pub fn read_exif_date_and_device(
         }
     }
 
-    return file_exif;
+    return exif_data;
 }
 
 /// Replicate implementation of `rexif::parse_file` and `rexif::read_file`

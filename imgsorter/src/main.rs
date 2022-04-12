@@ -526,18 +526,12 @@ impl SupportedFile {
         let _file_type = get_file_type(&_extension, args);
         let _metadata = dir_entry.metadata().unwrap();
 
-        let mut _empty_exif = ExifDateDevice {
-            date_original: None,
-            date_time: None,
-            camera_model: None
-        };
-
         let _exif_data = match _file_type {
             // It's much faster if we only try to read EXIF for image files
             FileType::Image =>
-                read_exif_date_and_device(&dir_entry, _empty_exif, args),
+                read_exif_date_and_device(&dir_entry, args),
             _ =>
-                _empty_exif
+                ExifDateDevice::new()
         };
 
         // Read image date - prefer EXIF tags over system date
