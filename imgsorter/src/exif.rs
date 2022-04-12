@@ -4,6 +4,7 @@ use std::io::{Read, Seek, SeekFrom};
 
 use rexif::{ExifTag, ExifResult};
 use chrono::NaiveDateTime;
+use exif::{Error, Exif, In, Tag};
 
 use crate::config::*;
 use crate::utils::*;
@@ -133,4 +134,59 @@ fn read_exif<P: AsRef<Path>>(file_name: P) -> ExifResult {
     let _ = &file.read_to_end(&mut contents);
     let (res, _) = rexif::parse_buffer_quiet(&contents);
     res
+}
+
+pub fn read_kamadak_exif_date_and_device(file: &DirEntry,) {
+
+    let exif_result: Result<Exif, Error> = read_kamadak_exif(file.path());
+
+    match exif_result {
+        Ok(exif) => {
+            println!("kamadak for file {:?} --------------------", file.file_name());
+
+            let camera_model = match exif.get_field(Tag::Model, In::PRIMARY) {
+                Some(model) =>
+                    println!("> camera model: {:?}", model.value),
+                None =>
+                    println!("no camera model for {:?}", file.file_name())
+            };
+
+            let camera_model = match exif.get_field(Tag::Make, In::PRIMARY) {
+                Some(model) =>
+                    println!("> camera Make: {:?}", model.value),
+                None =>
+                    println!("no camera Make for {:?}", file.file_name())
+            };
+
+            let camera_model = match exif.get_field(Tag::DateTimeOriginal, In::PRIMARY) {
+                Some(model) =>
+                    println!("> datetimeoriginal: {:?}", model.value),
+                None =>
+                    println!("no datetimeoriginal for {:?}", file.file_name())
+            };
+
+            let camera_model = match exif.get_field(Tag::DateTime, In::PRIMARY) {
+                Some(model) =>
+                    println!("> datetime: {:?}", model.value),
+                None =>
+                    println!("no datetime for {:?}", file.file_name())
+            };
+
+            // for f in exif.fields() {
+            //     println!("{} {} {}",
+            //              f.tag, f.ifd_num, f.display_value().with_unit(&exif));
+            //     // println!("{} {}",
+            //     //          f.tag, f.ifd_num);
+            // }
+            },
+        Err(e) =>
+            println!("kamadak could not read exif for file {:?}: {:?}", file.file_name(), e)
+    }
+}
+
+pub fn read_kamadak_exif<P: AsRef<Path>>(file_name: P) -> Result<Exif, Error> {
+    let file = std::fs::File::open(file_name)?;
+    let mut bufreader = std::io::BufReader::new(&file);
+    let exifreader = exif::Reader::new();
+    exifreader.read_from_container(&mut bufreader)
 }
