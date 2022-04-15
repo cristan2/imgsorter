@@ -4,10 +4,13 @@ use std::io::{Read, Seek, SeekFrom};
 
 use rexif::{ExifTag, ExifResult};
 use chrono::NaiveDateTime;
-use exif::{Error, Exif, In, Tag};
+use exif::{Error, Exif, In, Tag, Value};
 
 use crate::config::*;
 use crate::utils::*;
+
+const REXIF_DATE_FORMAT: &str = "%Y:%m:%d %H:%M:%S";
+const KAMADAK_EXIF_DATE_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
 /// Selected EXIF Data for a [[SupportedFile]]
 /// Currently includes only the image date and camera model
@@ -28,17 +31,16 @@ impl ExifDateDevice {
     }
 }
 
-/// Read a String in standard EXIF format "YYYY:MM:DD HH:MM:SS"
-/// and try to parse it into the date format for our directories: "YYYY.MM.DD"
-fn parse_exif_date(date_str: String, args: &Args) -> Option<String> {
-    let parsed_date_result = NaiveDateTime::parse_from_str(date_str.as_str(), "%Y:%m:%d %H:%M:%S");
+/// Parse an EXIF date string into the date string format for our directories: "YYYY.MM.DD"
+fn parse_exif_date(exif_date_str: String, exif_date_format: &str, args: &Args) -> Option<String> {
+    let parsed_date_result = NaiveDateTime::parse_from_str(exif_date_str.as_str(), exif_date_format);
     match parsed_date_result {
         Ok(date) => {
             let formatted_date = date.format(DATE_DIR_FORMAT).to_string();
             Some(formatted_date)
         }
         Err(err) => {
-            if args.debug { println!("> could not parse EXIF date {}: {:?}", date_str, err) }
+            if args.debug { println!("> could not parse EXIF date {}: {:?}", exif_date_str, err) }
             None
         }
     }
@@ -86,13 +88,13 @@ pub fn read_exif_date_and_device(
                         // The String returned by rexif has the standard EXIF format "YYYY:MM:DD HH:MM:SS"
                         ExifTag::DateTime => {
                             let tag_value = exif_entry.value.to_string();
-                            exif_data.date_time = parse_exif_date(tag_value, args);
+                            exif_data.date_time = parse_exif_date(tag_value, REXIF_DATE_FORMAT, args);
                         }
 
                         // EXIF:DateTimeOriginal: When the shutter was clicked. Windows File Explorer will display it as Date Taken.
                         ExifTag::DateTimeOriginal => {
                             let tag_value = exif_entry.value.to_string();
-                            exif_data.date_original = parse_exif_date(tag_value, args);
+                            exif_data.date_original = parse_exif_date(tag_value, REXIF_DATE_FORMAT, args);
                         }
 
                         // EXIF:DateTimeDigitized: When the image was converted to digital form.
@@ -113,14 +115,13 @@ pub fn read_exif_date_and_device(
         },
 
         Err(e) => {
-            // TODO 5c: log this error?
             if args.verbose {
                 println!("{} could not read EXIF for {:?}: {}", ColoredString::warn_arrow(), file.file_name(), e.to_string());
             }
         }
     }
 
-    return exif_data;
+    exif_data
 }
 
 /// Replicate implementation of `rexif::parse_file` and `rexif::read_file`
@@ -136,52 +137,64 @@ fn read_exif<P: AsRef<Path>>(file_name: P) -> ExifResult {
     res
 }
 
-pub fn read_kamadak_exif_date_and_device(file: &DirEntry,) {
+pub fn read_kamadak_exif_date_and_device(
+    file: &DirEntry,
+    args: &Args
+) -> ExifDateDevice {
 
-    let exif_result: Result<Exif, Error> = read_kamadak_exif(file.path());
+    let mut exif_date_device = ExifDateDevice {
+        date_original: None,
+        date_time: None,
+        camera_model: None
+    };
 
-    match exif_result {
-        Ok(exif) => {
-            println!("kamadak for file {:?} --------------------", file.file_name());
-
-            let camera_model = match exif.get_field(Tag::Model, In::PRIMARY) {
-                Some(model) =>
-                    println!("> camera model: {:?}", model.value),
-                None =>
-                    println!("no camera model for {:?}", file.file_name())
-            };
-
-            let camera_model = match exif.get_field(Tag::Make, In::PRIMARY) {
-                Some(model) =>
-                    println!("> camera Make: {:?}", model.value),
-                None =>
-                    println!("no camera Make for {:?}", file.file_name())
-            };
-
-            let camera_model = match exif.get_field(Tag::DateTimeOriginal, In::PRIMARY) {
-                Some(model) =>
-                    println!("> datetimeoriginal: {:?}", model.value),
-                None =>
-                    println!("no datetimeoriginal for {:?}", file.file_name())
-            };
-
-            let camera_model = match exif.get_field(Tag::DateTime, In::PRIMARY) {
-                Some(model) =>
-                    println!("> datetime: {:?}", model.value),
-                None =>
-                    println!("no datetime for {:?}", file.file_name())
-            };
-
-            // for f in exif.fields() {
-            //     println!("{} {} {}",
-            //              f.tag, f.ifd_num, f.display_value().with_unit(&exif));
-            //     // println!("{} {}",
-            //     //          f.tag, f.ifd_num);
-            // }
-            },
-        Err(e) =>
-            println!("kamadak could not read exif for file {:?}: {:?}", file.file_name(), e)
+    // TODO 5d: handle this unwrap
+    // Return early if this is not a file, there's no device name to read
+    if file.metadata().unwrap().is_dir() {
+        return exif_date_device
     }
+
+    match read_kamadak_exif(file.path()) {
+        Ok(exif) => {
+
+            // Camera model
+            if let Some(camera_model) = exif.get_field(Tag::Model, In::PRIMARY) {
+                let original_model_str = camera_model.display_value().to_string();
+                let trimmed_model = original_model_str.replace("\"", "");
+                exif_date_device.camera_model = Some(trimmed_model);
+            };
+
+            // EXIF:DateTime: When photo software last modified the image or its metadata.
+            // Operating system Date Modified: The time that any application or the camera or
+            // operating system itself modified the file.
+            // The display value of the string returned by kamadak-exif has the format "YYYY-MM-DD HH:MM:SS"
+            if let Some(date_time) = exif.get_field(Tag::DateTime, In::PRIMARY) {
+                let tag_value = date_time.display_value().to_string();
+                exif_date_device.date_time = parse_exif_date(tag_value, KAMADAK_EXIF_DATE_FORMAT, args);
+            };
+
+            // EXIF:DateTimeOriginal: When the shutter was clicked. Windows File Explorer will display it as Date Taken.
+            if let Some(date_original) = exif.get_field(Tag::DateTimeOriginal, In::PRIMARY) {
+                let tag_value = date_original.display_value().to_string();
+                exif_date_device.date_original = parse_exif_date(tag_value, KAMADAK_EXIF_DATE_FORMAT, args);
+            };
+
+            // EXIF:DateTimeDigitized: When the image was converted to digital form.
+            // For digital cameras, DateTimeDigitized will be the same as DateTimeOriginal.
+            // For scans of analog pics, DateTimeDigitized is the date of the scan,
+            // while DateTimeOriginal was when the shutter was clicked on the film camera.
+            // We don't need DateTimeDigitized for now
+
+            // Ignore other EXIF tags
+
+        },
+        Err(e) =>
+            if args.verbose {
+                println!("{} could not read EXIF for {:?}: {}", ColoredString::warn_arrow(), file.file_name(), e.to_string());
+            }
+    }
+
+    exif_date_device
 }
 
 pub fn read_kamadak_exif<P: AsRef<Path>>(file_name: P) -> Result<Exif, Error> {

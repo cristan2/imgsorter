@@ -529,8 +529,11 @@ impl SupportedFile {
         let _exif_data = match _file_type {
             // It's much faster if we only try to read EXIF for image files
             FileType::Image => {
-                read_kamadak_exif_date_and_device(&dir_entry);
-                read_exif_date_and_device(&dir_entry, args)
+                // Use kamadak-rexif crate
+                let exif = read_kamadak_exif_date_and_device(&dir_entry, args);
+                // Use rexif crate
+                // let exif = read_exif_date_and_device(&dir_entry, args);
+                exif
             },
             _ =>
                 ExifDateDevice::new()
