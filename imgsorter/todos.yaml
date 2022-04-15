@@ -1,7 +1,6 @@
 - implement Display for Args and print before confirmation
 - clippy
 - documentation - readme + main flows
-- replace exif crate with kamadak-exif (support for HEIF)
 
 [ ] 1 - CLI / config file args
     [x] CLI or config file?
@@ -28,6 +27,7 @@
     [x] prefer date taken over date modified
     [x] dry run/copy output - sort dirs by name (see https://stackoverflow.com/questions/59799388/sort-hashmap-data-by-keys)
     [ ] EXIF for video data?
+    [x] replace rexif crate with kamadak-exif (support for HEIF)
     [ ] depth limit for source recursive subdirs
     [x] additional file formats - amr, etc
     [x] calculate total file size
