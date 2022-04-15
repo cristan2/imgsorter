@@ -521,12 +521,12 @@ pub struct SupportedFile {
 
 // TODO 5e: find better name
 impl SupportedFile {
-    pub fn parse_from(dir_entry: DirEntry, source_index: usize, args: &Args) -> SupportedFile {
-        let _extension = get_extension(&dir_entry);
-        let _file_type = get_file_type(&_extension, args);
-        let _metadata = dir_entry.metadata().unwrap();
+    pub fn parse_from(dir_entry: DirEntry, source_dir_index: usize, args: &Args) -> SupportedFile {
+        let extension = get_extension(&dir_entry);
+        let file_type = get_file_type(&extension, args);
+        let metadata = dir_entry.metadata().unwrap();
 
-        let _exif_data = match _file_type {
+        let exif_data = match file_type {
             // It's much faster if we only try to read EXIF for image files
             FileType::Image => {
                 // Use kamadak-rexif crate
@@ -540,14 +540,14 @@ impl SupportedFile {
         };
 
         // Read image date - prefer EXIF tags over system date
-        let _image_date = {
-            _exif_data.date_original
-                .unwrap_or(_exif_data.date_time
-                    .unwrap_or(get_system_modified_date(&_metadata)
-                        .unwrap_or(DEFAULT_NO_DATE_STR.to_string()))) };
+        let date_str = {
+            exif_data.date
+                .unwrap_or(get_system_modified_date(&metadata)
+                    .unwrap_or(DEFAULT_NO_DATE_STR.to_string()))
+        };
 
         // Replace EXIF camera model with a custom name, if one was defined in config
-        let _camera_name: DirEntryType = match _exif_data.camera_model {
+        let device_name: DirEntryType = match exif_data.camera_model {
             Some(camera_model) => args.custom_device_names
                 .get(camera_model.to_lowercase().as_str())
                 .map_or(DirEntryType::Directory(camera_model),
@@ -559,12 +559,12 @@ impl SupportedFile {
         SupportedFile {
             file_name: dir_entry.file_name(),
             file_path: dir_entry.path(),
-            file_type: _file_type,
-            extension: _extension,
-            date_str: _image_date,
-            metadata: _metadata,
-            device_name: _camera_name,
-            source_dir_index: source_index
+            file_type,
+            extension,
+            date_str,
+            metadata,
+            device_name,
+            source_dir_index
         }
     }
 

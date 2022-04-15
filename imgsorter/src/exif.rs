@@ -16,16 +16,14 @@ const KAMADAK_EXIF_DATE_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 /// Currently includes only the image date and camera model
 #[derive(Debug)]
 pub struct ExifDateDevice {
-    pub date_time: Option<String>,
-    pub date_original: Option<String>,
+    pub date: Option<String>,
     pub camera_model: Option<String>
 }
 
 impl ExifDateDevice {
     pub fn new() -> ExifDateDevice {
         ExifDateDevice {
-            date_original: None,
-            date_time: None,
+            date: None,
             camera_model: None
         }
     }
@@ -52,8 +50,7 @@ pub fn read_exif_date_and_device(
 ) -> ExifDateDevice {
 
     let mut exif_data = ExifDateDevice {
-        date_original: None,
-        date_time: None,
+        date: None,
         camera_model: None
     };
 
@@ -85,16 +82,21 @@ pub fn read_exif_date_and_device(
                         // EXIF:DateTime: When photo software last modified the image or its metadata.
                         // Operating system Date Modified: The time that any application or the camera or
                         // operating system itself modified the file.
+                        // Should prefer DateTimeOriginal over this
                         // The String returned by rexif has the standard EXIF format "YYYY:MM:DD HH:MM:SS"
                         ExifTag::DateTime => {
                             let tag_value = exif_entry.value.to_string();
-                            exif_data.date_time = parse_exif_date(tag_value, REXIF_DATE_FORMAT, args);
+                            if exif_data.date.is_none() {
+                                // Only use this if DateTimeOriginal was not found
+                                exif_data.date = parse_exif_date(tag_value, REXIF_DATE_FORMAT, args);
+                            }
                         }
 
                         // EXIF:DateTimeOriginal: When the shutter was clicked. Windows File Explorer will display it as Date Taken.
+                        // Prefer this over DateTime
                         ExifTag::DateTimeOriginal => {
                             let tag_value = exif_entry.value.to_string();
-                            exif_data.date_original = parse_exif_date(tag_value, REXIF_DATE_FORMAT, args);
+                            exif_data.date = parse_exif_date(tag_value, REXIF_DATE_FORMAT, args);
                         }
 
                         // EXIF:DateTimeDigitized: When the image was converted to digital form.
@@ -143,8 +145,7 @@ pub fn read_kamadak_exif_date_and_device(
 ) -> ExifDateDevice {
 
     let mut exif_date_device = ExifDateDevice {
-        date_original: None,
-        date_time: None,
+        date: None,
         camera_model: None
     };
 
@@ -164,19 +165,20 @@ pub fn read_kamadak_exif_date_and_device(
                 exif_date_device.camera_model = Some(trimmed_model);
             };
 
+            // EXIF:DateTimeOriginal: When the shutter was clicked. Windows File Explorer will display it as Date Taken.
+            // Prefer this over DateTime
+            // The display value of the string returned by kamadak-exif has the format "YYYY-MM-DD HH:MM:SS"
+            if let Some(date) = exif.get_field(Tag::DateTimeOriginal, In::PRIMARY) {
+                let tag_value = date.display_value().to_string();
+                exif_date_device.date = parse_exif_date(tag_value, KAMADAK_EXIF_DATE_FORMAT, args);
+
             // EXIF:DateTime: When photo software last modified the image or its metadata.
             // Operating system Date Modified: The time that any application or the camera or
             // operating system itself modified the file.
-            // The display value of the string returned by kamadak-exif has the format "YYYY-MM-DD HH:MM:SS"
-            if let Some(date_time) = exif.get_field(Tag::DateTime, In::PRIMARY) {
-                let tag_value = date_time.display_value().to_string();
-                exif_date_device.date_time = parse_exif_date(tag_value, KAMADAK_EXIF_DATE_FORMAT, args);
-            };
-
-            // EXIF:DateTimeOriginal: When the shutter was clicked. Windows File Explorer will display it as Date Taken.
-            if let Some(date_original) = exif.get_field(Tag::DateTimeOriginal, In::PRIMARY) {
-                let tag_value = date_original.display_value().to_string();
-                exif_date_device.date_original = parse_exif_date(tag_value, KAMADAK_EXIF_DATE_FORMAT, args);
+            // Should prefer DateTimeOriginal over this
+            } else if let Some(date) = exif.get_field(Tag::DateTime, In::PRIMARY) {
+                let tag_value = date.display_value().to_string();
+                exif_date_device.date = parse_exif_date(tag_value, KAMADAK_EXIF_DATE_FORMAT, args);
             };
 
             // EXIF:DateTimeDigitized: When the image was converted to digital form.
