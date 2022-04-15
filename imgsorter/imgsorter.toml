@@ -1,7 +1,14 @@
+# Configuration file for imgsorter
+# https://github.com/cristan2/rust-utils/tree/master/imgsorter
+# Based on the TOML format: https://toml.io/en/
+
 [folders]
 
 # This are the folders where the images to be sorted are located.
 # If this option is missing, the directory from which the program is launched will be used.
+# See also option `source_recursive`:
+# - if it is true, then all folders contained within these folders will also be read
+# - if it is false or missing, all subfolders will be ignored
 source_dirs = [
   'D:\Temp\New folder test remove - Copy',
   'D:\Temp\New folder test remove - Copy 2',

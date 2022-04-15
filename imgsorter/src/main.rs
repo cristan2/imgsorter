@@ -185,6 +185,12 @@ impl TargetDateDeviceTree {
 }
 
 #[derive(Debug)]
+pub enum DirType {
+    Date,
+    Device
+}
+
+#[derive(Debug)]
 pub enum FileType {
     Unknown(String),
     Image,
@@ -215,7 +221,10 @@ pub struct FileStats {
     unknown_skipped: i32,
     // source dirs which are skipped from reading
     dirs_ignored: i32,
-    dirs_created: i32,
+    date_dirs_total: i32,
+    date_dirs_created: i32,
+    device_dirs_total: i32,
+    device_dirs_created: i32,
     error_file_create: i32,
     error_file_delete: i32,
     error_dir_create: i32,
@@ -241,7 +250,10 @@ impl FileStats {
             aud_skipped: 0,
             unknown_skipped: 0,
             dirs_ignored: 0,
-            dirs_created: 0,
+            date_dirs_total: 0,
+            date_dirs_created: 0,
+            device_dirs_total: 0,
+            device_dirs_created: 0,
             error_file_create: 0,
             error_file_delete: 0,
             error_dir_create: 0,
@@ -265,7 +277,10 @@ impl FileStats {
     fn inc_aud_skipped(&mut self) { self.aud_skipped += 1 }
     pub fn inc_unknown_skipped(&mut self) { self.unknown_skipped += 1 }
     pub fn inc_dirs_ignored(&mut self) { self.dirs_ignored += 1 }
-    pub fn inc_dirs_created(&mut self) { self.dirs_created += 1 }
+    fn inc_date_dirs_total(&mut self) { self.date_dirs_total += 1 }
+    fn inc_date_dirs_created(&mut self) { self.date_dirs_created += 1 }
+    fn inc_device_dirs_total(&mut self) { self.device_dirs_total += 1 }
+    fn inc_device_dirs_created(&mut self) { self.device_dirs_created += 1 }
     pub fn inc_error_file_create(&mut self) { self.error_file_create += 1 }
     pub fn inc_error_file_delete(&mut self) { self.error_file_delete += 1 }
     pub fn inc_error_dir_create(&mut self) { self.error_dir_create += 1 }
@@ -273,6 +288,20 @@ impl FileStats {
     pub fn set_time_parse_files(&mut self, elapsed: Duration) { self.time_parse_files = elapsed }
     pub fn set_time_write_files(&mut self, elapsed: Duration) { self.time_write_files = elapsed }
     pub fn set_time_total(&mut self, elapsed: Duration) { self.time_total = elapsed }
+
+    pub fn inc_dir_total_by_type(&mut self, dir: &DirType) {
+        match dir {
+            DirType::Date => self.inc_date_dirs_total(),
+            DirType::Device => self.inc_device_dirs_total()
+        }
+    }
+
+    pub fn inc_dir_created_by_type(&mut self, dir: &DirType) {
+        match dir {
+            DirType::Date => self.inc_date_dirs_created(),
+            DirType::Device => self.inc_device_dirs_created()
+        }
+    }
 
     pub fn inc_copied_by_type(&mut self, file: &SupportedFile) {
         match file.file_type {
@@ -343,19 +372,23 @@ impl FileStats {
 
     pub fn print_stats(&self, args: &Args) {
 
-        // add some empty space for wider spacing
-        let max_digits = get_integer_char_count(self.files_count_total) + 1;
+        // file count padding
+        let f_max_digits = get_integer_char_count(self.files_count_total) ;
+        // dir count padding; each should be half of the total file count width
+        let d_max_digits = ( (f_max_digits * 3) as f32 / 2 as f32).ceil() as usize;
+
 
         let write_general_stats = || { format!(
-"──────────────────────────────────────────────
+            "──────────────────────────────────────────────
 Total files:                  {total} ({size})
 ──────────────────────────────────────────────
-Images moved|copied|skipped:  │{p_img_move} │{p_img_copy} │{p_img_skip} │
-Videos moved|copied|skipped:  │{p_vid_move} │{p_vid_copy} │{p_vid_skip} │
-Audios moved|copied|skipped:  │{p_aud_move} │{p_aud_copy} │{p_aud_skip} │
+Images moved|copied|skipped:  │{p_img_move}│{p_img_copy}│{p_img_skip}│
+Videos moved|copied|skipped:  │{p_vid_move}│{p_vid_copy}│{p_vid_skip}│
+Audios moved|copied|skipped:  │{p_aud_move}│{p_aud_copy}│{p_aud_skip}│
 ──────────────────────────────────────────────
-Folders created:              {dir_create}
-Folders ignored:              {dir_ignore}
+Date   folders created|total: │{date_d_create}│{date_d_total}│
+Device folders created|total: │{devc_d_create}│{devc_d_total}│
+Source folders ignored:       {dir_ignore}
 Unknown files skipped:        {f_skip}
 File delete errors:           {fd_err}
 File create errors:           {fc_err}
@@ -370,19 +403,24 @@ Total time taken:             {t_total} sec
             total=FileStats::color_if_non_zero(self.files_count_total, Neutral),
             size=ColoredString::bold_white(get_file_size_string(self.file_size_total).as_str()),
 
-            p_img_move=FileStats::padded_color_if_non_zero(self.img_moved, Neutral, max_digits),
-            p_img_copy=FileStats::padded_color_if_non_zero(self.img_copied, Neutral, max_digits),
-            p_img_skip=FileStats::padded_color_if_non_zero(self.img_skipped, Warning, max_digits),
+            p_img_move=FileStats::padded_color_if_non_zero(self.img_moved, Neutral, f_max_digits),
+            p_img_copy=FileStats::padded_color_if_non_zero(self.img_copied, Neutral, f_max_digits),
+            p_img_skip=FileStats::padded_color_if_non_zero(self.img_skipped, Warning, f_max_digits),
 
-            p_vid_move=FileStats::padded_color_if_non_zero(self.vid_moved, Neutral, max_digits),
-            p_vid_copy=FileStats::padded_color_if_non_zero(self.vid_copied, Neutral, max_digits),
-            p_vid_skip=FileStats::padded_color_if_non_zero(self.vid_skipped, Warning, max_digits),
+            p_vid_move=FileStats::padded_color_if_non_zero(self.vid_moved, Neutral, f_max_digits),
+            p_vid_copy=FileStats::padded_color_if_non_zero(self.vid_copied, Neutral, f_max_digits),
+            p_vid_skip=FileStats::padded_color_if_non_zero(self.vid_skipped, Warning, f_max_digits),
 
-            p_aud_move=FileStats::padded_color_if_non_zero(self.aud_moved, Neutral, max_digits),
-            p_aud_copy=FileStats::padded_color_if_non_zero(self.aud_copied, Neutral, max_digits),
-            p_aud_skip=FileStats::padded_color_if_non_zero(self.aud_skipped, Warning, max_digits),
+            p_aud_move=FileStats::padded_color_if_non_zero(self.aud_moved, Neutral, f_max_digits),
+            p_aud_copy=FileStats::padded_color_if_non_zero(self.aud_copied, Neutral, f_max_digits),
+            p_aud_skip=FileStats::padded_color_if_non_zero(self.aud_skipped, Warning, f_max_digits),
 
-            dir_create=FileStats::color_if_non_zero(self.dirs_created, Neutral),
+            date_d_create=FileStats::padded_color_if_non_zero(self.date_dirs_created, Neutral, d_max_digits),
+            date_d_total=FileStats::padded_color_if_non_zero(self.date_dirs_total, Neutral, d_max_digits),
+
+            devc_d_create=FileStats::padded_color_if_non_zero(self.device_dirs_created, Neutral, d_max_digits),
+            devc_d_total=FileStats::padded_color_if_non_zero(self.device_dirs_total, Neutral, d_max_digits),
+
             dir_ignore=FileStats::color_if_non_zero(self.dirs_ignored, Warning),
 
             f_skip=FileStats::color_if_non_zero(self.unknown_skipped, Warning),
@@ -406,42 +444,49 @@ Total time taken:             {t_total} sec
         )}; // end write_general_stats
 
         let dryrun_general_stats = || { format!(
-"–––––––––––––––––––––––––––––––––––––––––––––––
-Total files:               {total} ({size})
-–––––––––––––––––––––––––––––––––––––––––––––––
-Images to move|copy|skip:  │{p_img_move} │{p_img_copy} │{p_img_skip} │
-Videos to move|copy|skip:  │{p_vid_move} │{p_vid_copy} │{p_vid_skip} │
-Audios to move|copy|skip:  │{p_aud_move} │{p_aud_copy} │{p_aud_skip} │
+            "––––––––––––––––––––––––––––––––––––––––––––––––––––––
+Total files:                    {total} ({size})
+––––––––––––––––––––––––––––––––––––––––––––––––––––––
+Images to move|copy|skip:       │{p_img_move}│{p_img_copy}│{p_img_skip}│
+Videos to move|copy|skip:       │{p_vid_move}│{p_vid_copy}│{p_vid_skip}│
+Audios to move|copy|skip:       │{p_aud_move}│{p_aud_copy}│{p_aud_skip}│
+––––––––––––––––––––––––––––––––––––––––––––––––––––––
+Date folders to create|total:   │{date_d_create}│{date_d_total}│
+Device folders to create|total: │{devc_d_create}│{devc_d_total}│
+––––––––––––––––––––––––––––––––––––––––––––––––––––––
+Source folders to skip:         {dir_ignore}
+Unknown files to skip:          {f_skip}
+File delete errors:             {fd_err}
+File create errors:             n/a
+Folder create errors:           n/a
 -----------------------------------------------
-Target folders to create:  {dir_create}
-Source folders to skip:    {dir_ignore}
-Unknown files to skip:     {f_skip}
-File delete errors:        {fd_err}
-File create errors:        n/a
-Folder create errors:      n/a
------------------------------------------------
-Time fetching folders:     {tfetch_dir} sec
-Time parsing files:        {tparse_file} sec
-Time printing files:       {twrite_file} sec
-–––––––––––––––––––––––––––––––––––––––––––––––
-Total time taken:          {t_total} sec
-–––––––––––––––––––––––––––––––––––––––––––––––",
+Time fetching folders:          {tfetch_dir} sec
+Time parsing files:             {tparse_file} sec
+Time printing files:            {twrite_file} sec
+––––––––––––––––––––––––––––––––––––––––––––––––––––––
+Total time taken:               {t_total} sec
+––––––––––––––––––––––––––––––––––––––––––––––––––––––",
             total=FileStats::color_if_non_zero(self.files_count_total, Neutral),
             size=ColoredString::bold_white(get_file_size_string(self.file_size_total).as_str()),
 
-            p_img_move=FileStats::padded_color_if_non_zero(self.img_moved, Neutral, max_digits),
-            p_img_copy=FileStats::padded_color_if_non_zero(self.img_copied, Neutral, max_digits),
-            p_img_skip=FileStats::padded_color_if_non_zero(self.img_skipped, Warning, max_digits),
+            p_img_move=FileStats::padded_color_if_non_zero(self.img_moved, Neutral, f_max_digits),
+            p_img_copy=FileStats::padded_color_if_non_zero(self.img_copied, Neutral, f_max_digits),
+            p_img_skip=FileStats::padded_color_if_non_zero(self.img_skipped, Warning, f_max_digits),
 
-            p_vid_move=FileStats::padded_color_if_non_zero(self.vid_moved, Neutral, max_digits),
-            p_vid_copy=FileStats::padded_color_if_non_zero(self.vid_copied, Neutral, max_digits),
-            p_vid_skip=FileStats::padded_color_if_non_zero(self.vid_skipped, Warning, max_digits),
+            p_vid_move=FileStats::padded_color_if_non_zero(self.vid_moved, Neutral, f_max_digits),
+            p_vid_copy=FileStats::padded_color_if_non_zero(self.vid_copied, Neutral, f_max_digits),
+            p_vid_skip=FileStats::padded_color_if_non_zero(self.vid_skipped, Warning, f_max_digits),
 
-            p_aud_move=FileStats::padded_color_if_non_zero(self.aud_moved, Neutral, max_digits),
-            p_aud_copy=FileStats::padded_color_if_non_zero(self.aud_copied, Neutral, max_digits),
-            p_aud_skip=FileStats::padded_color_if_non_zero(self.aud_skipped, Warning, max_digits),
+            p_aud_move=FileStats::padded_color_if_non_zero(self.aud_moved, Neutral, f_max_digits),
+            p_aud_copy=FileStats::padded_color_if_non_zero(self.aud_copied, Neutral, f_max_digits),
+            p_aud_skip=FileStats::padded_color_if_non_zero(self.aud_skipped, Warning, f_max_digits),
 
-            dir_create=FileStats::color_if_non_zero(self.dirs_created, Neutral),
+            date_d_create=FileStats::padded_color_if_non_zero(self.date_dirs_created, Neutral, d_max_digits),
+            date_d_total=FileStats::padded_color_if_non_zero(self.date_dirs_total, Neutral, d_max_digits),
+
+            devc_d_create=FileStats::padded_color_if_non_zero(self.device_dirs_created, Neutral, d_max_digits),
+            devc_d_total=FileStats::padded_color_if_non_zero(self.device_dirs_total, Neutral, d_max_digits),
+
             dir_ignore=FileStats::color_if_non_zero(self.dirs_ignored, Warning),
 
             f_skip=FileStats::color_if_non_zero(self.unknown_skipped, Warning),
@@ -1037,7 +1082,7 @@ fn write_target_dir_files(
             };
 
             // Check restrictions - if target exists
-            let target_dir_exists = dry_run_check_target_dir_exists(&date_destination_path, stats);
+            let target_dir_exists = dry_run_check_target_dir_exists(&date_destination_path, stats, &DirType::Date);
 
             // Print everything together
             println!("{}",
@@ -1123,7 +1168,7 @@ fn write_target_dir_files(
                         args);
 
                     // Check restrictions - if target exists
-                    let target_dir_status_check = dry_run_check_target_dir_exists(&device_path, stats);
+                    let target_dir_status_check = dry_run_check_target_dir_exists(&device_path, stats, &DirType::Device);
 
                     // Print everything together
                     println!("{} {}", indented_device_dir_name, target_dir_status_check);
@@ -1138,6 +1183,7 @@ fn write_target_dir_files(
 
             // Create subdir path
             if !is_dry_run {
+                // TODO separate Date from Device dirs
                 create_subdir_if_required(&device_destination_path, &args, &mut stats);
             }
 
@@ -1236,13 +1282,14 @@ fn get_files_size(files: &Vec<SupportedFile>) -> u64 {
 }
 
 /// Read a directory path and return a string signalling if the path exists
-fn dry_run_check_target_dir_exists(path: &PathBuf, stats: &mut FileStats) -> String {
+fn dry_run_check_target_dir_exists(path: &PathBuf, stats: &mut FileStats, dir_type: &DirType) -> String {
+    stats.inc_dir_total_by_type(dir_type);
     if path.exists() {
         // don't increase stats.inc_dirs_ignored() since it's not equivalent
         // a source directory which is skipped from reading
         String::from("[target folder exists, will not create]")
     } else {
-        stats.inc_dirs_created();
+        stats.inc_dir_created_by_type(dir_type);
         String::from("[new folder will be created]")
     }
 }
@@ -1437,6 +1484,11 @@ fn create_subdir_if_required(
     args: &Args,
     stats: &mut FileStats
 ) {
+
+    // TODO separate Date from Device dirs
+    // and only increase once per date dir !!!
+    stats.inc_dir_total_by_type(&DirType::Date);
+
     if target_subdir.exists() {
         println!();
         println!("{}",
@@ -1447,7 +1499,8 @@ fn create_subdir_if_required(
 
         match fs::create_dir_all(target_subdir) {
             Ok(_) => {
-                stats.inc_dirs_created();
+                // TODO separate Date from Device dirs
+                stats.inc_dir_total_by_type(&DirType::Date);
                 println!();
                 println!("{}",
                          ColoredString::bold_white(

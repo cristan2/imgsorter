@@ -1,6 +1,9 @@
+[-] 'dirs created' stat - differentiate between "date dirs" and "device dirs"
+[ ] dry run - option to not print everything, truncate after e.g. 5 files in same folder with same status (but save everything to log)
+
 - implement Display for Args and print before confirmation
 - clippy
-- documentation - readme + main flows
+- documentation - readme
 
 [ ] 1 - CLI / config file args
     [x] CLI or config file?
@@ -39,7 +42,7 @@
     [!] c - img count in dir name - not feasible, prone to errors; is included in dry run output only
     [ ] d - reenable Stats.time_fetching_dirs
     [x] dry run specific statistics
-    [ ] 'dirs created' stat - differentiate between "date dirs" and "device dirs"
+    [-] 'dirs created' stat - differentiate between "date dirs" and "device dirs"
     [ ] stats for "could not read EXIF"
     [x] table-like stats instead of simple list (e.g. "Images moved/copied/skipped    0 | 10 | 2" )
     [!] don't include move/copy stats for copy/move operations - not doing, it's relevant in case of delete errors
@@ -115,4 +118,8 @@
     [x] colored text
     [ ] more comments and examples for Padder methods + rearrange more logically
 
-[ ] 9 - Cleanup
+[ ] 9 - Docs
+    [ ] explain statistics info
+    [ ] main flows
+
+[ ] 10 - Cleanup
