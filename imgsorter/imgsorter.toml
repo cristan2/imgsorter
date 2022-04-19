@@ -37,7 +37,7 @@ min_files_per_dir = 1
 # simply listing all files with identical statuses. For example:
 # " └── (omitted output for files with same status ..... (5x) file will be copied)"
 # If this option is missing or set to 0, no compacting will occur
-min_files_before_compacting_output = 0
+min_files_before_compacting_output = 1
 
 # The name of the folder which will hold all files for any given date,
 #   which holds less than or equal the [min_files_per_dir] threshold.

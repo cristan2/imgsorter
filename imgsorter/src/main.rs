@@ -1268,7 +1268,7 @@ fn process_files_dry_run(
     indent_level: usize,
     args: &Args,
     stats: &mut FileStats,
-    padder: &mut Padder,
+    padder: &mut Padder
 ) {
 
     // Count files to know which symbols to use for the dir tree
@@ -1279,6 +1279,9 @@ fn process_files_dry_run(
 
     let mut compact_counter = CompactCounter::new(args.compacting_threshold);
 
+
+    // Dry runs need also the index of each file to determine if it's the
+    // last element in this dir to choose the appropriate dir tree symbol
     for (file_index, file) in files_and_paths_vec.iter().enumerate() {
 
         let is_last_dir = curr_dir_ix == dir_count_total;
@@ -1309,21 +1312,16 @@ fn process_files_dry_run(
             let source_path = file.get_source_display_name_str(args);
             let status_separator = padder.format_dryrun_status_separator_dotted(source_path.clone(), args);
 
-            let printout = format!("{left_side_file}{op_separator}{right_side_file}{status_separator}{status}",
-                                   left_side_file=indented_target_filename,
-                                   op_separator=file_separator,
-                                   right_side_file=source_path,
-                                   status_separator=status_separator,
-                                   status=file_restrictions);
-            return printout;
+            return process_files_format_status(
+                indented_target_filename,
+                file_separator,
+                source_path,
+                status_separator,
+                &file_restrictions);
         };
 
-        // Status output compacting is not enabled, print all files normally
-        if !args.is_compacting_enabled() {
-            file_printouts.push(get_output_for_file(file.get_file_name_str()));
-
-            // Status output compacting is enabled, so print only the first consecutive files with the same
-        } else {
+        // Status output compacting is enabled, so print only the first consecutive files with the same
+        if args.is_compacting_enabled() {
             // first iteration
             if file_index == 0 {
                 // last_file_status_count = (1, file_restrictions.clone(), 0);
@@ -1425,9 +1423,15 @@ fn process_files_dry_run(
 
                 file_printouts.push(snip_output);
             }
+
+        // Status output compacting is not enabled, print all file statuses directly
+        } else {
+            let output = get_output_for_file(file.get_file_name_str());
+            println!("{}", output);
         }
     } // end loop files
 
+    // This will only be non-empty for compact runs, since normal runs will print output directly
     file_printouts.iter().for_each(|f| println!("{}", f));
 }
 
@@ -1437,9 +1441,7 @@ fn process_files_write(
     args: &Args,
     mut stats: &mut FileStats,
     padder: &mut Padder,
-) /*-> Vec<String>*/ {
-
-    // let mut file_printouts: Vec<String> = Vec::new();
+) {
 
     for file in files_and_paths_vec.iter() {
 
@@ -1457,27 +1459,21 @@ fn process_files_write(
             &mut file_destination_path,
             &args, &mut stats);
 
-        // Format everything to be printed
-        // (source_path, padded_separator, stripped_target_path, status_separator, file_write_status)
+        // Print result
+        let output = process_files_format_status(
+            source_path,
+            padded_separator,
+            stripped_target_path,
+            status_separator,
+            &file_write_status);
 
-        // let printout = format!("{left_side_file}{op_separator}{right_side_file}{status_separator}{status}",
-        //                        left_side_file = source_path,
-        //                        op_separator = padded_separator,
-        //                        right_side_file = stripped_target_path,
-        //                        status_separator = status_separator,
-        //                        status = file_write_status);
-
-        process_files_print_status(source_path, padded_separator, stripped_target_path, status_separator, file_write_status)
-
-        // file_printouts.push(printout);
+        println!("{}", output);
     }
-
-    // file_printouts
 }
 
-fn process_files_print_status(left_side_file: String, op_separator: String, right_side_file: String, status_separator: String, op_status: String) {
-    println!("{}{}{}{}{}",
-          left_side_file, op_separator, right_side_file, status_separator,op_status);
+fn process_files_format_status(left_side_file: String, op_separator: String, right_side_file: String, status_separator: String, op_status: &String) -> String {
+    format!("{}{}{}{}{}",
+          left_side_file, op_separator, right_side_file, status_separator,op_status)
 }
 
 /// Read file metadata and return size in bytes
