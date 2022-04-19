@@ -121,6 +121,7 @@ impl TargetDateDeviceTree {
 
         // TODO 5h: this is inefficient, optimize to a single iteration and non-consuming method
         let mut devices_tree: BTreeMap<String, DeviceTree> = BTreeMap::new();
+        let mut oneoffs_tree = DeviceTree::new();
         let mut oneoff_files: Vec<SupportedFile> = Vec::new();
 
         self.dir_tree
@@ -141,9 +142,10 @@ impl TargetDateDeviceTree {
                 }
             });
 
-        let mut oneoffs_tree = DeviceTree::new();
-        oneoffs_tree.file_tree.insert(DirEntryType::Files, oneoff_files);
-        devices_tree.insert(args.oneoffs_dir_name.clone(), oneoffs_tree);
+        if !oneoff_files.is_empty() {
+            oneoffs_tree.file_tree.insert(DirEntryType::Files, oneoff_files);
+            devices_tree.insert(args.oneoffs_dir_name.clone(), oneoffs_tree);
+        }
 
         self.dir_tree = devices_tree;
 
@@ -203,6 +205,53 @@ pub enum ConfirmationType {
     DryRun,
     Cancel,
     Error,
+}
+
+/// Struct used to keep track of file statuses (i.e. future write restrictions)
+/// when doing dry runs with output compacting enabled
+#[derive(Debug)]
+struct CompactCounter {
+    compacting_threshold: usize,
+    current_status_count: usize,
+    current_status: String,
+    skipped_status_count: usize
+}
+
+impl CompactCounter {
+    fn new(compacting_threshold: usize) -> CompactCounter {
+        CompactCounter {
+            compacting_threshold,
+            current_status_count: 0,
+            current_status: "".to_owned(),
+            skipped_status_count: 0
+        }
+    }
+
+    fn reset_status(&mut self, new_status: String) {
+        self.current_status_count = 0;
+        self.current_status = new_status;
+        self.skipped_status_count = 0;
+    }
+
+    fn inc_current_status(&mut self) {
+        self.current_status_count += 1;
+    }
+
+    fn inc_skipped_status(&mut self) {
+        self.skipped_status_count += 1;
+    }
+
+    fn has_reached_threshold(&self) -> bool {
+        self.current_status_count >= self.compacting_threshold
+    }
+
+    fn has_skipped_statuses(&self) -> bool {
+        self.skipped_status_count > 0
+    }
+
+    fn is_same_status(&self, new_status: &String) -> bool {
+        self.current_status == *new_status
+    }
 }
 
 #[derive(Debug)]
@@ -773,7 +822,7 @@ fn main() -> Result<(), std::io::Error> {
     if !target_dir_tree.dir_tree.is_empty() {
         // Iterate files and either copy/move to subdirs as necessary
         // or do a dry run to simulate a copy/move pass
-        write_target_dir_files(&mut target_dir_tree, source_unique_files, &args, &mut stats, &mut padder);
+        process_target_dir_files(&mut target_dir_tree, source_unique_files, &args, &mut stats, &mut padder);
     }
 
     // Record time taken
@@ -1002,7 +1051,10 @@ fn parse_dir_contents(
     return new_dir_tree;
 }
 
-fn write_target_dir_files(
+/// Iterate the files according to the projected target structure and
+/// either do a dry run and print resulting dir structure or
+/// write the files to target as configured (copy or move)
+fn process_target_dir_files(
     // The target tree representation of files to be copied/moved
     new_dir_tree: &mut TargetDateDeviceTree,
     // For dry runs, this represents a vector of unique files per each source dir
@@ -1191,83 +1243,224 @@ fn write_target_dir_files(
             /* --- Iterate each file in a device directory and print or copy/move it --- */
             /*****************************************************************************/
 
-            // Count files to know which symbols to use for the dir tree
-            // i.e. last entry is prefixed by └ and the rest by ├
-            let file_count_total = files_and_paths_vec.len();
-
-            for (file_index, file) in files_and_paths_vec.iter().enumerate() {
-
-                let is_last_dir = curr_dir_ix == dir_count_total;
-                let is_last_element = file_index == file_count_total - 1;
-
-                // Attach filename to the directory path
-                let mut file_destination_path = device_destination_path.clone()
-                    .join(&file.file_name);
-
-                let (padded_filename,
-                    op_separator,
-                    padded_path,
-                    status_separator,
-                    write_result,
-                ) = {
-
-                    // Output is different for dry-runs and copy/move operations, so print it separately
-                    if is_dry_run {
-
-                        // Prepare padded strings for output
-                        let indented_target_filename = indent_string(
-                            indent_level,
-                            file.get_file_name_str(),
-                            is_last_dir,
-                            is_last_element);
-                        let file_separator = padder.format_dryrun_file_separator(indented_target_filename.clone(), args);
-
-                        let source_path = file.get_source_display_name_str(args);
-                        let status_separator = padder.format_dryrun_status_separator_dotted(source_path.clone(), args);
-
-                        // Check restrictions - file exists or is read-only
-                        let file_restrictions = dry_run_check_file_restrictions(
-                            &file,
-                            &file_destination_path,
-                            &source_unique_files,
-                            args,
-                            stats);
-
-                        // Return everything to be printed
-                        (indented_target_filename, file_separator, source_path, status_separator, file_restrictions)
-
-                    } else {
-
-                        // Prepare padded strings for output
-                        let source_path = file.get_source_display_name_str(args);
-                        let padded_separator = padder.format_write_file_separator(source_path.clone());
-                        let stripped_target_path = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
-                        let status_separator = padder.format_write_status_separator_dotted(stripped_target_path.clone());
-
-                        // Copy/move file
-                        let file_write_status = copy_file_if_not_exists(
-                            &file,
-                            &mut file_destination_path,
-                            &args, &mut stats);
-
-                        // Return everything to be printed
-                        (source_path, padded_separator, stripped_target_path, status_separator, file_write_status)
-                    }
-                };
-
-                // Print operation status - each separator is responsible for adding its own spaces where necessary
-                println!("{left_side_file}{op_separator}{right_side_file}{status_separator}{status}",
-                         left_side_file=padded_filename,
-                         op_separator=op_separator,
-                         right_side_file=padded_path,
-                         status_separator=status_separator,
-                         status=write_result);
-            } // end loop files
+            // Output is different for dry-runs and copy/move operations, so process them separately
+            if is_dry_run {
+                process_files_dry_run(files_and_paths_vec, device_destination_path,
+                                      &source_unique_files, dir_count_total, curr_dir_ix, indent_level,
+                                      &args, &mut stats, padder)
+            } else {
+                process_files_write(files_and_paths_vec, device_destination_path,
+                                    &args, &mut stats, padder);
+            };
         } // end loop device dirs
 
         // leave some empty space before the next date dir
         println!();
+
     } // end loop date dirs
+}
+
+
+/// Iterate all source files and print the estimated target directory structure.
+/// Direction of arrows will be Right-to-Left to reflect focus on how the target
+/// structure is created. Arrow lines are dashed to indicate nothing is written.
+/// If compact mode is enabled, consecutive files with the same status above
+/// a configured threshold will be omitted and replaced with a single "snipped" line.
+/// Sample output:
+/// ```
+/// ---------------------------------------------------------------------------------
+/// TARGET FILE                     SOURCE PATH                  OPERATION STATUS
+/// ---------------------------------------------------------------------------------
+/// [2019.01.28] (2 devices, 5 files, 3.34 MB) ................. [new folder will be created]
+///  ├── [Canon 100D] .......................................... [new folder will be created]
+///  │    ├── IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ... target file exists, will be skipped
+///  │    ├── IMG-20190129.jpg <--- D:\Pics\IMG-20190129.jpg ... file will be copied
+///  │    ·-- (snipped output for 1 files with same status)
+///  └── IMG-20190127.jpg <-------- D:\Pics\IMG-20190127.jpg ... file will be copied
+///  └── IMG-20190127.jpg <-------- D:\Pics - Copy\IMG-20190127.jpg ... duplicate source file, will be skipped
+/// ```
+fn process_files_dry_run(
+    files_and_paths_vec: &Vec<SupportedFile>,
+    device_destination_path:PathBuf,
+    source_unique_files: &Option<Vec<HashSet<OsString>>>,
+    dir_count_total: usize,
+    curr_dir_ix: usize,
+    indent_level: usize,
+    args: &Args,
+    stats: &mut FileStats,
+    padder: &mut Padder
+) {
+
+    // Count files to know which symbols to use for the dir tree
+    // i.e. last entry is prefixed by `└` and the rest by `├`
+    let file_count_total = files_and_paths_vec.len();
+
+    let mut compact_counter = CompactCounter::new(args.compacting_threshold);
+
+    // Dry runs need also the index of each file to determine if it's the
+    // last element in this dir to choose the appropriate dir tree symbol
+    for (file_index, file) in files_and_paths_vec.iter().enumerate() {
+
+        let is_last_dir = curr_dir_ix == dir_count_total;
+        let is_first_element = file_index == 0;
+        let is_last_element = file_index == file_count_total - 1;
+
+        // Attach filename to the directory path
+        let file_destination_path = device_destination_path.clone()
+            .join(&file.file_name);
+
+        // Check restrictions - file exists or is read-only
+        let file_restrictions = dry_run_check_file_restrictions(
+            &file,
+            &file_destination_path,
+            &source_unique_files,
+            args,
+            stats);
+
+        let get_output_for_file = || {
+            // Prepare padded strings for output
+            let indented_target_filename = indent_string(
+                indent_level,
+                file.get_file_name_str(),
+                is_last_dir,
+                is_last_element);
+            let file_separator = padder.format_dryrun_file_separator(indented_target_filename.clone(), args);
+
+            let source_path = file.get_source_display_name_str(args);
+            let status_separator = padder.format_dryrun_status_separator_dotted(source_path.clone(), args);
+
+            process_files_format_status(
+                indented_target_filename,
+                file_separator,
+                source_path,
+                status_separator,
+                &file_restrictions)
+        };
+
+        let get_snipped_output = |_compact_counter: &CompactCounter| {
+            padder.format_dryrun_snipped_output(
+                _compact_counter.skipped_status_count,
+                indent_level,
+                is_last_dir,
+                args)
+        };
+
+        // Output compacting is not enabled, print all file statuses directly
+        if !args.is_compacting_enabled() {
+            let output = get_output_for_file();
+            println!("{}", output);
+        }
+
+        // Output compacting is enabled, so print only the first few consecutive
+        // files with the same status as configured under `args.compacting_threshold`
+        else  {
+
+            // First iteration - nothing special to do, just initialize
+            // all counters to 0 and move on to the next file
+            if is_first_element {
+                compact_counter.reset_status(file_restrictions.clone());
+                compact_counter.inc_current_status();
+                let output = get_output_for_file();
+                println!("{}", output);
+            }
+
+            // Next iterations with the same status as before - print line
+            // only if we haven't reached `args.compacting_threshold`,
+            // otherwise don't print anything, just increment the skip count
+            else if compact_counter.is_same_status(&file_restrictions) {
+                if !compact_counter.has_reached_threshold() {
+                    compact_counter.inc_current_status();
+                    let output = get_output_for_file();
+                    println!("{}", output);
+                } else {
+                    compact_counter.inc_skipped_status();
+                }
+            }
+
+            // Next iterations, status has just changed, print skipped status for previous files
+            // then reset all counters and continue with the current file
+            else {
+
+                if compact_counter.has_skipped_statuses() {
+                    let output = get_snipped_output(&compact_counter);
+                    println!("{}", output);
+                }
+
+                compact_counter.reset_status(file_restrictions.clone());
+                compact_counter.inc_current_status();
+                let output = get_output_for_file();
+                println!("{}", output);
+            }
+
+            // After the last file, print any remaining skipped statuses before finishing
+            if is_last_element && compact_counter.has_skipped_statuses() {
+                let output = get_snipped_output(&compact_counter);
+                println!("{}", output);
+            }
+        } // end else args.is_compacting_enabled
+    } // end loop files
+}
+
+
+/// Iterate all source files and write them to target, printing the operation status.
+/// Direction of arrows will be Left-to-Right to reflect the focus on the "write" operation.
+/// Arrow lines are continuous to indicate the files are written. There is no compact
+/// mode for this operation, since we want to show all available information.
+/// Sample output:
+/// ```
+/// ─────────────────────────────────────────────────────────────────────────────────────────
+/// SOURCE PATH                   TARGET FILE                                OPERATION STATUS
+/// ─────────────────────────────────────────────────────────────────────────────────────────
+/// [Created folder 2019.01.28]
+/// D:\Pics\IMG-20190127.jpg ───> 2019.01.28\IMG-20190127.jpg .............. ok
+/// D:\Pics\IMG-20190128.jpg ───> 2019.01.28\Canon 100D\IMG-20190128.jpg ... already exists
+/// D:\Pics\IMG-20190129.jpg ───> 2019.01.28\Canon 100D\IMG-20190129.jpg ... ok
+/// ```
+fn process_files_write(
+    files_and_paths_vec: &Vec<SupportedFile>,
+    device_destination_path:PathBuf,
+    args: &Args,
+    mut stats: &mut FileStats,
+    padder: &mut Padder,
+) {
+
+    for file in files_and_paths_vec.iter() {
+
+        let mut file_destination_path = device_destination_path.clone().join(&file.file_name);
+
+        // Prepare padded strings for output
+        let source_path = file.get_source_display_name_str(args);
+        let padded_separator = padder.format_write_file_separator(source_path.clone());
+        let stripped_target_path = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
+        let status_separator = padder.format_write_status_separator_dotted(stripped_target_path.clone());
+
+        // Copy/move file
+        let file_write_status = copy_file_if_not_exists(
+            &file,
+            &mut file_destination_path,
+            &args, &mut stats);
+
+        // Print result
+        let output = process_files_format_status(
+            source_path,
+            padded_separator,
+            stripped_target_path,
+            status_separator,
+            &file_write_status);
+
+        println!("{}", output);
+    }
+}
+
+fn process_files_format_status(
+    left_side_file: String,
+    op_separator: String,
+    right_side_file: String,
+    status_separator: String,
+    op_status: &String
+) -> String {
+    format!("{}{}{}{}{}",
+          left_side_file, op_separator, right_side_file, status_separator,op_status)
 }
 
 /// Read file metadata and return size in bytes

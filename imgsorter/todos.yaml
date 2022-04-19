@@ -1,5 +1,4 @@
 [-] 'dirs created' stat - differentiate between "date dirs" and "device dirs"
-[ ] dry run - option to not print everything, truncate after e.g. 5 files in same folder with same status (but save everything to log)
 
 - implement Display for Args and print before confirmation
 - clippy
@@ -56,7 +55,7 @@
 [ ] 5 - Optimize code
     [x] a - struct to model "supported file" with required metadata (file name, device info, date, etc)
     [ ] b - separate module for "file utils"
-    [ ] c - logging (replace debug printouts plus check every match/Err and ?)
+    [ ] c - logging (replace debug printouts plus check every match/Err and ? plus add files omitted by compact mode)
     [ ] d - better error handling (e.g. check all `.unwrap()`s)
     [ ] e - better name for SupportedFile (or maybe don't accept Unknown file types)
     [ ] f - universal line terminators
@@ -101,7 +100,7 @@
     [x] colored separator arrows
     [ ] separator arrow color should match file copy status (needs rework of how statuses are returned and colored)
     [ ] increase padding spaces from 1 to 2
-    [ ] dry run - option to not print everything, truncate after e.g. 5 files in same folder with same status (but save everything to log)
+    [x] dry run - option to not print everything, truncate after e.g. 5 files in same folder with same status (but save everything to log)
     [x] prettier dir trees (show branches ending when reaching last entry)
     [ ] show dir tree when presenting the source paths before confirmation, instead of a simple list of paths
         - show full path only for the sources in config, not for the recursively found subdirs
@@ -116,6 +115,7 @@
     [ ] how to treat files without EXIF (e.g. images received over WhatsApp)
     [ ] after move, leave a txt file in place named "where are my photos" which explains where they were moved (process summary); have option to disable this
     [x] colored text
+    [ ] crate for colors and format - https://stackoverflow.com/questions/69981449/how-do-i-print-colored-text-to-the-terminal-in-rust
     [ ] more comments and examples for Padder methods + rearrange more logically
 
 [ ] 9 - Docs
