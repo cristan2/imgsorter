@@ -8,9 +8,7 @@ use crate::config::*;
 pub struct ColoredString;
 
 /// Provides static methods for formatting colored text based on ANSI codes
-/// Taken from the following SO answers:
-/// * [https://stackoverflow.com/questions/69981449/how-do-i-print-colored-text-to-the-terminal-in-rust]
-/// * [https://stackoverflow.com/questions/287871/how-to-print-colored-text-to-the-terminal/287944#287944]
+/// see https://misc.flogisoft.com/bash/tip_colors_and_formatting
 impl ColoredString {
 
     // Color codes:
@@ -33,6 +31,9 @@ impl ColoredString {
     pub fn orange(s: &str)     -> String { format!("\x1b[93m{}\x1b[0m", s) }
     pub fn bold_white(s: &str) -> String { format!("\x1b[1m{}\x1b[0m",  s) }
     pub fn underline(s: &str)  -> String { format!("\x1b[4m{}\x1b[0m",  s) }
+    pub fn italic(s: &str)     -> String { format!("\x1b[3m{}\x1b[0m",  s) }
+    pub fn dim(s: &str)        -> String { format!("\x1b[2m{}\x1b[0m",  s) }
+    pub fn italic_dim(s: &str)        -> String { format!("\x1b[3m\x1b[2m{}\x1b[0m\x1b[0m",  s) }
 
     pub fn warn_arrow() -> String { Self::orange(">") }
 }
@@ -162,7 +163,7 @@ impl Padder {
 
     fn get_dryrun_total_padding_len(&self) -> usize {
         // TODO 5j: this is the same as
-        // get_dryrun_target_header_padding_len + 1 + get_dryrun_source_header_padding_len
+        //   get_dryrun_target_header_padding_len + 1 + get_dryrun_source_header_padding_len
         self.get_dryrun_max_target_len()
             + 1 // add +1 for the gap between the target filename and the operation separator
             + SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count()
@@ -346,6 +347,25 @@ impl Padder {
         }
     }
 
+    /// Adds space padding to the maximum padding length for the snipping output.
+    /// ```
+    /// ├── IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ... target file exists, will be skipped
+    /// ·-- (omitted output for 2 files with same status)
+    /// └── IMG-20190129.jpg <--- D:\Pics\IMG-20190129.jpg ... file will be copied
+    /// ```
+    pub fn format_dryrun_snipped_output(&self, skip_count: usize, indent_level: usize, is_last_dir: bool, args: &Args) -> String {
+
+        let snip_text = ColoredString::italic_dim(
+            format!("(omitted output for {} files with same status)", skip_count).as_str());
+
+        let indented_ommitted = indent_string_snipped(
+            indent_level,
+            snip_text,
+            is_last_dir);
+
+        indented_ommitted
+    }
+
     pub fn format_dryrun_file_separator(&self, left_file: String, args: &Args) -> String {
         if args.align_file_output {
             let padded_separator = RightPadding::dash(
@@ -440,11 +460,13 @@ impl LeftPadding {
 }
 
 pub const SEPARATOR_OP_STATUS: &str = "...";
+pub const SEPARATOR_OP_STATUS_EMPTY: &str = "   ";
 pub const SEPARATOR_DRY_RUN_LEFT_TO_RIGHT: &str = "--->";
 pub const SEPARATOR_DRY_RUN_RIGHT_TO_LEFT: &str = "<---";
 pub const SEPARATOR_COPY_MOVE: &str = "───>";
 pub const DIR_TREE_ENTRY_MID: &str = " ├── ";
 pub const DIR_TREE_ENTRY_LAST: &str = " └── ";
+pub const DIR_TREE_SNIP: &str = " ·-- ";
 pub const DIR_TREE_INDENT_MID: &str = " │   ";
 pub const DIR_TREE_INDENT_LAST: &str = "     ";
 
@@ -461,6 +483,12 @@ pub const DIR_TREE_INDENT_LAST: &str = "     ";
 pub fn indent_string(indent_level: usize, file_name: String, is_last_dir: bool, is_last_element: bool) -> String {
     let indents_symbols = if is_last_dir {DIR_TREE_INDENT_LAST} else {DIR_TREE_INDENT_MID};
     let entry_symbol = if is_last_element {DIR_TREE_ENTRY_LAST.to_string()} else {DIR_TREE_ENTRY_MID.to_string()};
+    format!("{}{}{}", indents_symbols.repeat(indent_level), entry_symbol, file_name)
+}
+
+fn indent_string_snipped(indent_level: usize, file_name: String, is_last_dir: bool) -> String {
+    let indents_symbols = if is_last_dir {DIR_TREE_INDENT_LAST} else {DIR_TREE_INDENT_MID};
+    let entry_symbol = DIR_TREE_SNIP.to_string();
     format!("{}{}{}", indents_symbols.repeat(indent_level), entry_symbol, file_name)
 }
 

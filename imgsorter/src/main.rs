@@ -209,6 +209,7 @@ pub enum ConfirmationType {
 
 /// Struct used to keep track of file statuses (i.e. future write restrictions)
 /// when doing dry runs with output compacting enabled
+#[derive(Debug)]
 struct CompactCounter {
     compacting_threshold: usize,
     current_status_count: usize,
@@ -227,9 +228,9 @@ impl CompactCounter {
     }
 
     fn reset_status(&mut self, new_status: String) {
-        self.current_status_count = 1;
+        self.current_status_count = 0;
         self.current_status = new_status;
-        // self.current_status_count = 0;
+        self.skipped_status_count = 0;
     }
 
     fn inc_current_status(&mut self) {
@@ -1259,6 +1260,22 @@ fn process_target_dir_files(
     } // end loop date dirs
 }
 
+/// Iterate all source files and print the estimated target directory structure
+/// Order of write arrows will be Right-to-Left to illustrate how the target
+/// structure is created. If compact mode is enabled, consecutive files
+/// with the same status will be omitted and replaced with a single "snipped" line.
+/// ```
+/// ---------------------------------------------------------------------------------
+/// TARGET FILE                     SOURCE PATH                  OPERATION STATUS
+/// ---------------------------------------------------------------------------------
+/// [2019.01.28] (2 devices, 5 files, 3.34 MB) ................. [new folder will be created]
+///  ├── [Canon 100D] .......................................... [new folder will be created]
+///  │    ├── IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ... target file exists, will be skipped
+///  │    ├── IMG-20190129.jpg <--- D:\Pics\IMG-20190129.jpg ... file will be copied
+///  │    ·-- (omitted output for 1 files with same status)
+///  └── IMG-20190127.jpg <-------- D:\Pics\IMG-20190127.jpg ... file will be copied
+///  └── IMG-20190127.jpg <-------- D:\Pics - Copy\IMG-20190127.jpg ... duplicate source file, will be skipped
+/// ```
 fn process_files_dry_run(
     files_and_paths_vec: &Vec<SupportedFile>,
     device_destination_path:PathBuf,
@@ -1272,19 +1289,20 @@ fn process_files_dry_run(
 ) {
 
     // Count files to know which symbols to use for the dir tree
-    // i.e. last entry is prefixed by └ and the rest by ├
+    // i.e. last entry is prefixed by `└` and the rest by `├`
     let file_count_total = files_and_paths_vec.len();
 
+    // This is only used for compact runs
     let mut file_printouts: Vec<String> = Vec::new();
 
     let mut compact_counter = CompactCounter::new(args.compacting_threshold);
-
 
     // Dry runs need also the index of each file to determine if it's the
     // last element in this dir to choose the appropriate dir tree symbol
     for (file_index, file) in files_and_paths_vec.iter().enumerate() {
 
         let is_last_dir = curr_dir_ix == dir_count_total;
+        let is_first_element = file_index == 0;
         let is_last_element = file_index == file_count_total - 1;
 
         // Attach filename to the directory path
@@ -1299,12 +1317,11 @@ fn process_files_dry_run(
             args,
             stats);
 
-        let get_output_for_file = |file_name: String| {
+        let get_output_for_file = || {
             // Prepare padded strings for output
             let indented_target_filename = indent_string(
                 indent_level,
-                // file.get_file_name_str(),
-                file_name,
+                file.get_file_name_str(),
                 is_last_dir,
                 is_last_element);
             let file_separator = padder.format_dryrun_file_separator(indented_target_filename.clone(), args);
@@ -1312,123 +1329,70 @@ fn process_files_dry_run(
             let source_path = file.get_source_display_name_str(args);
             let status_separator = padder.format_dryrun_status_separator_dotted(source_path.clone(), args);
 
-            return process_files_format_status(
+            process_files_format_status(
                 indented_target_filename,
                 file_separator,
                 source_path,
                 status_separator,
-                &file_restrictions);
+                &file_restrictions)
         };
 
-        // Status output compacting is enabled, so print only the first consecutive files with the same
-        if args.is_compacting_enabled() {
-            // first iteration
-            if file_index == 0 {
-                // last_file_status_count = (1, file_restrictions.clone(), 0);
+        let get_snipped_output = |_compact_counter: &CompactCounter| {
+            padder.format_dryrun_snipped_output(
+                _compact_counter.skipped_status_count,
+                indent_level,
+                is_last_dir,
+                args)
+        };
+
+        // Output compacting is not enabled, print all file statuses directly
+        if !args.is_compacting_enabled() {
+            let output = get_output_for_file();
+            println!("{}", output);
+        }
+
+        // Output compacting is enabled, so print only the first few consecutive
+        // files with the same status as configured under `args.compacting_threshold`
+        else  {
+
+            // First iteration - nothing special to do, just initialize
+            // all counters to 0 and move on to the next file
+            if is_first_element {
                 compact_counter.reset_status(file_restrictions.clone());
-                file_printouts.push(get_output_for_file(file.get_file_name_str()));
-                // println!("if 0            | pushing {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
+                compact_counter.inc_current_status();
+                file_printouts.push(get_output_for_file());
+            }
 
-            } else {
-
-                // for every other iteration, we check
-                // - if it's the same status
-                // - if we've reached the snip threshold
-
-                // println!("comparing {} with {} = {}", file_restrictions, last_file_status_count.1, file_restrictions == last_file_status_count.1);
-
-                // Same status as previous file - only print if not more 5  consecutive
-                // if file_restrictions == compact_counter.current_status {
-                if compact_counter.is_same_status(&file_restrictions) {
-
-                    // continue to process, add statuses in vec
-                    // if compact_counter.current_status_count < args.compacting_threshold {
-                    if !compact_counter.has_reached_threshold() {
-                        // last_file_status_count.0 += 1;
-                        compact_counter.inc_current_status();
-                        file_printouts.push(get_output_for_file(file.get_file_name_str()))
-                        // println!("same status < 5 | pushing {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
-
-                        // reached snip threshold, just increment snip count
-                    } else {
-                        // last_file_status_count.2 += 1;
-                        compact_counter.inc_skipped_status();
-                        // println!("same status >=5 | not pushing {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
-                    }
-
-                    // Status has just changed
+            // Next iterations with the same status as before - print line
+            // only if we haven't reached `args.compacting_threshold`,
+            // otherwise don't print anything, just increment the skip count
+            else if compact_counter.is_same_status(&file_restrictions) {
+                if !compact_counter.has_reached_threshold() {
+                    compact_counter.inc_current_status();
+                    file_printouts.push(get_output_for_file())
                 } else {
-
-                    // print skipped count for previous status, if any
-                    if compact_counter.has_skipped_statuses() {
-
-                        // TODO so ugly, refactor
-
-                        let snip_count = compact_counter.skipped_status_count;
-
-                        let snip_status = format!("snipped output for {} files with same status", snip_count);
-
-                        let colored_snip_status = format!("{}",
-                                                          ColoredString::cyan(snip_status.as_str()));
-
-                        // println!("changed status > 2 | snipping for {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
-
-                        // TODO indent based on file indent
-                        let indented_snip_output = padder.format_dryrun_device_dir(
-                            // snip_status,
-                            colored_snip_status,
-                            is_last_dir,
-                            // if it's last dir, it's also the last element of type dir
-                            is_last_dir,
-                            args);
-
-                        let snipped_status_count = format!("{} x {}", snip_count, compact_counter.current_status);
-
-                        let snip_output = format!("{} {}", indented_snip_output, snipped_status_count);
-
-                        file_printouts.push(snip_output);
-                    }
-
-                    // then reset count and start again
-                    // last_file_status_count = (1, file_restrictions.clone(), 0);
-                    compact_counter.reset_status(file_restrictions.clone());
-                    file_printouts.push(get_output_for_file(file.get_file_name_str()))
-                    // println!("reset status    | pushing {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
+                    compact_counter.inc_skipped_status();
                 }
             }
 
-            // Flush any remaining skipped statuses not yet pushed to file_printouts ???
-            if is_last_element && compact_counter.has_skipped_statuses() {
-                let snip_count = compact_counter.skipped_status_count;
+            // Next iterations, status has just changed, print skipped status for previous files
+            // then reset all counters and continue with the current file
+            else {
 
-                let snip_status = format!("snipped output for {} files with same status", snip_count);
+                if compact_counter.has_skipped_statuses() {
+                    file_printouts.push( get_snipped_output(&compact_counter))
+                }
 
-                let colored_snip_status = format!("{}",
-                                                  ColoredString::cyan(snip_status.as_str()));
-
-                // println!("changed status > 2 | snipping for {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
-
-                // TODO indent based on file indent
-                let indented_snip_output = padder.format_dryrun_device_dir(
-                    // snip_status,
-                    colored_snip_status,
-                    is_last_dir,
-                    // if it's last dir, it's also the last element of type dir
-                    is_last_dir,
-                    args);
-
-                let snipped_status_count = format!("{} x {}", snip_count, compact_counter.current_status);
-
-                let snip_output = format!("{} {}", indented_snip_output, snipped_status_count);
-
-                file_printouts.push(snip_output);
+                compact_counter.reset_status(file_restrictions.clone());
+                compact_counter.inc_current_status();
+                file_printouts.push(get_output_for_file())
             }
 
-        // Status output compacting is not enabled, print all file statuses directly
-        } else {
-            let output = get_output_for_file(file.get_file_name_str());
-            println!("{}", output);
-        }
+            // After the last file, print any remaining skipped statuses before finishing
+            if is_last_element && compact_counter.has_skipped_statuses() {
+                file_printouts.push(get_snipped_output(&compact_counter))
+            }
+        } // end else args.is_compacting_enabled
     } // end loop files
 
     // This will only be non-empty for compact runs, since normal runs will print output directly

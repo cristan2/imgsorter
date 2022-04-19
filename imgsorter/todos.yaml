@@ -116,6 +116,7 @@
     [ ] how to treat files without EXIF (e.g. images received over WhatsApp)
     [ ] after move, leave a txt file in place named "where are my photos" which explains where they were moved (process summary); have option to disable this
     [x] colored text
+    [ ] crate for colors and format - https://stackoverflow.com/questions/69981449/how-do-i-print-colored-text-to-the-terminal-in-rust
     [ ] more comments and examples for Padder methods + rearrange more logically
 
 [ ] 9 - Docs
