@@ -1,12 +1,12 @@
-use std::path::{Path, PathBuf};
-use std::{fs, io, fmt};
 use std::cmp::max;
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::OsString;
 use std::fmt::Formatter;
-use std::iter::FromIterator;
 use std::fs::{DirEntry, Metadata};
+use std::iter::FromIterator;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+use std::{fmt, fs, io};
 
 use chrono::{DateTime, Utc};
 use filesize::PathExt;
@@ -20,7 +20,7 @@ use OutputColor::*;
 /// where the string representation of the optional device is the map key
 struct DeviceTree {
     file_tree: BTreeMap<DirEntryType, Vec<SupportedFile>>,
-    max_dir_path_len: usize
+    max_dir_path_len: usize,
 }
 
 impl DeviceTree {
@@ -49,22 +49,25 @@ impl DeviceTree {
 /// ```
 struct TargetDateDeviceTree {
     dir_tree: BTreeMap<String, DeviceTree>,
-    unknown_extensions: HashSet<String>
+    unknown_extensions: HashSet<String>,
 }
 
 /// Just output a simple list of filenames for now
 impl fmt::Display for TargetDateDeviceTree {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let file_names: Vec<String> = self.dir_tree
+        let file_names: Vec<String> = self
+            .dir_tree
             .iter()
             .map(|(date_dir, device_tree)| {
-
-                let date_files = device_tree.file_tree
+                let date_files = device_tree
+                    .file_tree
                     .iter()
                     .flat_map(|(device_dir, files)| {
-                        let device_files = files.iter()
-                            .map(|file|
-                                format!("{} | {}", device_dir, file.file_path.display().to_string()))
+                        let device_files = files
+                            .iter()
+                            .map(|file| {
+                                format!("{} | {}", device_dir, file.file_path.display().to_string())
+                            })
                             .collect::<Vec<String>>();
                         device_files
                     })
@@ -81,7 +84,7 @@ impl TargetDateDeviceTree {
     fn new() -> TargetDateDeviceTree {
         TargetDateDeviceTree {
             dir_tree: BTreeMap::new(),
-            unknown_extensions: HashSet::new()
+            unknown_extensions: HashSet::new(),
         }
     }
 
@@ -93,20 +96,18 @@ impl TargetDateDeviceTree {
     ///
     /// Returns a new [DateDeviceTree] object
     fn isolate_single_images(mut self, args: &Args) -> Self {
-
         // Don't bother doing anything if we don't have at least a threshold of 1
         if args.min_files_per_dir <= 0 {
-            return self
+            return self;
         }
 
         let _has_single_device = |device_tree: &DeviceTree| device_tree.file_tree.keys().len() < 2;
 
         let _has_minimum_files = |device_tree: &DeviceTree| {
-            let all_files_names  = device_tree
+            let all_files_names = device_tree
                 .file_tree
                 .values()
-                .flat_map(|files|
-                    files.iter().map(|f| f.file_name.clone()))
+                .flat_map(|files| files.iter().map(|f| f.file_name.clone()))
                 .collect::<Vec<_>>();
 
             let all_files_unique: HashSet<&OsString> = HashSet::from_iter(all_files_names.iter());
@@ -129,9 +130,9 @@ impl TargetDateDeviceTree {
                 // Move single files from the current date dir to a separate dir,
                 // which will be joined again later under a different key
                 if has_oneoff_files(&device_tree) {
-
                     // TODO 6g handle max_len and possible file duplicates
-                    device_tree.file_tree
+                    device_tree
+                        .file_tree
                         .into_iter()
                         .for_each(|(_, src_files)| oneoff_files.extend(src_files));
 
@@ -160,9 +161,11 @@ impl TargetDateDeviceTree {
     /// Note: this must be called AFTER [Self::isolate_single_images()] so that the length of
     /// the oneoffs directory can be taken into account, if present
     fn compute_max_path_len(&mut self, args: &Args) -> usize {
-        let max_date_dir_path_len = &self.dir_tree.iter()
+        let max_date_dir_path_len = &self
+            .dir_tree
+            .iter()
             // filter only date dirs with at least 2 devices
-            .filter(|(_, device_tree)| device_tree.file_tree.keys().clone().len() > 1 )
+            .filter(|(_, device_tree)| device_tree.file_tree.keys().clone().len() > 1)
             // now search all devices for the max path len
             .map(|(_, device_tree)| device_tree.max_dir_path_len)
             .max();
@@ -173,7 +176,9 @@ impl TargetDateDeviceTree {
         let has_oneoffs_dir = &self.dir_tree.contains_key(args.oneoffs_dir_name.as_str());
         let oneoffs_dir_len = if *has_oneoffs_dir {
             get_string_char_count(args.oneoffs_dir_name.clone())
-        } else {0};
+        } else {
+            0
+        };
 
         match *max_date_dir_path_len {
             Some(max_dir_path_len) =>
@@ -188,7 +193,7 @@ impl TargetDateDeviceTree {
 #[derive(Debug)]
 pub enum DirType {
     Date,
-    Device
+    Device,
 }
 
 #[derive(Debug)]
@@ -213,7 +218,7 @@ struct CompactCounter {
     compacting_threshold: usize,
     current_status_count: usize,
     current_status: String,
-    skipped_status_count: usize
+    skipped_status_count: usize,
 }
 
 impl CompactCounter {
@@ -222,7 +227,7 @@ impl CompactCounter {
             compacting_threshold,
             current_status_count: 0,
             current_status: "".to_owned(),
-            skipped_status_count: 0
+            skipped_status_count: 0,
         }
     }
 
@@ -279,7 +284,7 @@ pub struct FileStats {
     time_fetch_dirs: Duration,
     time_parse_files: Duration,
     time_write_files: Duration,
-    time_total: Duration
+    time_total: Duration,
 }
 
 impl FileStats {
@@ -308,7 +313,7 @@ impl FileStats {
             time_fetch_dirs: Duration::new(0, 0),
             time_parse_files: Duration::new(0, 0),
             time_write_files: Duration::new(0, 0),
-            time_total: Duration::new(0, 0)
+            time_total: Duration::new(0, 0),
         }
     }
 
@@ -340,44 +345,44 @@ impl FileStats {
     pub fn inc_dir_total_by_type(&mut self, dir: &DirType) {
         match dir {
             DirType::Date => self.inc_date_dirs_total(),
-            DirType::Device => self.inc_device_dirs_total()
+            DirType::Device => self.inc_device_dirs_total(),
         }
     }
 
     pub fn inc_dir_created_by_type(&mut self, dir: &DirType) {
         match dir {
             DirType::Date => self.inc_date_dirs_created(),
-            DirType::Device => self.inc_device_dirs_created()
+            DirType::Device => self.inc_device_dirs_created(),
         }
     }
 
     pub fn inc_copied_by_type(&mut self, file: &SupportedFile) {
         match file.file_type {
-            FileType::Image   => self.inc_img_copied(),
-            FileType::Video   => self.inc_vid_copied(),
-            FileType::Audio   => self.inc_aud_copied(),
+            FileType::Image => self.inc_img_copied(),
+            FileType::Video => self.inc_vid_copied(),
+            FileType::Audio => self.inc_aud_copied(),
             // don't record any stats for this, shouldn't get one here anyway
-            FileType::Unknown(_) => ()
+            FileType::Unknown(_) => (),
         }
     }
 
     pub fn inc_moved_by_type(&mut self, file: &SupportedFile) {
         match file.file_type {
-            FileType::Image   => self.inc_img_moved(),
-            FileType::Video   => self.inc_vid_moved(),
-            FileType::Audio   => self.inc_aud_moved(),
+            FileType::Image => self.inc_img_moved(),
+            FileType::Video => self.inc_vid_moved(),
+            FileType::Audio => self.inc_aud_moved(),
             // don't record any stats for this, shouldn't get one here anyway
-            FileType::Unknown(_) => ()
+            FileType::Unknown(_) => (),
         }
     }
 
     pub fn inc_skipped_by_type(&mut self, file: &SupportedFile) {
         match file.file_type {
-            FileType::Image   => self.inc_img_skipped(),
-            FileType::Video   => self.inc_vid_skipped(),
-            FileType::Audio   => self.inc_aud_skipped(),
+            FileType::Image => self.inc_img_skipped(),
+            FileType::Video => self.inc_vid_skipped(),
+            FileType::Audio => self.inc_aud_skipped(),
             // don't record any stats for this, shouldn't get one here anyway
-            FileType::Unknown(_) => ()
+            FileType::Unknown(_) => (),
         }
     }
 
@@ -387,14 +392,10 @@ impl FileStats {
 
         if err_stat > 0 {
             match level {
-                OutputColor::Error =>
-                    ColoredString::red(padded_int.as_str()),
-                OutputColor::Warning =>
-                    ColoredString::orange(padded_int.as_str()),
-                Neutral =>
-                    ColoredString::bold_white(padded_int.as_str()),
-                OutputColor::Good =>
-                    ColoredString::green(padded_int.as_str()),
+                OutputColor::Error   => ColoredString::red(padded_int.as_str()),
+                OutputColor::Warning => ColoredString::orange(padded_int.as_str()),
+                Neutral              => ColoredString::bold_white(padded_int.as_str()),
+                OutputColor::Good    => ColoredString::green(padded_int.as_str()),
             }
         } else {
             padded_int
@@ -404,14 +405,10 @@ impl FileStats {
     pub fn color_if_non_zero(err_stat: i32, level: OutputColor) -> String {
         if err_stat > 0 {
             match level {
-                OutputColor::Error =>
-                    ColoredString::red(err_stat.to_string().as_str()),
-                OutputColor::Warning =>
-                    ColoredString::orange(err_stat.to_string().as_str()),
-                Neutral =>
-                    ColoredString::bold_white(err_stat.to_string().as_str()),
-                OutputColor::Good =>
-                    ColoredString::green(err_stat.to_string().as_str()),
+                OutputColor::Error   => ColoredString::red(err_stat.to_string().as_str()),
+                OutputColor::Warning => ColoredString::orange(err_stat.to_string().as_str()),
+                Neutral              => ColoredString::bold_white(err_stat.to_string().as_str()),
+                OutputColor::Good    => ColoredString::green(err_stat.to_string().as_str()),
             }
         } else {
             err_stat.to_string()
@@ -419,15 +416,14 @@ impl FileStats {
     }
 
     pub fn print_stats(&self, args: &Args) {
-
         // file count padding
-        let f_max_digits = get_integer_char_count(self.files_count_total) ;
+        let f_max_digits = get_integer_char_count(self.files_count_total);
         // dir count padding; each should be half of the total file count width
-        let d_max_digits = ( (f_max_digits * 3) as f32 / 2_f32).ceil() as usize;
+        let d_max_digits = ((f_max_digits * 3) as f32 / 2_f32).ceil() as usize;
 
-
-        let write_general_stats = || { format!(
-            "──────────────────────────────────────────────
+        let write_general_stats = || {
+            format!(
+"──────────────────────────────────────────────
 Total files:                  {total} ({size})
 ──────────────────────────────────────────────
 Images moved|copied|skipped:  │{p_img_move}│{p_img_copy}│{p_img_skip}│
@@ -491,8 +487,9 @@ Total time taken:             {t_total} sec
                 LeftPadding::zeroes3(self.time_total.subsec_millis())).as_str()),
         )}; // end write_general_stats
 
-        let dryrun_general_stats = || { format!(
-            "––––––––––––––––––––––––––––––––––––––––––––––––––––––
+        let dryrun_general_stats = || {
+            format!(
+"––––––––––––––––––––––––––––––––––––––––––––––––––––––
 Total files:                    {total} ({size})
 ––––––––––––––––––––––––––––––––––––––––––––––––––––––
 Images to move|copy|skip:       │{p_img_move}│{p_img_copy}│{p_img_skip}│
@@ -591,7 +588,7 @@ impl Default for FileStats {
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub enum DirEntryType {
     Directory(String),
-    Files
+    Files,
 }
 
 impl fmt::Display for DirEntryType {
@@ -615,7 +612,7 @@ pub struct SupportedFile {
     device_name: DirEntryType,
     // index of the vec holding the files in the original source dir of this file
     // this is used to detect duplicates across multiple source dirs when doing dry runs
-    source_dir_index: usize
+    source_dir_index: usize,
 }
 
 // TODO 5e: find better name
@@ -632,9 +629,8 @@ impl SupportedFile {
                 read_kamadak_exif_date_and_device(&dir_entry, args)
                 // Use rexif crate
                 // read_exif_date_and_device(&dir_entry, args)
-            },
-            _ =>
-                ExifDateDevice::new()
+            }
+            _ => ExifDateDevice::new(),
         };
 
         // Read image date - prefer EXIF tags over system date
@@ -646,12 +642,13 @@ impl SupportedFile {
 
         // Replace EXIF camera model with a custom name, if one was defined in config
         let device_name: DirEntryType = match exif_data.camera_model {
-            Some(camera_model) => args.custom_device_names
+            Some(camera_model) => args
+                .custom_device_names
                 .get(camera_model.to_lowercase().as_str())
-                .map_or(DirEntryType::Directory(camera_model),
-                        |custom_camera_name|DirEntryType::Directory(custom_camera_name.clone())),
-            None =>
-                DirEntryType::Files
+                .map_or(
+                    DirEntryType::Directory(camera_model),
+                    |custom_camera_name| DirEntryType::Directory(custom_camera_name.clone())),
+            None => DirEntryType::Files,
         };
 
         SupportedFile {
@@ -662,7 +659,7 @@ impl SupportedFile {
             date_str,
             metadata,
             device_name,
-            source_dir_index
+            source_dir_index,
         }
     }
 
@@ -688,7 +685,6 @@ impl SupportedFile {
 }
 
 fn main() -> Result<(), std::io::Error> {
-
     let mut args = Args::new_from_toml("imgsorter.toml")?;
 
     let mut stats = FileStats::new();
@@ -702,7 +698,6 @@ fn main() -> Result<(), std::io::Error> {
     // let mut padder = Padder::new(args.has_multiple_sources());
     let mut padder = Padder::new(args.has_multiple_sources());
 
-
     /*****************************************************************************/
     /* ---                        Read source files                          --- */
     /*****************************************************************************/
@@ -711,21 +706,18 @@ fn main() -> Result<(), std::io::Error> {
     // TODO 5g: instead of Vec<Vec<DirEntry>>, return a `SourceDirTree` struct
     // which wraps the Vec's but contains additional metadata, such as no of files or total size
     // Read dir contents and filter out error results
-    let source_contents = args.source_dir.clone()
+    let source_contents = args
+        .source_dir
+        .clone()
         .iter()
-        .filter_map(|src_dir|
-            read_supported_files(src_dir, &mut stats, &mut args).ok())
+        .filter_map(|src_dir| read_supported_files(src_dir, &mut stats, &mut args).ok())
         .collect::<Vec<_>>();
-
 
     /*****************************************************************************/
     /* ---                 Print options before confirmation                 --- */
     /*****************************************************************************/
 
-    let total_source_files: usize = source_contents.iter()
-        .map(|dir|dir.len())
-        .sum();
-
+    let total_source_files: usize = source_contents.iter().map(|dir| dir.len()).sum();
 
     // Exit early if there are no source files
     if total_source_files < 1 {
@@ -776,7 +768,7 @@ fn main() -> Result<(), std::io::Error> {
 
     // Proceed only if silent is enabled or user confirms, otherwise exit
     if args.silent {
-        println! ("> Silent mode is enabled. Proceeding without user confirmation.");
+        println!("> Silent mode is enabled. Proceeding without user confirmation.");
         if args.dry_run {
             println!("> This is a dry run. No folders will be created. No files will be copied or moved.");
         }
@@ -785,7 +777,7 @@ fn main() -> Result<(), std::io::Error> {
             ConfirmationType::Cancel => {
                 println!("Cancelled by user, exiting.");
                 return Ok(());
-            },
+            }
             ConfirmationType::Error => {
                 println!("Error confirming, exiting.");
                 return Ok(());
@@ -794,8 +786,7 @@ fn main() -> Result<(), std::io::Error> {
                 println!("This is a dry run. No folders will be created. No files will be copied or moved.");
                 args.dry_run = true;
             }
-            ConfirmationType::Proceed =>
-                ()
+            ConfirmationType::Proceed => (),
         }
     }
 
@@ -803,7 +794,6 @@ fn main() -> Result<(), std::io::Error> {
 
     println!("–––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––");
     println!();
-
 
     /*****************************************************************************/
     /* ---        Parse source files and copy/paste or dry run them          --- */
@@ -825,7 +815,13 @@ fn main() -> Result<(), std::io::Error> {
     if !target_dir_tree.dir_tree.is_empty() {
         // Iterate files and either copy/move to subdirs as necessary
         // or do a dry run to simulate a copy/move pass
-        process_target_dir_files(&mut target_dir_tree, source_unique_files, &args, &mut stats, &mut padder);
+        process_target_dir_files(
+            &mut target_dir_tree,
+            source_unique_files,
+            &args,
+            &mut stats,
+            &mut padder,
+        );
     }
 
     // Record time taken
@@ -855,27 +851,31 @@ fn main() -> Result<(), std::io::Error> {
 /// unique elements, ensuring duplicate filenames are progressively removed.
 fn get_source_unique_files(
     source_dir_contents: &[Vec<DirEntry>],
-    args: &Args
+    args: &Args,
 ) -> Option<Vec<HashSet<OsString>>> {
-
     // TODO 6i: this method only takes filename into consideration, should also consider date / device
     //   maybe even use [TargetDateDeviceTree] for this instead of source vecs?
 
     // This method is only useful for dry runs, return early otherwise
     if !args.dry_run {
-        return None
+        return None;
     }
 
-    let sets_of_files = source_dir_contents.iter().map(|src_dir|
-        src_dir.iter()
-            .map(|src_entry| src_entry.file_name())
-            .collect::<HashSet<_>>())
+    let sets_of_files = source_dir_contents
+        .iter()
+        .map(|src_dir| {
+            src_dir
+                .iter()
+                .map(|src_entry| src_entry.file_name())
+                .collect::<HashSet<_>>()
+        })
         .collect::<Vec<_>>();
 
     if args.debug { print_sets_with_index("source file sets before filtering for uniques", &sets_of_files); }
 
     let all_unique_files = sets_of_files
-        .iter().enumerate()
+        .iter()
+        .enumerate()
         .map(|(curr_ix, _)|
             // keep_unique_across_sets(&sets_of_files, curr_ix))
             keep_unique_across_sets(&sets_of_files[0..=curr_ix]))
@@ -890,9 +890,8 @@ fn get_source_unique_files(
 fn read_supported_files(
     source_dir: &Path,
     stats: &mut FileStats,
-    args: &mut Args
+    args: &mut Args,
 ) -> Result<Vec<DirEntry>, std::io::Error> {
-
     // TODO 5d: handle all ?'s
     let dir_entries = fs::read_dir(source_dir)?
         .into_iter()
@@ -907,20 +906,22 @@ fn read_supported_files(
     // ...but record stats if "source_recursive" is not enabled
     } else {
         dir_entries
-            .filter(|entry| 
+            .filter(|entry| {
                 if entry.path().is_file() {
                     true
                 } else {
                     if args.verbose {
-                        println!("Recursive option is off, skipping subfolder {:?} in {:?}", entry.file_name(), source_dir.file_name().unwrap());
+                        println!(
+                            "Recursive option is off, skipping subfolder {:?} in {:?}",
+                            entry.file_name(), source_dir.file_name().unwrap());
                     }
                     stats.inc_dirs_ignored();
                     false
                 }
-            )
+            })
             .collect::<Vec<DirEntry>>()
-        };
-    
+    };
+
     Ok(filtered_entries)
 }
 
@@ -929,13 +930,12 @@ fn parse_dir_contents(
     source_dir_contents: Vec<Vec<DirEntry>>,
     args: &Args,
     stats: &mut FileStats,
-    padder: &mut Padder
+    padder: &mut Padder,
 ) -> TargetDateDeviceTree {
-
     let mut new_dir_tree: TargetDateDeviceTree = TargetDateDeviceTree::new();
 
     // TODO 5g: this should already be available from source_dir_contents metadata
-    let total_no_files: usize = source_dir_contents.iter().map(|vec|vec.len()).sum();
+    let total_no_files: usize = source_dir_contents.iter().map(|vec| vec.len()).sum();
 
     stats.inc_files_total(total_no_files);
 
@@ -948,7 +948,6 @@ fn parse_dir_contents(
     }
 
     for (source_ix, source_dir) in source_dir_contents.into_iter().enumerate() {
-
         let time_parsing_dir = Instant::now();
 
         let current_file_count = source_dir.len();
@@ -959,16 +958,17 @@ fn parse_dir_contents(
             // This is the first part of the progres line for this directory
             // See also the next [print_progress] call which prints the time taken to this same line
             // e.g. `[3566/4239] Parsing 2 files from D:\Temp\source_path\... done (0.018 sec)`
-            print_progress(format!("[{}/{}] Parsing {} files from '{}'... ",
-                                   count_so_far,
-                                   total_no_files,
-                                   current_file_count,
-                                   args.source_dir[source_ix].display()));
+            print_progress(format!(
+                "[{}/{}] Parsing {} files from '{}'... ",
+                count_so_far,
+                total_no_files,
+                current_file_count,
+                args.source_dir[source_ix].display()
+            ));
         }
 
         // Parse each file into its internal representation and add it to the target tree
         for entry in source_dir {
-
             let current_file: SupportedFile = SupportedFile::parse_from(entry, source_ix, args);
 
             // Build final target path for this file
@@ -1005,9 +1005,14 @@ fn parse_dir_contents(
                     // add +1 for each path separator character
                     let total_target_path_len = _date_name_str + 1 + _device_name_len;
 
-                    padder.set_max_source_filename_from_str(current_file.file_name.clone().to_str().unwrap());
-                    padder.set_max_source_path(get_string_char_count(current_file.file_path.display().to_string()));
-                    devicetree_for_this_date.max_dir_path_len = max(devicetree_for_this_date.max_dir_path_len, total_target_path_len);
+                    padder.set_max_source_filename_from_str(
+                        current_file.file_name.clone().to_str().unwrap());
+                    padder.set_max_source_path(get_string_char_count(
+                        current_file.file_path.display().to_string()));
+                    devicetree_for_this_date.max_dir_path_len = max(
+                        devicetree_for_this_date.max_dir_path_len,
+                        total_target_path_len,
+                    );
 
                     // Add file to dir tree
                     all_files_for_this_device.push(current_file);
@@ -1033,8 +1038,9 @@ fn parse_dir_contents(
                                    LeftPadding::zeroes3(time_parsing_dir.elapsed().subsec_millis())));
             println!();
             // Print files intented with two spaces
-            let skipped = skipped_files.into_iter()
-                .filter(|s|!s.is_empty())
+            let skipped = skipped_files
+                .into_iter()
+                .filter(|s| !s.is_empty())
                 .collect::<Vec<String>>();
 
             if !skipped.is_empty() {
@@ -1064,9 +1070,8 @@ fn process_target_dir_files(
     source_unique_files: Option<Vec<HashSet<OsString>>>,
     args: &Args,
     mut stats: &mut FileStats,
-    padder: &mut Padder
+    padder: &mut Padder,
 ) {
-
     let is_dry_run = args.dry_run;
 
     // Dry runs will output a dir-tree-like structure, so add the additional
@@ -1085,7 +1090,6 @@ fn process_target_dir_files(
         println!("{}", ColoredString::bold_white(
             padder.format_dryrun_header(status_width).as_str()));
         println!("{}", ColoredString::bold_white(header_separator.as_str()));
-
     } else {
         println!();
         let start_status = format!("Starting to {} files...", { if args.copy_not_move {"copy"} else {"move"}} );
@@ -1109,12 +1113,14 @@ fn process_target_dir_files(
         let device_count_for_date = devices_files_and_paths.file_tree.keys().len();
 
         // Get a total sum of file counts and file size in a single iteration
-        let (file_count_for_date, file_size_for_date) = devices_files_and_paths.file_tree.iter()
-            .fold((0, 0), |(accum_count, accum_size), (_, files_and_paths)|
+        let (file_count_for_date, file_size_for_date) = devices_files_and_paths
+            .file_tree
+            .iter()
+            .fold((0, 0), |(accum_count, accum_size), (_, files_and_paths)| {
                 (
                     accum_count + files_and_paths.len(),
-                    accum_size + get_files_size(files_and_paths)
-                ));
+                    accum_size + get_files_size(files_and_paths),
+                )});
         stats.inc_files_size(file_size_for_date);
 
         // Attach file's date as a new subdirectory to the target path
@@ -1137,7 +1143,8 @@ fn process_target_dir_files(
             };
 
             // Check restrictions - if target exists
-            let target_dir_exists = dry_run_check_target_dir_exists(&date_destination_path, stats, &DirType::Date);
+            let target_dir_exists =
+                dry_run_check_target_dir_exists(&date_destination_path, stats, &DirType::Date);
 
             // Print everything together
             println!("{}",
@@ -1159,11 +1166,7 @@ fn process_target_dir_files(
         let dir_count_total = devices_files_and_paths.file_tree.len();
         let mut curr_dir_ix = 0_usize;
 
-        for (
-            device_name_opt,
-            files_and_paths_vec
-        ) in &devices_files_and_paths.file_tree {
-
+        for (device_name_opt, files_and_paths_vec) in &devices_files_and_paths.file_tree {
             curr_dir_ix += 1;
             let is_last_dir = curr_dir_ix == dir_count_total;
 
@@ -1210,7 +1213,6 @@ fn process_target_dir_files(
 
                 // Print device dir name
                 if is_dry_run {
-
                     // Increase indent for subsequent files
                     indent_level += 1;
 
@@ -1220,10 +1222,12 @@ fn process_target_dir_files(
                         is_last_dir,
                         // if it's last dir, it's also the last element of type dir
                         is_last_dir,
-                        args);
+                        args,
+                    );
 
                     // Check restrictions - if target exists
-                    let target_dir_status_check = dry_run_check_target_dir_exists(&device_path, stats, &DirType::Device);
+                    let target_dir_status_check =
+                        dry_run_check_target_dir_exists(&device_path, stats, &DirType::Device);
 
                     // Print everything together
                     println!("{} {}", indented_device_dir_name, target_dir_status_check);
@@ -1263,7 +1267,6 @@ fn process_target_dir_files(
     } // end loop date dirs
 }
 
-
 /// Iterate all source files and print the estimated target directory structure.
 /// Direction of arrows will be Right-to-Left to reflect focus on how the target
 /// structure is created. Arrow lines are dashed to indicate nothing is written.
@@ -1284,16 +1287,15 @@ fn process_target_dir_files(
 /// ```
 fn process_files_dry_run(
     files_and_paths_vec: &[SupportedFile],
-    device_destination_path:PathBuf,
+    device_destination_path: PathBuf,
     source_unique_files: &Option<Vec<HashSet<OsString>>>,
     dir_count_total: usize,
     curr_dir_ix: usize,
     indent_level: usize,
     args: &Args,
     stats: &mut FileStats,
-    padder: &mut Padder
+    padder: &mut Padder,
 ) {
-
     // Count files to know which symbols to use for the dir tree
     // i.e. last entry is prefixed by `└` and the rest by `├`
     let file_count_total = files_and_paths_vec.len();
@@ -1303,14 +1305,12 @@ fn process_files_dry_run(
     // Dry runs need also the index of each file to determine if it's the
     // last element in this dir to choose the appropriate dir tree symbol
     for (file_index, file) in files_and_paths_vec.iter().enumerate() {
-
         let is_last_dir = curr_dir_ix == dir_count_total;
         let is_first_element = file_index == 0;
         let is_last_element = file_index == file_count_total - 1;
 
         // Attach filename to the directory path
-        let file_destination_path = device_destination_path.clone()
-            .join(&file.file_name);
+        let file_destination_path = device_destination_path.clone().join(&file.file_name);
 
         // Check restrictions - file exists or is read-only
         let file_restrictions = dry_run_check_file_restrictions(
@@ -1318,7 +1318,8 @@ fn process_files_dry_run(
             &file_destination_path,
             source_unique_files,
             args,
-            stats);
+            stats,
+        );
 
         let get_output_for_file = || {
             // Prepare padded strings for output
@@ -1326,25 +1327,31 @@ fn process_files_dry_run(
                 indent_level,
                 file.get_file_name_str(),
                 is_last_dir,
-                is_last_element);
-            let file_separator = padder.format_dryrun_file_separator(indented_target_filename.clone(), args);
+                is_last_element,
+            );
+
+            let file_separator =
+                padder.format_dryrun_file_separator(indented_target_filename.clone(), args);
 
             let source_path = file.get_source_display_name_str(args);
-            let status_separator = padder.format_dryrun_status_separator_dotted(source_path.clone(), args);
+            let status_separator =
+                padder.format_dryrun_status_separator_dotted(source_path.clone(), args);
 
             process_files_format_status(
                 indented_target_filename,
                 file_separator,
                 source_path,
                 status_separator,
-                &file_restrictions)
+                &file_restrictions,
+            )
         };
 
         let get_snipped_output = |_compact_counter: &CompactCounter| {
             padder.format_dryrun_snipped_output(
                 _compact_counter.skipped_status_count,
                 indent_level,
-                is_last_dir)
+                is_last_dir,
+            )
         };
 
         // Output compacting is not enabled, print all file statuses directly
@@ -1355,8 +1362,7 @@ fn process_files_dry_run(
 
         // Output compacting is enabled, so print only the first few consecutive
         // files with the same status as configured under `args.compacting_threshold`
-        else  {
-
+        else {
             // First iteration - nothing special to do, just initialize
             // all counters to 0 and move on to the next file
             if is_first_element {
@@ -1382,7 +1388,6 @@ fn process_files_dry_run(
             // Next iterations, status has just changed, print skipped status for previous files
             // then reset all counters and continue with the current file
             else {
-
                 if compact_counter.has_skipped_statuses() {
                     let output = get_snipped_output(&compact_counter);
                     println!("{}", output);
@@ -1403,7 +1408,6 @@ fn process_files_dry_run(
     } // end loop files
 }
 
-
 /// Iterate all source files and write them to target, printing the operation status.
 /// Direction of arrows will be Left-to-Right to reflect the focus on the "write" operation.
 /// Arrow lines are continuous to indicate the files are written. There is no compact
@@ -1420,28 +1424,28 @@ fn process_files_dry_run(
 /// ```
 fn process_files_write(
     files_and_paths_vec: &[SupportedFile],
-    device_destination_path:PathBuf,
+    device_destination_path: PathBuf,
     args: &Args,
     mut stats: &mut FileStats,
     padder: &mut Padder,
 ) {
-
     for file in files_and_paths_vec.iter() {
-
         let mut file_destination_path = device_destination_path.clone().join(&file.file_name);
 
         // Prepare padded strings for output
         let source_path = file.get_source_display_name_str(args);
         let padded_separator = padder.format_write_file_separator(source_path.clone());
-        let stripped_target_path = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
-        let status_separator = padder.format_write_status_separator_dotted(stripped_target_path.clone());
+        let stripped_target_path = file_destination_path
+            .strip_prefix(&args.target_dir)
+            .unwrap()
+            .display()
+            .to_string();
+        let status_separator =
+            padder.format_write_status_separator_dotted(stripped_target_path.clone());
 
         // Copy/move file
-        let file_write_status = copy_file_if_not_exists(
-            file,
-            &mut file_destination_path,
-            args,
-            &mut stats);
+        let file_write_status =
+            copy_file_if_not_exists(file, &mut file_destination_path, args, &mut stats);
 
         // Print result
         let output = process_files_format_status(
@@ -1449,7 +1453,8 @@ fn process_files_write(
             padded_separator,
             stripped_target_path,
             status_separator,
-            &file_write_status);
+            &file_write_status,
+        );
 
         println!("{}", output);
     }
@@ -1460,10 +1465,12 @@ fn process_files_format_status(
     op_separator: String,
     right_side_file: String,
     status_separator: String,
-    op_status: &str
+    op_status: &str,
 ) -> String {
-    format!("{}{}{}{}{}",
-          left_side_file, op_separator, right_side_file, status_separator,op_status)
+    format!(
+        "{}{}{}{}{}",
+        left_side_file, op_separator, right_side_file, status_separator, op_status
+    )
 }
 
 /// Read file metadata and return size in bytes
@@ -1478,7 +1485,11 @@ fn get_files_size(files: &[SupportedFile]) -> u64 {
 }
 
 /// Read a directory path and return a string signalling if the path exists
-fn dry_run_check_target_dir_exists(path: &Path, stats: &mut FileStats, dir_type: &DirType) -> String {
+fn dry_run_check_target_dir_exists(
+    path: &Path,
+    stats: &mut FileStats,
+    dir_type: &DirType,
+) -> String {
     stats.inc_dir_total_by_type(dir_type);
     if path.exists() {
         // don't increase stats.inc_dirs_ignored() since it's not equivalent
@@ -1500,9 +1511,8 @@ fn dry_run_check_file_restrictions(
     target_path: &Path,
     source_unique_files: &Option<Vec<HashSet<OsString>>>,
     args: &Args,
-    stats: &mut FileStats
+    stats: &mut FileStats,
 ) -> String {
-
     // TODO 5d: Pre-filtering is not the best method to skip duplicate files.
     // It can fail for files with the same name in different directories, taken with different devices.
     // The alternative would be to store each file in a separate name during
@@ -1512,19 +1522,17 @@ fn dry_run_check_file_restrictions(
     // Check the index of unique files for the source dir of this file
     // If this set doesn't contain this file, then the file is a duplicate
     let is_source_unique = || {
-      match source_unique_files {
-          Some(source_dir_sets) => {
-            let source_dir_index: usize = source_file.source_dir_index;
-            let source_dir_unique_files: &HashSet<OsString> = &source_dir_sets[source_dir_index];
-            source_dir_unique_files.contains(&source_file.file_name)
-          },
-          None =>
-            true
-      }
+        match source_unique_files {
+            Some(source_dir_sets) => {
+                let source_dir_index: usize = source_file.source_dir_index;
+                let source_dir_unique_files: &HashSet<OsString> = &source_dir_sets[source_dir_index];
+                source_dir_unique_files.contains(&source_file.file_name)
+            }
+            None => true,
+        }
     };
 
     if source_file.file_path.exists() {
-
         // Check if the target file exists
 
         // The order of checks matters - check for duplicates first, otherwise the reason
@@ -1533,17 +1541,13 @@ fn dry_run_check_file_restrictions(
         if !is_source_unique() {
             stats.inc_skipped_by_type(source_file);
             ColoredString::orange("duplicate source file, will be skipped")
-
         } else if target_path.exists() {
             stats.inc_skipped_by_type(source_file);
             ColoredString::orange("target file exists, will be skipped")
-
         } else if args.copy_not_move {
             stats.inc_copied_by_type(source_file);
             ColoredString::green("file will be copied")
-
         } else {
-
             // Check if the source file can be deleted after copy
 
             match source_file.file_path.metadata() {
@@ -1558,14 +1562,13 @@ fn dry_run_check_file_restrictions(
                         stats.inc_moved_by_type(source_file);
                         ColoredString::green("file will be moved")
                     }
-                },
+                }
                 Err(e) => {
                     let err_status = format!("error reading metadata: {}", e.to_string());
                     ColoredString::red(err_status.as_str())
                 }
             }
         }
-
     } else {
         ColoredString::red("source file does not exist")
     }
@@ -1582,24 +1585,21 @@ fn ask_for_confirmation(args: &Args) -> ConfirmationType {
     loop {
         let mut user_input = String::new();
         match io::stdin().read_line(&mut user_input) {
-            Ok(input) =>
+            Ok(input) => {
                 if args.debug {
                     println!("User input: '{:?}'", input)
-                },
-            Err(err) => {
-                    eprintln!("Error reading user input: {:?}", err);
-                    return ConfirmationType::Error
                 }
+            }
+            Err(err) => {
+                eprintln!("Error reading user input: {:?}", err);
+                return ConfirmationType::Error;
+            }
         }
         match user_input.trim().to_lowercase().as_str() {
-            "n" | "no" =>
-                return ConfirmationType::Cancel,
-            "y" | "yes" =>
-                return ConfirmationType::Proceed,
-            "d" | "dry" =>
-                return ConfirmationType::DryRun,
-            _ =>
-                println!("...press one of 'y/yes', 'n/no' or 'd/dry', then Enter")
+            "n" | "no"  => return ConfirmationType::Cancel,
+            "y" | "yes" => return ConfirmationType::Proceed,
+            "d" | "dry" => return ConfirmationType::DryRun,
+            _ => println!("...press one of 'y/yes', 'n/no' or 'd/dry', then Enter"),
         }
     }
 }
@@ -1608,41 +1608,46 @@ fn copy_file_if_not_exists(
     file: &SupportedFile,
     destination_path: &mut PathBuf,
     args: &Args,
-    stats: &mut FileStats
+    stats: &mut FileStats,
 ) -> String {
-
     if destination_path.exists() {
         if args.debug {
-            println!("> target file exists: {}",
-                     &destination_path.strip_prefix(&args.target_dir).unwrap().display());
+            println!(
+                "> target file exists: {}",
+                &destination_path
+                    .strip_prefix(&args.target_dir)
+                    .unwrap()
+                    .display()
+            );
         }
 
         stats.inc_skipped_by_type(file);
 
         ColoredString::orange("already exists")
-
     } else {
-
         let copy_result = fs::copy(&file.file_path, &destination_path);
 
         match copy_result {
-
             // File creation was successful
             Ok(_) => {
-
                 // If this is a MOVE, delete the source file after a successful copy and append status
                 let (_delete_failed_opt, delete_result_str) = if !args.copy_not_move {
-
                     let delete_result = fs::remove_file(&file.file_path);
 
                     match delete_result {
-                        Ok(_) =>
-                            (Some(false), String::from(" (source file removed)")),
+                        Ok(_) => (Some(false), String::from(" (source file removed)")),
                         Err(e) => {
-                            if args.verbose { eprintln!("File delete error: {:?}: ERROR {:?}", &file.file_path, e) };
+                            if args.verbose {
+                                eprintln!("File delete error: {:?}: ERROR {:?}", &file.file_path, e)
+                            };
                             stats.inc_error_file_delete();
-                            (Some(true), ColoredString::red(
-                                format!(" (error removing source: {:?})", e.to_string()).as_str()))
+                            (
+                                Some(true),
+                                ColoredString::red(
+                                    format!(" (error removing source: {:?})", e.to_string())
+                                        .as_str(),
+                                ),
+                            )
                         }
                     }
                 // This is just a COPY operation, there's no delete result
@@ -1659,10 +1664,8 @@ fn copy_file_if_not_exists(
                     stats.inc_moved_by_type(file);
                 }
 
-                format!("{}{}",
-                        ColoredString::green("ok"),
-                        delete_result_str)
-            },
+                format!("{}{}", ColoredString::green("ok"), delete_result_str)
+            }
 
             // Could not create target file, log error and don't even attempt to delete source
             Err(err) => {
@@ -1675,12 +1678,7 @@ fn copy_file_if_not_exists(
     }
 }
 
-fn create_subdir_if_required(
-    target_subdir: &Path,
-    args: &Args,
-    stats: &mut FileStats
-) {
-
+fn create_subdir_if_required(target_subdir: &Path, args: &Args, stats: &mut FileStats) {
     // TODO separate Date from Device dirs
     // and only increase once per date dir !!!
     stats.inc_dir_total_by_type(&DirType::Date);
@@ -1692,7 +1690,6 @@ fn create_subdir_if_required(
                      format!("[Folder {} already exists]",
                              target_subdir.strip_prefix(&args.target_dir).unwrap().display()).as_str()));
     } else {
-
         match fs::create_dir_all(target_subdir) {
             Ok(_) => {
                 // TODO separate Date from Device dirs
@@ -1728,16 +1725,12 @@ fn get_system_modified_date(file_metadata: &Metadata) -> Option<String> {
 fn get_extension(file: &DirEntry) -> Option<String> {
     file.path()
         .extension()
-        .and_then(|os| {
-            os.to_str()
-                .map(String::from)
-        })
+        .and_then(|os| os.to_str().map(String::from))
 }
 
 /// Determine the type of file based on the file extension
 /// Return one of Image|Video|Unknown enum types
 fn get_file_type(extension_opt: &Option<String>, args: &Args) -> FileType {
-
     // Closure which checks if the file's extension is defined in the custom extensions
     let is_custom_extension = |ext: &String, file_type: &str| {
         args.custom_extensions.get(file_type).unwrap().contains(ext)
@@ -1747,7 +1740,7 @@ fn get_file_type(extension_opt: &Option<String>, args: &Args) -> FileType {
         Some(extension) => {
             match extension.to_lowercase().as_str() {
                 // "Supported" extensions
-                "jpg" | "jpeg" | "png" | "tiff" | "crw"| "nef" =>
+                "jpg" | "jpeg" | "png" | "tiff" | "crw" | "nef" =>
                     FileType::Image,
                 "mp4" | "mov" | "3gp" | "avi" =>
                     FileType::Video,
@@ -1772,7 +1765,6 @@ fn get_file_type(extension_opt: &Option<String>, args: &Args) -> FileType {
                 }
             }
         }
-        None =>
-            FileType::Unknown("".to_owned()),
+        None => FileType::Unknown("".to_owned()),
     }
 }

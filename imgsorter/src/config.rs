@@ -1,8 +1,8 @@
-use std::path::PathBuf;
-use std::{fs, env};
 use std::collections::HashMap;
 use std::fs::DirEntry;
+use std::path::PathBuf;
 use std::time::Instant;
+use std::{env, fs};
 
 use crate::utils::*;
 
@@ -89,15 +89,13 @@ pub struct Args {
     pub custom_device_names: HashMap<String, String>,
 
     /// User-defined extensions for files to be processed which otherwise the program would skip
-    pub custom_extensions: HashMap<String, Vec<String>>
+    pub custom_extensions: HashMap<String, Vec<String>>,
 }
 
 impl Args {
-
     /// Simple constructor using defaults: the CWD is the source
     /// directory and subdir will be created for the target paths
     pub fn new() -> Result<Args, std::io::Error> {
-
         let cwd = env::current_dir()?;
 
         let mut custom_extensions: HashMap<String, Vec<String>> = HashMap::new();
@@ -105,24 +103,23 @@ impl Args {
         custom_extensions.insert(VIDEO.to_lowercase(), Vec::new());
         custom_extensions.insert(AUDIO.to_lowercase(), Vec::new());
 
-        Ok(
-            Args {
-                source_dir: vec![cwd.clone()],
-                target_dir: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
-                source_recursive: DEFAULT_SOURCE_RECURSIVE,
-                min_files_per_dir: DEFAULT_MIN_COUNT,
-                compacting_threshold: DEFAULT_COMPACTING_MIN_COUNT,
-                oneoffs_dir_name: String::from(DEFAULT_ONEOFFS_DIR_NAME),
-                cwd,
-                silent: DEFAULT_SILENT,
-                copy_not_move: DEFAULT_COPY,
-                dry_run: DEFAULT_DRY_RUN,
-                verbose: DEFAULT_VERBOSE,
-                align_file_output: DEFAULT_ALIGN_OUTPUT,
-                debug: DBG_ON,
-                custom_device_names: HashMap::new(),
-                custom_extensions
-            })
+        Ok(Args {
+            source_dir: vec![cwd.clone()],
+            target_dir: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
+            source_recursive: DEFAULT_SOURCE_RECURSIVE,
+            min_files_per_dir: DEFAULT_MIN_COUNT,
+            compacting_threshold: DEFAULT_COMPACTING_MIN_COUNT,
+            oneoffs_dir_name: String::from(DEFAULT_ONEOFFS_DIR_NAME),
+            cwd,
+            silent: DEFAULT_SILENT,
+            copy_not_move: DEFAULT_COPY,
+            dry_run: DEFAULT_DRY_RUN,
+            verbose: DEFAULT_VERBOSE,
+            align_file_output: DEFAULT_ALIGN_OUTPUT,
+            debug: DBG_ON,
+            custom_device_names: HashMap::new(),
+            custom_extensions,
+        })
     }
 
     // fn new_with_options(
@@ -194,10 +191,11 @@ impl Args {
         let mut invalid_vals: Vec<(String, String)> = Vec::new();
 
         fn get_boolean_value(toml_table: &TomlMap, key: &str, missing_vals: &mut Vec<String>) -> Option<bool> {
-            let bool_opt = toml_table.get(key)
+            let bool_opt = toml_table
+                .get(key)
                 .map(|toml_value| toml_value.as_bool())
                 .flatten();
-            
+
             if bool_opt.is_none() { missing_vals.push(String::from(key))  };
             bool_opt
         }
@@ -205,7 +203,8 @@ impl Args {
         // Same as [get_boolean_value], but don't print if missing.
         // Used for unexposed config values
         fn get_boolean_value_silent(toml_table: &TomlMap, key: &str) -> Option<bool> {
-            toml_table.get(key)
+            toml_table
+                .get(key)
                 .map(|toml_value| toml_value.as_bool())
                 .flatten()
         }
@@ -215,9 +214,10 @@ impl Args {
             toml_table: &TomlMap,
             key: &str,
             missing_vals: &mut Vec<String>,
-            invalid_vals: &mut Vec<(String, String)>
+            invalid_vals: &mut Vec<(String, String)>,
         ) -> Option<i64> {
-            let value = toml_table.get(key)
+            let value = toml_table
+                .get(key)
                 .map(|toml_value| toml_value.as_integer())
                 .flatten();
 
@@ -225,19 +225,21 @@ impl Args {
                 None => {
                     missing_vals.push(String::from(key));
                     None
-                },
+                }
                 Some(x) if x < 0 => {
-                    invalid_vals.push(
-                        (String::from(key), String::from("Number must be greater than 0"))
-                    );
+                    invalid_vals.push((
+                        String::from(key),
+                        String::from("Number must be greater than 0"),
+                    ));
                     None
-                },
-                Some(x) => Some(x)
+                }
+                Some(x) => Some(x),
             }
         }
 
         fn get_string_value(toml_table: &TomlMap, key: &str, missing_vals: &mut Vec<String>) -> Option<String> {
-            let string_opt = toml_table.get(key)
+            let string_opt = toml_table
+                .get(key)
                 .map(|toml_value| toml_value.as_str())
                 .flatten()
                 .map(String::from);
@@ -247,11 +249,13 @@ impl Args {
         }
 
         fn get_array_value(toml_table: &TomlMap, key: &str, missing_vals: &mut Vec<String>) -> Option<Vec<String>> {
-            let vec_opt = toml_table.get(key)
+            let vec_opt = toml_table
+                .get(key)
                 .map(|toml_value| toml_value.as_array())
                 .flatten()
-                .map(|strings_vec|{
-                    strings_vec.iter()
+                .map(|strings_vec| {
+                    strings_vec
+                        .iter()
                         .flat_map(|value| value.as_str())
                         .map(String::from)
                         .collect::<Vec<_>>()
@@ -262,14 +266,14 @@ impl Args {
         }
 
         fn get_strings_dict_value(toml_table: &TomlMap, key: &str, missing_vals: &mut Vec<String>) -> Option<HashMap<String, String>> {
-            let dict_opt = toml_table.get(key)
+            let dict_opt = toml_table
+                .get(key)
                 .map(|toml_dict|{ toml_dict.as_table()})
                 .flatten()
                 .map(|key_values| {
                     key_values
                         .into_iter()
-                        .map(|(dict_key, dict_value)|
-                            (dict_key, dict_value.as_str()))
+                        .map(|(dict_key, dict_value)| (dict_key, dict_value.as_str()))
                         .filter(|(_, dict_value)| dict_value.is_some())
                         .map(|(dict_key, dict_value)|
                             // When the dict_key is used as key in the resulting hashmap,
@@ -283,23 +287,18 @@ impl Args {
         }
 
         fn get_paths(path_strs: Vec<String>) -> Vec<PathBuf> {
-            path_strs
-                .iter()
-                .map(PathBuf::from)
-                .collect::<Vec<_>>()
+            path_strs.iter().map(PathBuf::from).collect::<Vec<_>>()
         }
 
         fn vec_to_lowercase(vec_strings: Vec<String>) -> Vec<String> {
-            vec_strings.into_iter().map(|s|s.to_lowercase()).collect()
+            vec_strings.into_iter().map(|s| s.to_lowercase()).collect()
         }
 
         match fs::read_to_string(config_file) {
             Ok(file_contents) => {
                 match file_contents.parse::<Value>() {
                     Ok(raw_toml) => {
-
                         match raw_toml.as_table() {
-
                             Some(toml_content) => {
 
                                 /* --- Parse source/target folders --- */
@@ -307,7 +306,6 @@ impl Args {
                                 match toml_content.get("folders") {
                                     Some(folders_opt) => {
                                         if let Some(folders) = folders_opt.as_table() {
-
                                             // args.set_source_paths will return an error and we exit if no valid
                                             // source directories are found - there's nothing to do without a source
                                             if let Some(source_paths) = get_array_value(folders, "source_dirs", &mut missing_vals) {
@@ -397,10 +395,9 @@ impl Args {
                                                 args.debug = debug_on;
                                             }
                                         }
-                                    },
+                                    }
                                     None =>
-                                        missing_vals.push(String::from("options"))
-
+                                        missing_vals.push(String::from("options")),
                                 } // end config options
 
                                 /* --- Parse custom data --- */
@@ -408,7 +405,6 @@ impl Args {
                                 match toml_content.get("custom") {
                                     Some(custom_data_opt) => {
                                         if let Some(custom_data) = custom_data_opt.as_table() {
-
                                             if let Some(devices_dict) = get_strings_dict_value(custom_data, "devices", &mut missing_vals) {
                                                 args.custom_device_names = devices_dict;
                                             }
@@ -429,17 +425,16 @@ impl Args {
                                                             args.custom_extensions.insert(AUDIO.to_lowercase(), vec_to_lowercase(custom_audio_ext));
                                                         }
                                                     } // end if let Some(custom_extensions)
-                                                },
+                                                }
                                                 None =>
                                                     missing_vals.push(String::from("extensions"))
                                             } // end match extensions
-
                                         } // end if let Some(custom_data)
                                     } // if let Some(custom_data_opt)
                                     None =>
-                                        missing_vals.push(String::from("custom"))
+                                        missing_vals.push(String::from("custom")),
                                 } // end config custom data
-                            },
+                            }
                             None => {
                                 println!("Could not parse TOML into a key-value object");
                             }
@@ -465,11 +460,10 @@ impl Args {
                 println!("> Config key '{}' is empty, invalid or missing. Using preset default.", key)
             );
 
-            invalid_vals.iter().for_each(|(key, message)|
+            invalid_vals.iter().for_each(|(key, message)| {
                 println!("> Config key '{}' is invalid: {}", key, message)
-            );
+            });
         }
-
 
         // Once all source folders and options are read, check if we need to
         // recursively read subdirectories and set all sources
@@ -512,7 +506,7 @@ impl Args {
     //     let source_paths = sources.iter()
     //         .map(|src_dir| PathBuf::from(src_dir))
     //         .collect::<Vec<PathBuf>>();
-    // 
+    //
     //     // self.target_dir = new_path.clone().join(DEFAULT_TARGET_SUBDIR);
     //     self.source_dir = source_paths;
     //     self
@@ -524,13 +518,12 @@ impl Args {
     // }
 
     fn set_source_paths(&mut self, sources: Vec<PathBuf>) -> Result<(), std::io::Error> {
-        let (valid_paths, invalid_paths): (Vec<PathBuf>, Vec<PathBuf>) = sources
-            .into_iter()
-            .partition(|path| path.exists());
+        let (valid_paths, invalid_paths): (Vec<PathBuf>, Vec<PathBuf>) =
+            sources.into_iter().partition(|path| path.exists());
 
         let list_of_invalid = invalid_paths
             .iter()
-            .flat_map(|s|s.to_str())
+            .flat_map(|s| s.to_str())
             .collect::<Vec<_>>()
             .join("\n  ");
 
@@ -584,13 +577,11 @@ impl Args {
 }
 
 fn walk_source_dirs_recursively(args: &Args) -> Vec<PathBuf> {
-
     fn walk_dir(
         source_dir: PathBuf,
         vec_accum: &mut Vec<PathBuf>,
-        args: &Args
+        args: &Args,
     ) -> Result<(), std::io::Error> {
-
         if args.verbose {
             println!("> Reading '{}'", &source_dir.display().to_string());
         }
@@ -604,11 +595,9 @@ fn walk_source_dirs_recursively(args: &Args) -> Vec<PathBuf> {
         vec_accum.push(source_dir);
 
         if !subdirs.is_empty() {
-            subdirs
-                .iter()
-                .for_each(|dir_entry| {
-                    let _ = walk_dir(dir_entry.path(), vec_accum, args);
-                });
+            subdirs.iter().for_each(|dir_entry| {
+                let _ = walk_dir(dir_entry.path(), vec_accum, args);
+            });
         };
 
         Ok(())
@@ -616,11 +605,9 @@ fn walk_source_dirs_recursively(args: &Args) -> Vec<PathBuf> {
 
     let mut new_source_dirs = Vec::new();
 
-    args.source_dir.clone()
-        .into_iter()
-        .for_each(|d| {
-            walk_dir(d, &mut new_source_dirs, args).ok();
-        });
+    args.source_dir.clone().into_iter().for_each(|d| {
+        walk_dir(d, &mut new_source_dirs, args).ok();
+    });
 
     new_source_dirs
 }

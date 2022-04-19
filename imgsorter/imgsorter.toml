@@ -10,7 +10,7 @@
 # - if it is true, then all folders contained within these folders will also be read
 # - if it is false or missing, all subfolders will be ignored
 source_dirs = [
-  'D:\Temp\New folder test remove - Copy',
+#  'D:\Temp\New folder test remove - Copy',
   'D:\Temp\New folder test remove - Copy 2',
   'D:\Temp\New folder test remove - Copy 2 - Copy',
   'invalid_folder'

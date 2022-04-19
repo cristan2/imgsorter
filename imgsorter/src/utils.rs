@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use std::cmp::max;
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::io::Write;
 
@@ -10,7 +10,6 @@ pub struct ColoredString;
 /// Provides static methods for formatting colored text based on ANSI codes
 /// see https://misc.flogisoft.com/bash/tip_colors_and_formatting
 impl ColoredString {
-
     // Color codes:
     // * MAGENTA   = '\x1b[95m'
     // * BLUE      = '\x1b[94m'
@@ -42,7 +41,7 @@ pub enum OutputColor {
     Error,
     Warning,
     Neutral,
-    Good
+    Good,
 }
 /// Struct responsible to store length sizes and format strings to produce
 /// pretty aligned strings when printing result of operations
@@ -94,7 +93,7 @@ pub struct Padder {
 
 impl Padder {
     pub fn new(has_multiple_sources: bool) -> Padder {
-        Padder{
+        Padder {
             has_multiple_sources,
             source_base_file_max_len: 0,
             source_path_max_len: 0,
@@ -143,7 +142,7 @@ impl Padder {
         }
     }
 
-    /// Calculates the max target length, which is composed of 
+    /// Calculates the max target length, which is composed of
     /// any file tree symbols plus the base filename
     /// [2019.01.28]
     //   └── IMG-20190127.jpg
@@ -152,7 +151,7 @@ impl Padder {
         self.source_base_file_max_len + self.extra_source_chars
     }
 
-    /// This calculates the max target path length, which is composed of 
+    /// This calculates the max target path length, which is composed of
     /// the relative target path plus the base filename
     fn get_write_max_target_len(&self) -> usize {
         // add +1 for the separator between the path and the filename
@@ -216,8 +215,7 @@ impl Padder {
         let indented_target_filename_length = get_string_char_count(indented_target_filename);
 
         let max_target_len =
-            self.get_dryrun_max_target_len()
-                + SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count();
+            self.get_dryrun_max_target_len() + SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count();
 
         if max_target_len > indented_target_filename_length {
             max_target_len - indented_target_filename_length
@@ -226,7 +224,6 @@ impl Padder {
             // just return the minimum length for a separator
             SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count()
         }
-
     }
 
     /// This should fill the space between the current filename and the maximum source filename length.
@@ -261,7 +258,7 @@ impl Padder {
         "–".repeat(
             self.get_dryrun_total_padding_len()
             +1 // add +1 for the gap between the status separator and the status
-            + status_width
+            + status_width,
         )
     }
 
@@ -270,15 +267,16 @@ impl Padder {
         "─".repeat(
             self.get_write_total_padding_len()
                 + 1 // add +1 for the gap between the status separator and the status
-                + status_width)
+                + status_width
+        )
     }
 
     pub fn format_dryrun_header(&self, status_width: usize) -> String {
-        let padded_target= RightPadding::space(
+        let padded_target = RightPadding::space(
             String::from("TARGET FILE"),
             self.get_dryrun_target_header_padding_len());
 
-        let padded_source= RightPadding::space(
+        let padded_source = RightPadding::space(
             String::from("SOURCE PATH"),
             self.get_dryrun_source_header_padding_len());
 
@@ -290,15 +288,15 @@ impl Padder {
     }
 
     pub fn format_write_header(&self, status_width: usize) -> String {
-        let padded_source= RightPadding::space(
+        let padded_source = RightPadding::space(
             String::from("SOURCE PATH"),
             self.get_write_source_header_padding_len());
 
-        let padded_target= RightPadding::space(
+        let padded_target = RightPadding::space(
             String::from("TARGET FILE"),
             self.get_write_target_header_padding_len());
 
-        let padded_status= RightPadding::space(
+        let padded_status = RightPadding::space(
             String::from("OPERATION STATUS"),
             status_width);
 
@@ -307,13 +305,18 @@ impl Padder {
 
     /// Adds dot padding to the maximum padding length for the date dir, e.g.:
     /// `[2019.01.28] (2 devices, 3 files, 3.34 MB) .................`
-    pub fn format_dryrun_date_dir(&self, date_dir_name_with_device_status: String, args: &Args) -> String {
+    pub fn format_dryrun_date_dir(
+        &self,
+        date_dir_name_with_device_status: String,
+        args: &Args,
+    ) -> String {
         if args.align_file_output {
             RightPadding::dot(
                 date_dir_name_with_device_status,
                 self.get_dryrun_total_padding_len())
         } else {
-            format!("{} {} ", date_dir_name_with_device_status, SEPARATOR_OP_STATUS)
+            format!("{} {} ",
+                date_dir_name_with_device_status, SEPARATOR_OP_STATUS)
         }
     }
 
@@ -321,7 +324,13 @@ impl Padder {
     /// The device dirs will always have a single dir tree symbol prefix,
     /// since we don't expect additional sublevels for the devices, e.g.:
     /// `└── [Canon 100D] ..............................`
-    pub fn format_dryrun_device_dir(&self, device_dir_name: String, is_last_dir: bool, is_last_elem: bool, args: &Args) -> String {
+    pub fn format_dryrun_device_dir(
+        &self,
+        device_dir_name: String,
+        is_last_dir: bool,
+        is_last_elem: bool,
+        args: &Args,
+    ) -> String {
         let indented_device_dir_name: String = indent_string(
             // There are no indent levels for device dirs, just add
             0, format!("[{}] ", device_dir_name), is_last_dir, is_last_elem);
@@ -342,15 +351,16 @@ impl Padder {
     /// ·-- (snipped output for 2 files with same status)
     /// └── IMG-20190129.jpg <--- D:\Pics\IMG-20190129.jpg ... file will be copied
     /// ```
-    pub fn format_dryrun_snipped_output(&self, skip_count: usize, indent_level: usize, is_last_dir: bool) -> String {
-
+    pub fn format_dryrun_snipped_output(
+        &self,
+        skip_count: usize,
+        indent_level: usize,
+        is_last_dir: bool,
+    ) -> String {
         let snip_text = ColoredString::italic_dim(
             format!("(snipped output for {} files with same status)", skip_count).as_str());
 
-        indent_string_snipped(
-            indent_level,
-            snip_text,
-            is_last_dir)
+        indent_string_snipped(indent_level, snip_text, is_last_dir)
     }
 
     pub fn format_dryrun_file_separator(&self, left_file: String, args: &Args) -> String {
@@ -408,41 +418,41 @@ pub struct LeftPadding;
 impl RightPadding {
     // TODO 5g - have char as argument
     pub fn space(str: String, pad_width: usize) -> String {
-        format!("{:<width$}", str, width=pad_width)
+        format!("{:<width$}", str, width = pad_width)
     }
 
     pub fn dot(str: String, pad_width: usize) -> String {
-        format!("{:.<width$}", str, width=pad_width)
+        format!("{:.<width$}", str, width = pad_width)
     }
 
     pub fn dash(str: String, pad_width: usize) -> String {
-        format!("{:-<width$}", str, width=pad_width)
+        format!("{:-<width$}", str, width = pad_width)
     }
 
     pub fn em_dash(str: String, pad_width: usize) -> String {
-        format!("{:─<width$}", str, width=pad_width)
+        format!("{:─<width$}", str, width = pad_width)
     }
 
     pub fn middle_dot(str: String, pad_width: usize) -> String {
-        format!("{:·<width$}", str, width=pad_width)
+        format!("{:·<width$}", str, width = pad_width)
     }
 }
 
 impl LeftPadding {
     pub fn zeroes3<T: Into<u64>>(no: T) -> String {
-        format!("{:0>width$}", no.into(), width=3)
+        format!("{:0>width$}", no.into(), width = 3)
     }
 
     pub fn em_dash(str: String, pad_width: usize) -> String {
-        format!("{:─>width$}", str, width=pad_width)
+        format!("{:─>width$}", str, width = pad_width)
     }
 
     pub fn dash(str: String, pad_width: usize) -> String {
-        format!("{:->width$}", str, width=pad_width)
+        format!("{:->width$}", str, width = pad_width)
     }
 
     pub fn space(str: String, pad_width: usize) -> String {
-        format!("{:>width$}", str, width=pad_width)
+        format!("{:>width$}", str, width = pad_width)
     }
 }
 
@@ -483,9 +493,8 @@ fn indent_string_snipped(indent_level: usize, file_name: String, is_last_dir: bo
 /// all previous sets successively remove duplicates, thus ensuring
 /// the current set contains only the first instance of any filename
 pub fn keep_unique_across_sets(all_dirs: &[HashSet<OsString>]) -> HashSet<OsString> {
-
     if all_dirs.is_empty() {
-        return HashSet::new()
+        return HashSet::new();
     }
 
     let last_index = all_dirs.len() - 1;
@@ -493,7 +502,8 @@ pub fn keep_unique_across_sets(all_dirs: &[HashSet<OsString>]) -> HashSet<OsStri
     let last_dir = all_dirs[last_index].clone();
     let previous_dirs = &all_dirs[0..last_index];
 
-    previous_dirs.iter()
+    previous_dirs
+        .iter()
         .fold(last_dir, |accum: HashSet<OsString>, current_dir| {
             accum
                 .difference(current_dir)
@@ -504,7 +514,8 @@ pub fn keep_unique_across_sets(all_dirs: &[HashSet<OsString>]) -> HashSet<OsStri
 
 pub fn print_sets_with_index(msg: &str, set: &[HashSet<OsString>]) {
     println!("{}:", msg);
-    set.iter().enumerate()
+    set.iter()
+        .enumerate()
         .for_each(|(ix, set)| println!("{:?} -> {:?}", ix, set));
 }
 
