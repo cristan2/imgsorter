@@ -31,13 +31,20 @@ target_dir = 'D:\Temp\New folder test remove - Copy'
 min_files_per_dir = 1
 
 # When sorting a large number of files, set this property to a number
-# higher than zero to print a more compact output during dry runs.
-# This is done by omitting the output of consecutive files in the same folder
-# with the same status which exceed this exceeding this number, instead of
-# simply listing all files with identical statuses. For example:
-# " └── (omitted output for files with same status ..... (5x) file will be copied)"
-# If this option is missing or set to 0, no compacting will occur
-min_files_before_compacting_output = 1
+#  higher than zero to print a more compact output during dry runs.
+# This is done by truncating the output of consecutive files in the same folder
+#  with the same status which exceed this exceeding this number.
+# Example output if this is disabled:
+#   ├── IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ........... target file exists, will be skipped
+#   ├── IMG-20190128.jpg <--- D:\Pics\Sort me\IMG-20190128.jpg ... target file exists, will be skipped
+#   ├── IMG-20190128.jpg <--- D:\Pics\More\IMG-20190128.jpg ...... target file exists, will be skipped
+#   └── IMG-20190129.jpg <--- D:\Pics\IMG-20190129.jpg ........... file will be copied
+# Example output if this is enabled:
+#   ├── IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ... target file exists, will be skipped
+#   ·-- (snipped output for 2 files with same status)
+#   └── IMG-20190129.jpg <--- D:\Pics\IMG-20190129.jpg ... file will be copied
+# If this option is missing or set to 0, no truncating will occur
+min_files_before_compacting_output = 3
 
 # The name of the folder which will hold all files for any given date,
 #   which holds less than or equal the [min_files_per_dir] threshold.

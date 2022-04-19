@@ -350,13 +350,13 @@ impl Padder {
     /// Adds space padding to the maximum padding length for the snipping output.
     /// ```
     /// ├── IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ... target file exists, will be skipped
-    /// ·-- (omitted output for 2 files with same status)
+    /// ·-- (snipped output for 2 files with same status)
     /// └── IMG-20190129.jpg <--- D:\Pics\IMG-20190129.jpg ... file will be copied
     /// ```
     pub fn format_dryrun_snipped_output(&self, skip_count: usize, indent_level: usize, is_last_dir: bool, args: &Args) -> String {
 
         let snip_text = ColoredString::italic_dim(
-            format!("(omitted output for {} files with same status)", skip_count).as_str());
+            format!("(snipped output for {} files with same status)", skip_count).as_str());
 
         let indented_ommitted = indent_string_snipped(
             indent_level,

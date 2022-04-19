@@ -1243,7 +1243,7 @@ fn process_target_dir_files(
             /* --- Iterate each file in a device directory and print or copy/move it --- */
             /*****************************************************************************/
 
-            // Output is different for dry-runs and copy/move operations, so print it separately
+            // Output is different for dry-runs and copy/move operations, so process them separately
             if is_dry_run {
                 process_files_dry_run(files_and_paths_vec, device_destination_path,
                                       &source_unique_files, dir_count_total, curr_dir_ix, indent_level,
@@ -1252,18 +1252,21 @@ fn process_target_dir_files(
                 process_files_write(files_and_paths_vec, device_destination_path,
                                     &args, &mut stats, padder);
             };
-
         } // end loop device dirs
 
         // leave some empty space before the next date dir
         println!();
+
     } // end loop date dirs
 }
 
-/// Iterate all source files and print the estimated target directory structure
-/// Order of write arrows will be Right-to-Left to illustrate how the target
-/// structure is created. If compact mode is enabled, consecutive files
-/// with the same status will be omitted and replaced with a single "snipped" line.
+
+/// Iterate all source files and print the estimated target directory structure.
+/// Direction of arrows will be Right-to-Left to reflect focus on how the target
+/// structure is created. Arrow lines are dashed to indicate nothing is written.
+/// If compact mode is enabled, consecutive files with the same status above
+/// a configured threshold will be omitted and replaced with a single "snipped" line.
+/// Sample output:
 /// ```
 /// ---------------------------------------------------------------------------------
 /// TARGET FILE                     SOURCE PATH                  OPERATION STATUS
@@ -1272,7 +1275,7 @@ fn process_target_dir_files(
 ///  ├── [Canon 100D] .......................................... [new folder will be created]
 ///  │    ├── IMG-20190128.jpg <--- D:\Pics\IMG-20190128.jpg ... target file exists, will be skipped
 ///  │    ├── IMG-20190129.jpg <--- D:\Pics\IMG-20190129.jpg ... file will be copied
-///  │    ·-- (omitted output for 1 files with same status)
+///  │    ·-- (snipped output for 1 files with same status)
 ///  └── IMG-20190127.jpg <-------- D:\Pics\IMG-20190127.jpg ... file will be copied
 ///  └── IMG-20190127.jpg <-------- D:\Pics - Copy\IMG-20190127.jpg ... duplicate source file, will be skipped
 /// ```
@@ -1291,9 +1294,6 @@ fn process_files_dry_run(
     // Count files to know which symbols to use for the dir tree
     // i.e. last entry is prefixed by `└` and the rest by `├`
     let file_count_total = files_and_paths_vec.len();
-
-    // This is only used for compact runs
-    let mut file_printouts: Vec<String> = Vec::new();
 
     let mut compact_counter = CompactCounter::new(args.compacting_threshold);
 
@@ -1360,7 +1360,8 @@ fn process_files_dry_run(
             if is_first_element {
                 compact_counter.reset_status(file_restrictions.clone());
                 compact_counter.inc_current_status();
-                file_printouts.push(get_output_for_file());
+                let output = get_output_for_file();
+                println!("{}", output);
             }
 
             // Next iterations with the same status as before - print line
@@ -1369,7 +1370,8 @@ fn process_files_dry_run(
             else if compact_counter.is_same_status(&file_restrictions) {
                 if !compact_counter.has_reached_threshold() {
                     compact_counter.inc_current_status();
-                    file_printouts.push(get_output_for_file())
+                    let output = get_output_for_file();
+                    println!("{}", output);
                 } else {
                     compact_counter.inc_skipped_status();
                 }
@@ -1380,25 +1382,40 @@ fn process_files_dry_run(
             else {
 
                 if compact_counter.has_skipped_statuses() {
-                    file_printouts.push( get_snipped_output(&compact_counter))
+                    let output = get_snipped_output(&compact_counter);
+                    println!("{}", output);
                 }
 
                 compact_counter.reset_status(file_restrictions.clone());
                 compact_counter.inc_current_status();
-                file_printouts.push(get_output_for_file())
+                let output = get_output_for_file();
+                println!("{}", output);
             }
 
             // After the last file, print any remaining skipped statuses before finishing
             if is_last_element && compact_counter.has_skipped_statuses() {
-                file_printouts.push(get_snipped_output(&compact_counter))
+                let output = get_snipped_output(&compact_counter);
+                println!("{}", output);
             }
         } // end else args.is_compacting_enabled
     } // end loop files
-
-    // This will only be non-empty for compact runs, since normal runs will print output directly
-    file_printouts.iter().for_each(|f| println!("{}", f));
 }
 
+
+/// Iterate all source files and write them to target, printing the operation status.
+/// Direction of arrows will be Left-to-Right to reflect the focus on the "write" operation.
+/// Arrow lines are continuous to indicate the files are written. There is no compact
+/// mode for this operation, since we want to show all available information.
+/// Sample output:
+/// ```
+/// ─────────────────────────────────────────────────────────────────────────────────────────
+/// SOURCE PATH                   TARGET FILE                                OPERATION STATUS
+/// ─────────────────────────────────────────────────────────────────────────────────────────
+/// [Created folder 2019.01.28]
+/// D:\Pics\IMG-20190127.jpg ───> 2019.01.28\IMG-20190127.jpg .............. ok
+/// D:\Pics\IMG-20190128.jpg ───> 2019.01.28\Canon 100D\IMG-20190128.jpg ... already exists
+/// D:\Pics\IMG-20190129.jpg ───> 2019.01.28\Canon 100D\IMG-20190129.jpg ... ok
+/// ```
 fn process_files_write(
     files_and_paths_vec: &Vec<SupportedFile>,
     device_destination_path:PathBuf,
@@ -1435,7 +1452,13 @@ fn process_files_write(
     }
 }
 
-fn process_files_format_status(left_side_file: String, op_separator: String, right_side_file: String, status_separator: String, op_status: &String) -> String {
+fn process_files_format_status(
+    left_side_file: String,
+    op_separator: String,
+    right_side_file: String,
+    status_separator: String,
+    op_status: &String
+) -> String {
     format!("{}{}{}{}{}",
           left_side_file, op_separator, right_side_file, status_separator,op_status)
 }
