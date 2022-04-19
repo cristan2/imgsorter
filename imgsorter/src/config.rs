@@ -240,7 +240,7 @@ impl Args {
             let string_opt = toml_table.get(key)
                 .map(|toml_value| toml_value.as_str())
                 .flatten()
-                .map(|str_val| String::from(str_val));
+                .map(String::from);
 
             if string_opt.is_none() { missing_vals.push(String::from(key)) };
             string_opt
@@ -253,7 +253,7 @@ impl Args {
                 .map(|strings_vec|{
                     strings_vec.iter()
                         .flat_map(|value| value.as_str())
-                        .map(|s|String::from(s))
+                        .map(String::from)
                         .collect::<Vec<_>>()
                 });
 
@@ -285,7 +285,7 @@ impl Args {
         fn get_paths(path_strs: Vec<String>) -> Vec<PathBuf> {
             path_strs
                 .iter()
-                .map(|s|PathBuf::from(s))
+                .map(PathBuf::from)
                 .collect::<Vec<_>>()
         }
 
@@ -310,7 +310,7 @@ impl Args {
 
                                             // args.set_source_paths will return an error and we exit if no valid
                                             // source directories are found - there's nothing to do without a source
-                                            if let Some(source_paths) = get_array_value(&folders, "source_dirs", &mut missing_vals) {
+                                            if let Some(source_paths) = get_array_value(folders, "source_dirs", &mut missing_vals) {
                                                 args.set_source_paths(get_paths(source_paths))?;
                                             // TODO run in CWD??
                                             } else {
@@ -327,29 +327,29 @@ impl Args {
 
                                             // Not exposed in config; use for dev only
                                             // source_subdir = 'test_pics'
-                                            if let Some(source_subdir) = get_string_value(&folders, "source_subdir", &mut missing_vals) {
+                                            if let Some(source_subdir) = get_string_value(folders, "source_subdir", &mut missing_vals) {
                                                 // get_string_value already filters out empty strings, but just to be safe
                                                 if !source_subdir.is_empty() {
                                                     args.append_source_subdir(source_subdir.as_str());
                                                 }
                                             }
 
-                                            if let Some(target_dir) = get_string_value(&folders, "target_dir", &mut missing_vals) {
+                                            if let Some(target_dir) = get_string_value(folders, "target_dir", &mut missing_vals) {
                                                 // get_string_value already filters out empty strings, but just to be safe
                                                 if !target_dir.is_empty() {
                                                     args.set_target_dir(target_dir);
                                                 }
                                             }
 
-                                            if let Some(min_files_per_dir) = get_positive_integer_value(&folders, "min_files_per_dir", &mut missing_vals, &mut invalid_vals) {
+                                            if let Some(min_files_per_dir) = get_positive_integer_value(folders, "min_files_per_dir", &mut missing_vals, &mut invalid_vals) {
                                                 args.min_files_per_dir = min_files_per_dir;
                                             }
 
-                                            if let Some(compacting_threshold) = get_positive_integer_value(&folders, "min_files_before_compacting_output", &mut missing_vals, &mut invalid_vals) {
+                                            if let Some(compacting_threshold) = get_positive_integer_value(folders, "min_files_before_compacting_output", &mut missing_vals, &mut invalid_vals) {
                                                 args.compacting_threshold = compacting_threshold as usize;
                                             }
 
-                                            if let Some(oneoffs_dir_name) = get_string_value(&folders, "target_oneoffs_subdir_name", &mut missing_vals) {
+                                            if let Some(oneoffs_dir_name) = get_string_value(folders, "target_oneoffs_subdir_name", &mut missing_vals) {
                                                 // get_string_value already filters out empty strings, but just to be safe
                                                 if !oneoffs_dir_name.is_empty() {
                                                     args.oneoffs_dir_name = oneoffs_dir_name;
@@ -367,33 +367,33 @@ impl Args {
                                     Some(options_opt) => {
                                         if let Some(options) = options_opt.as_table() {
 
-                                            if let Some(source_recursive) = get_boolean_value(&options, "source_recursive", &mut missing_vals) {
+                                            if let Some(source_recursive) = get_boolean_value(options, "source_recursive", &mut missing_vals) {
                                                 args.source_recursive = source_recursive;
                                             }
 
-                                            if let Some(dry_run) = get_boolean_value(&options, "dry_run", &mut missing_vals) {
+                                            if let Some(dry_run) = get_boolean_value(options, "dry_run", &mut missing_vals) {
                                                 args.dry_run = dry_run;
                                             }
 
-                                            if let Some(verbose) = get_boolean_value(&options, "verbose", &mut missing_vals) {
+                                            if let Some(verbose) = get_boolean_value(options, "verbose", &mut missing_vals) {
                                                 args.verbose = verbose;
                                             }
 
-                                            if let Some(align_file_output) = get_boolean_value(&options, "align_file_output", &mut missing_vals) {
+                                            if let Some(align_file_output) = get_boolean_value(options, "align_file_output", &mut missing_vals) {
                                                 args.align_file_output = align_file_output;
                                             }
 
-                                            if let Some(copy_not_move) = get_boolean_value(&options, "copy_not_move", &mut missing_vals) {
+                                            if let Some(copy_not_move) = get_boolean_value(options, "copy_not_move", &mut missing_vals) {
                                                 args.copy_not_move = copy_not_move;
                                             }
 
-                                            if let Some(silent) = get_boolean_value(&options, "silent", &mut missing_vals) {
+                                            if let Some(silent) = get_boolean_value(options, "silent", &mut missing_vals) {
                                                 args.silent = silent;
                                             }
 
                                             // Not exposed in config; use for dev only
                                             // debug_on = true
-                                            if let Some(debug_on) = get_boolean_value_silent(&options, "debug_on") {
+                                            if let Some(debug_on) = get_boolean_value_silent(options, "debug_on") {
                                                 args.debug = debug_on;
                                             }
                                         }
@@ -417,15 +417,15 @@ impl Args {
                                                 Some(custom_extensions_opt) => {
                                                     if let Some(custom_extensions) = custom_extensions_opt.as_table() {
 
-                                                        if let Some(custom_image_ext) = get_array_value(&custom_extensions, "image", &mut missing_vals) {
+                                                        if let Some(custom_image_ext) = get_array_value(custom_extensions, "image", &mut missing_vals) {
                                                             args.custom_extensions.insert(IMAGE.to_lowercase(), vec_to_lowercase(custom_image_ext));
                                                         }
 
-                                                        if let Some(custom_video_ext) = get_array_value(&custom_extensions, "video", &mut missing_vals) {
+                                                        if let Some(custom_video_ext) = get_array_value(custom_extensions, "video", &mut missing_vals) {
                                                             args.custom_extensions.insert(VIDEO.to_lowercase(), vec_to_lowercase(custom_video_ext));
                                                         }
 
-                                                        if let Some(custom_audio_ext) = get_array_value(&custom_extensions, "audio", &mut missing_vals) {
+                                                        if let Some(custom_audio_ext) = get_array_value(custom_extensions, "audio", &mut missing_vals) {
                                                             args.custom_extensions.insert(AUDIO.to_lowercase(), vec_to_lowercase(custom_audio_ext));
                                                         }
                                                     } // end if let Some(custom_extensions)
@@ -477,7 +477,7 @@ impl Args {
         if args.source_recursive {
 
             if args.verbose { println!("> Fetching source directories list recursively..."); }
-            let time_fetching_dirs = Instant::now();
+            let _time_fetching_dirs = Instant::now();
 
             let new_source_dirs = walk_source_dirs_recursively(&args);
             if new_source_dirs.is_empty() {
@@ -489,7 +489,7 @@ impl Args {
             }
 
             // TODO 3d: import FileStats and reenable this
-            // stats.set_time_fetch_dirs(time_fetching_dirs.elapsed());
+            // stats.set_time_fetch_dirs(_time_fetching_dirs.elapsed());
         }
 
         Ok(args)

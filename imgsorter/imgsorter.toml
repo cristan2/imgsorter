@@ -103,6 +103,6 @@ silent = false
 # Note: these are not supported and only basic metadata
 # will be available (i.e. modified date)
 [custom.extensions]
-image = [ "heic" ]
-video = []
-audio = []
+image = [ ]
+video = [ ]
+audio = [ "m4a" ]

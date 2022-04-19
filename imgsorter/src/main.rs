@@ -1,8 +1,7 @@
-use std::path::{PathBuf};
+use std::path::{Path, PathBuf};
 use std::{fs, io, fmt};
 use std::cmp::max;
 use std::collections::{BTreeMap, HashSet};
-use std::error::Error;
 use std::ffi::OsString;
 use std::fmt::Formatter;
 use std::iter::FromIterator;
@@ -116,7 +115,7 @@ impl TargetDateDeviceTree {
         };
 
         let has_oneoff_files = |device_tree: &DeviceTree| {
-            _has_single_device(&device_tree) && _has_minimum_files(&device_tree)
+            _has_single_device(device_tree) && _has_minimum_files(device_tree)
         };
 
         // TODO 5h: this is inefficient, optimize to a single iteration and non-consuming method
@@ -249,7 +248,7 @@ impl CompactCounter {
         self.skipped_status_count > 0
     }
 
-    fn is_same_status(&self, new_status: &String) -> bool {
+    fn is_same_status(&self, new_status: &str) -> bool {
         self.current_status == *new_status
     }
 }
@@ -398,7 +397,7 @@ impl FileStats {
                     ColoredString::green(padded_int.as_str()),
             }
         } else {
-            String::from(padded_int.to_string())
+            padded_int
         }
     }
 
@@ -415,7 +414,7 @@ impl FileStats {
                     ColoredString::green(err_stat.to_string().as_str()),
             }
         } else {
-            String::from(err_stat.to_string())
+            err_stat.to_string()
         }
     }
 
@@ -424,7 +423,7 @@ impl FileStats {
         // file count padding
         let f_max_digits = get_integer_char_count(self.files_count_total) ;
         // dir count padding; each should be half of the total file count width
-        let d_max_digits = ( (f_max_digits * 3) as f32 / 2 as f32).ceil() as usize;
+        let d_max_digits = ( (f_max_digits * 3) as f32 / 2_f32).ceil() as usize;
 
 
         let write_general_stats = || { format!(
@@ -579,6 +578,12 @@ Total time taken:               {t_total} sec
     }
 }
 
+impl Default for FileStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Enum entires meant to represent the target directories
 /// named after the device name. Derive ordering and
 /// equality traits for more natural ordering when used
@@ -624,10 +629,9 @@ impl SupportedFile {
             // It's much faster if we only try to read EXIF for image files
             FileType::Image => {
                 // Use kamadak-rexif crate
-                let exif = read_kamadak_exif_date_and_device(&dir_entry, args);
+                read_kamadak_exif_date_and_device(&dir_entry, args)
                 // Use rexif crate
-                // let exif = read_exif_date_and_device(&dir_entry, args);
-                exif
+                // read_exif_date_and_device(&dir_entry, args)
             },
             _ =>
                 ExifDateDevice::new()
@@ -636,8 +640,8 @@ impl SupportedFile {
         // Read image date - prefer EXIF tags over system date
         let date_str = {
             exif_data.date
-                .unwrap_or(get_system_modified_date(&metadata)
-                    .unwrap_or(DEFAULT_NO_DATE_STR.to_string()))
+                .unwrap_or_else(|| get_system_modified_date(&metadata)
+                    .unwrap_or_else(|| DEFAULT_NO_DATE_STR.to_string()))
         };
 
         // Replace EXIF camera model with a custom name, if one was defined in config
@@ -676,9 +680,9 @@ impl SupportedFile {
     /// since the full path will always be the same
     pub fn get_source_display_name_str(&self, args: &Args) -> String {
         if args.has_multiple_sources() {
-            format!("{}", self.file_path.display().to_string())
+            self.file_path.display().to_string()
         } else {
-            format!("{}", self.file_name.to_str().unwrap())
+            self.file_name.to_str().unwrap().to_string()
         }
     }
 }
@@ -789,7 +793,6 @@ fn main() -> Result<(), std::io::Error> {
             ConfirmationType::DryRun => {
                 println!("This is a dry run. No folders will be created. No files will be copied or moved.");
                 args.dry_run = true;
-                ()
             }
             ConfirmationType::Proceed =>
                 ()
@@ -851,7 +854,7 @@ fn main() -> Result<(), std::io::Error> {
 /// Then it iterates all sets, checking each one against all previous ones and keeps only
 /// unique elements, ensuring duplicate filenames are progressively removed.
 fn get_source_unique_files(
-    source_dir_contents: &Vec<Vec<DirEntry>>,
+    source_dir_contents: &[Vec<DirEntry>],
     args: &Args
 ) -> Option<Vec<HashSet<OsString>>> {
 
@@ -885,7 +888,7 @@ fn get_source_unique_files(
 
 /// Read contents of source dir and filter out directories or those which failed to read
 fn read_supported_files(
-    source_dir: &PathBuf,
+    source_dir: &Path,
     stats: &mut FileStats,
     args: &mut Args
 ) -> Result<Vec<DirEntry>, std::io::Error> {
@@ -980,7 +983,7 @@ fn parse_dir_contents(
                         new_dir_tree
                             .dir_tree
                             .entry(file_date)
-                            .or_insert(DeviceTree::new())
+                            .or_insert_with(DeviceTree::new)
                     };
 
                     // TODO 5i: replace these with single method in DeviceTree
@@ -988,7 +991,7 @@ fn parse_dir_contents(
                         devicetree_for_this_date
                             .file_tree
                             .entry(file_device)
-                            .or_insert(Vec::new())
+                            .or_insert_with(Vec::new)
                     };
 
                     // Store the string lengths of the file name and path for padding in stdout
@@ -1048,7 +1051,7 @@ fn parse_dir_contents(
     // because of the requirement to only create device subdirs if there are at least 2 devices
     padder.set_max_target_path(new_dir_tree.compute_max_path_len(args));
 
-    return new_dir_tree;
+    new_dir_tree
 }
 
 /// Iterate the files according to the projected target structure and
@@ -1154,7 +1157,7 @@ fn process_target_dir_files(
         // Count dirs to know which symbols to use for the dir tree
         // i.e. last entry is prefixed by └ and the rest by ├
         let dir_count_total = devices_files_and_paths.file_tree.len();
-        let mut curr_dir_ix = 0 as usize;
+        let mut curr_dir_ix = 0_usize;
 
         for (
             device_name_opt,
@@ -1236,7 +1239,7 @@ fn process_target_dir_files(
             // Create subdir path
             if !is_dry_run {
                 // TODO separate Date from Device dirs
-                create_subdir_if_required(&device_destination_path, &args, &mut stats);
+                create_subdir_if_required(&device_destination_path, args, &mut stats);
             }
 
             /*****************************************************************************/
@@ -1247,10 +1250,10 @@ fn process_target_dir_files(
             if is_dry_run {
                 process_files_dry_run(files_and_paths_vec, device_destination_path,
                                       &source_unique_files, dir_count_total, curr_dir_ix, indent_level,
-                                      &args, &mut stats, padder)
+                                      args, &mut stats, padder)
             } else {
                 process_files_write(files_and_paths_vec, device_destination_path,
-                                    &args, &mut stats, padder);
+                                    args, &mut stats, padder);
             };
         } // end loop device dirs
 
@@ -1280,7 +1283,7 @@ fn process_target_dir_files(
 ///  └── IMG-20190127.jpg <-------- D:\Pics - Copy\IMG-20190127.jpg ... duplicate source file, will be skipped
 /// ```
 fn process_files_dry_run(
-    files_and_paths_vec: &Vec<SupportedFile>,
+    files_and_paths_vec: &[SupportedFile],
     device_destination_path:PathBuf,
     source_unique_files: &Option<Vec<HashSet<OsString>>>,
     dir_count_total: usize,
@@ -1311,9 +1314,9 @@ fn process_files_dry_run(
 
         // Check restrictions - file exists or is read-only
         let file_restrictions = dry_run_check_file_restrictions(
-            &file,
+            file,
             &file_destination_path,
-            &source_unique_files,
+            source_unique_files,
             args,
             stats);
 
@@ -1341,8 +1344,7 @@ fn process_files_dry_run(
             padder.format_dryrun_snipped_output(
                 _compact_counter.skipped_status_count,
                 indent_level,
-                is_last_dir,
-                args)
+                is_last_dir)
         };
 
         // Output compacting is not enabled, print all file statuses directly
@@ -1417,7 +1419,7 @@ fn process_files_dry_run(
 /// D:\Pics\IMG-20190129.jpg ───> 2019.01.28\Canon 100D\IMG-20190129.jpg ... ok
 /// ```
 fn process_files_write(
-    files_and_paths_vec: &Vec<SupportedFile>,
+    files_and_paths_vec: &[SupportedFile],
     device_destination_path:PathBuf,
     args: &Args,
     mut stats: &mut FileStats,
@@ -1436,9 +1438,10 @@ fn process_files_write(
 
         // Copy/move file
         let file_write_status = copy_file_if_not_exists(
-            &file,
+            file,
             &mut file_destination_path,
-            &args, &mut stats);
+            args,
+            &mut stats);
 
         // Print result
         let output = process_files_format_status(
@@ -1457,14 +1460,14 @@ fn process_files_format_status(
     op_separator: String,
     right_side_file: String,
     status_separator: String,
-    op_status: &String
+    op_status: &str
 ) -> String {
     format!("{}{}{}{}{}",
           left_side_file, op_separator, right_side_file, status_separator,op_status)
 }
 
 /// Read file metadata and return size in bytes
-fn get_files_size(files: &Vec<SupportedFile>) -> u64 {
+fn get_files_size(files: &[SupportedFile]) -> u64 {
     files
         .iter()
         .map(|file| {
@@ -1475,7 +1478,7 @@ fn get_files_size(files: &Vec<SupportedFile>) -> u64 {
 }
 
 /// Read a directory path and return a string signalling if the path exists
-fn dry_run_check_target_dir_exists(path: &PathBuf, stats: &mut FileStats, dir_type: &DirType) -> String {
+fn dry_run_check_target_dir_exists(path: &Path, stats: &mut FileStats, dir_type: &DirType) -> String {
     stats.inc_dir_total_by_type(dir_type);
     if path.exists() {
         // don't increase stats.inc_dirs_ignored() since it's not equivalent
@@ -1494,7 +1497,7 @@ fn dry_run_check_target_dir_exists(path: &PathBuf, stats: &mut FileStats, dir_ty
 /// * if the is a move, check if the source file is read-only and can't be moved (only copied)
 fn dry_run_check_file_restrictions(
     source_file: &SupportedFile,
-    target_path: &PathBuf,
+    target_path: &Path,
     source_unique_files: &Option<Vec<HashSet<OsString>>>,
     args: &Args,
     stats: &mut FileStats
@@ -1511,7 +1514,7 @@ fn dry_run_check_file_restrictions(
     let is_source_unique = || {
       match source_unique_files {
           Some(source_dir_sets) => {
-            let source_dir_index: usize = source_file.source_dir_index.clone();
+            let source_dir_index: usize = source_file.source_dir_index;
             let source_dir_unique_files: &HashSet<OsString> = &source_dir_sets[source_dir_index];
             source_dir_unique_files.contains(&source_file.file_name)
           },
@@ -1639,7 +1642,7 @@ fn copy_file_if_not_exists(
                             if args.verbose { eprintln!("File delete error: {:?}: ERROR {:?}", &file.file_path, e) };
                             stats.inc_error_file_delete();
                             (Some(true), ColoredString::red(
-                                format!(" (error removing source: {:?})", e.description()).as_str()))
+                                format!(" (error removing source: {:?})", e.to_string()).as_str()))
                         }
                     }
                 // This is just a COPY operation, there's no delete result
@@ -1673,7 +1676,7 @@ fn copy_file_if_not_exists(
 }
 
 fn create_subdir_if_required(
-    target_subdir: &PathBuf,
+    target_subdir: &Path,
     args: &Args,
     stats: &mut FileStats
 ) {
@@ -1725,9 +1728,9 @@ fn get_system_modified_date(file_metadata: &Metadata) -> Option<String> {
 fn get_extension(file: &DirEntry) -> Option<String> {
     file.path()
         .extension()
-        .map_or(None, |os| {
-            os.to_str().map_or(None, |s|
-                Some(String::from(s)))
+        .and_then(|os| {
+            os.to_str()
+                .map(String::from)
         })
 }
 

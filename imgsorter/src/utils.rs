@@ -254,34 +254,23 @@ impl Padder {
             - target_path_length
     }
 
-    fn get_dryrun_source_padding_len(&self, padded_target_filename_length: String) -> usize {
-        let target_len = get_string_char_count(padded_target_filename_length);
-        self.get_dryrun_total_padding_len()
-            - target_len
-            - 1
-            // TODO why do we need this 2 times?
-            - SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count()
-            - SEPARATOR_DRY_RUN_LEFT_TO_RIGHT.chars().count()
-    }
-
     /* --- Formatter methods - produce padded strings for printing --- */
 
     pub fn format_dryrun_header_separator(&self, status_width: usize) -> String {
         // this is an en-dash, not a dash
-        format!("{}", "–".repeat(
+        "–".repeat(
             self.get_dryrun_total_padding_len()
             +1 // add +1 for the gap between the status separator and the status
-            + status_width)
+            + status_width
         )
     }
 
     pub fn format_write_header_separator(&self, status_width: usize) -> String {
         // this is an em-dash, not a dash
-        format!("{}", "─".repeat(
+        "─".repeat(
             self.get_write_total_padding_len()
                 + 1 // add +1 for the gap between the status separator and the status
                 + status_width)
-        )
     }
 
     pub fn format_dryrun_header(&self, status_width: usize) -> String {
@@ -353,17 +342,15 @@ impl Padder {
     /// ·-- (snipped output for 2 files with same status)
     /// └── IMG-20190129.jpg <--- D:\Pics\IMG-20190129.jpg ... file will be copied
     /// ```
-    pub fn format_dryrun_snipped_output(&self, skip_count: usize, indent_level: usize, is_last_dir: bool, args: &Args) -> String {
+    pub fn format_dryrun_snipped_output(&self, skip_count: usize, indent_level: usize, is_last_dir: bool) -> String {
 
         let snip_text = ColoredString::italic_dim(
             format!("(snipped output for {} files with same status)", skip_count).as_str());
 
-        let indented_ommitted = indent_string_snipped(
+        indent_string_snipped(
             indent_level,
             snip_text,
-            is_last_dir);
-
-        indented_ommitted
+            is_last_dir)
     }
 
     pub fn format_dryrun_file_separator(&self, left_file: String, args: &Args) -> String {
@@ -506,18 +493,16 @@ pub fn keep_unique_across_sets(all_dirs: &[HashSet<OsString>]) -> HashSet<OsStri
     let last_dir = all_dirs[last_index].clone();
     let previous_dirs = &all_dirs[0..last_index];
 
-    // let (last_dir, previous_dirs) = &all_dirs.split_last().unwrap();
-
     previous_dirs.iter()
         .fold(last_dir, |accum: HashSet<OsString>, current_dir| {
             accum
                 .difference(current_dir)
-                .map(|d| d.clone())
+                .cloned()
                 .collect::<HashSet<_>>()
         })
 }
 
-pub fn print_sets_with_index(msg: &str, set: &Vec<HashSet<OsString>>) {
+pub fn print_sets_with_index(msg: &str, set: &[HashSet<OsString>]) {
     println!("{}:", msg);
     set.iter().enumerate()
         .for_each(|(ix, set)| println!("{:?} -> {:?}", ix, set));
@@ -539,7 +524,7 @@ pub fn get_integer_char_count(i: i32) -> usize {
 /// Convert bytes to an appropriate multiple (MB or GB) and append its unit
 pub fn get_file_size_string(filesize: u64) -> String {
     match filesize {
-        size if size <= 0 =>
+        size if size == 0 =>
             String::from("unknown"),
         size if size < 1024u64.pow(3) =>
             format!("{:.2} MB", (size as f64 / 1024u64.pow(2) as f64)),

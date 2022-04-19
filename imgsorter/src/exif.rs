@@ -4,7 +4,7 @@ use std::io::{Read, Seek, SeekFrom};
 
 use rexif::{ExifTag, ExifResult};
 use chrono::NaiveDateTime;
-use exif::{Error, Exif, In, Tag, Value};
+use exif::{Error, Exif, In, Tag};
 
 use crate::config::*;
 use crate::utils::*;
@@ -26,6 +26,12 @@ impl ExifDateDevice {
             date: None,
             camera_model: None
         }
+    }
+}
+
+impl Default for ExifDateDevice {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

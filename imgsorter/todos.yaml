@@ -1,7 +1,6 @@
 [-] 'dirs created' stat - differentiate between "date dirs" and "device dirs"
 
 - implement Display for Args and print before confirmation
-- clippy
 - documentation - readme
 
 [ ] 1 - CLI / config file args
@@ -70,7 +69,7 @@
     [ ] RightPadding & ColoredString should take both &str and String
     [ ] cache result of padding length calculations and other improvements
     [ ] improve performance of parse_dir_contents (150-218 secs for 6000 files)
-    [ ] run clippy
+    [x] run clippy
     [ ] single method for printing stats instead of two almost identical?
 
 [ ] 6 - Misc / bugs
