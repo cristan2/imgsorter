@@ -207,6 +207,52 @@ pub enum ConfirmationType {
     Error,
 }
 
+/// Struct used to keep track of file statuses (i.e. future write restrictions)
+/// when doing dry runs with output compacting enabled
+struct CompactCounter {
+    compacting_threshold: usize,
+    current_status_count: usize,
+    current_status: String,
+    skipped_status_count: usize
+}
+
+impl CompactCounter {
+    fn new(compacting_threshold: usize) -> CompactCounter {
+        CompactCounter {
+            compacting_threshold,
+            current_status_count: 0,
+            current_status: "".to_owned(),
+            skipped_status_count: 0
+        }
+    }
+
+    fn reset_status(&mut self, new_status: String) {
+        self.current_status_count = 1;
+        self.current_status = new_status;
+        // self.current_status_count = 0;
+    }
+
+    fn inc_current_status(&mut self) {
+        self.current_status_count += 1;
+    }
+
+    fn inc_skipped_status(&mut self) {
+        self.skipped_status_count += 1;
+    }
+
+    fn has_reached_threshold(&self) -> bool {
+        self.current_status_count >= self.compacting_threshold
+    }
+
+    fn has_skipped_statuses(&self) -> bool {
+        self.skipped_status_count > 0
+    }
+
+    fn is_same_status(&self, new_status: &String) -> bool {
+        self.current_status == *new_status
+    }
+}
+
 #[derive(Debug)]
 pub struct FileStats {
     files_count_total: i32,
@@ -775,7 +821,7 @@ fn main() -> Result<(), std::io::Error> {
     if !target_dir_tree.dir_tree.is_empty() {
         // Iterate files and either copy/move to subdirs as necessary
         // or do a dry run to simulate a copy/move pass
-        write_target_dir_files(&mut target_dir_tree, source_unique_files, &args, &mut stats, &mut padder);
+        process_target_dir_files(&mut target_dir_tree, source_unique_files, &args, &mut stats, &mut padder);
     }
 
     // Record time taken
@@ -1004,7 +1050,10 @@ fn parse_dir_contents(
     return new_dir_tree;
 }
 
-fn write_target_dir_files(
+/// Iterate the files according to the projected target structure and
+/// either do a dry run and print resulting dir structure or
+/// write the files to target as configured (copy or move)
+fn process_target_dir_files(
     // The target tree representation of files to be copied/moved
     new_dir_tree: &mut TargetDateDeviceTree,
     // For dry runs, this represents a vector of unique files per each source dir
@@ -1193,183 +1242,242 @@ fn write_target_dir_files(
             /* --- Iterate each file in a device directory and print or copy/move it --- */
             /*****************************************************************************/
 
-            // Count files to know which symbols to use for the dir tree
-            // i.e. last entry is prefixed by └ and the rest by ├
-            let file_count_total = files_and_paths_vec.len();
-
-            // let mut file_printouts: Vec<String> = Vec::with_capacity(file_count_total);
-            let mut file_printouts: Vec<String> = Vec::new();
-
-            // (current_status_count, current_status, snipped_status_count)
-            let mut last_file_status_count: (usize, String, usize) = (0, "".to_owned(), 0);
-
-            for (file_index, file) in files_and_paths_vec.iter().enumerate() {
-
-                let is_last_dir = curr_dir_ix == dir_count_total;
-                let is_last_element = file_index == file_count_total - 1;
-
-                // Attach filename to the directory path
-                let mut file_destination_path = device_destination_path.clone()
-                    .join(&file.file_name);
-
-                // Output is different for dry-runs and copy/move operations, so print it separately
-                if is_dry_run {
-
-                    // Check restrictions - file exists or is read-only
-                    let file_restrictions = dry_run_check_file_restrictions(
-                        &file,
-                        &file_destination_path,
-                        &source_unique_files,
-                        args,
-                        stats);
-
-                    let get_output_for_file = |file_name: String| {
-                        // Prepare padded strings for output
-                        let indented_target_filename = indent_string(
-                            indent_level,
-                            // file.get_file_name_str(),
-                            file_name,
-                            is_last_dir,
-                            is_last_element);
-                        let file_separator = padder.format_dryrun_file_separator(indented_target_filename.clone(), args);
-
-                        let source_path = file.get_source_display_name_str(args);
-                        let status_separator = padder.format_dryrun_status_separator_dotted(source_path.clone(), args);
-
-                        let printout = format!("{left_side_file}{op_separator}{right_side_file}{status_separator}{status}",
-                                               left_side_file=indented_target_filename,
-                                               op_separator=file_separator,
-                                               right_side_file=source_path,
-                                               status_separator=status_separator,
-                                               status=file_restrictions);
-                        return printout;
-                    };
-
-                    // Status snipping is not enabled, print all files normally
-                    if args.is_status_snipping_disabled() {
-                        file_printouts.push(get_output_for_file(file.get_file_name_str()));
-
-                    // Status snipping is enabled, so print only the first consecutive files with the same
-                    } else {
-                        // first iteration
-                        if file_index == 0 {
-                            last_file_status_count = (1, file_restrictions.clone(), 0);
-                            file_printouts.push(get_output_for_file(file.get_file_name_str()));
-                            // println!("if 0            | pushing {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
-                        } else {
-
-                            // for every other iteration, we check
-                            // - if it's the same status
-                            // - if we've reached the snip threshold
-
-                            // println!("comparing {} with {} = {}", file_restrictions, last_file_status_count.1, file_restrictions == last_file_status_count.1);
-
-                            // Same status as previous file - only print if not more 5  consecutive
-                            if file_restrictions == last_file_status_count.1 {
-
-                                // continue to process, add statuses in vec
-                                if last_file_status_count.0 < args.snipping_threshold {
-                                    last_file_status_count.0 += 1;
-                                    file_printouts.push(get_output_for_file(file.get_file_name_str()))
-                                    // println!("same status < 5 | pushing {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
-
-                                    // reached snip threshold, just increment snip count
-                                } else {
-                                    last_file_status_count.2 += 1;
-                                    // println!("same status >=5 | not pushing {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
-                                }
-                                // status has just changed
-                            } else {
-
-                                // print snip count if any
-                                if last_file_status_count.2 > 0 {
-                                    let snip_count = last_file_status_count.2;
-
-                                    let snip_status = format!("snipped output for {} files with same status", snip_count);
-
-                                    let colored_snip_status = format!("{}",
-                                                                      ColoredString::cyan(snip_status.as_str()));
-
-                                    // println!("changed status > 2 | snipping for {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
-
-                                    // TODO indent based on file indent
-                                    let indented_snip_output = padder.format_dryrun_device_dir(
-                                        // snip_status,
-                                        colored_snip_status,
-                                        is_last_dir,
-                                        // if it's last dir, it's also the last element of type dir
-                                        is_last_dir,
-                                        args);
-
-                                    let snipped_status_count = format!("{} x {}", snip_count, last_file_status_count.1);
-
-                                    let snip_output = format!("{} {}", indented_snip_output, snipped_status_count);
-
-                                    file_printouts.push(snip_output);
-                                }
-
-                                // then reset count and start again
-                                last_file_status_count = (1, file_restrictions.clone(), 0);
-                                file_printouts.push(get_output_for_file(file.get_file_name_str()))
-                                // println!("reset status    | pushing {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
-                            }
-                        }
-                    }
-
-                } // end dry run loop
-                else {
-
-                    // Prepare padded strings for output
-                    let source_path = file.get_source_display_name_str(args);
-                    let padded_separator = padder.format_write_file_separator(source_path.clone());
-                    let stripped_target_path = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
-                    let status_separator = padder.format_write_status_separator_dotted(stripped_target_path.clone());
-
-                    // Copy/move file
-                    let file_write_status = copy_file_if_not_exists(
-                        &file,
-                        &mut file_destination_path,
-                        &args, &mut stats);
-
-                    // Return everything to be printed
-                    // (source_path, padded_separator, stripped_target_path, status_separator, file_write_status)
-
-                    let printout = format!("{left_side_file}{op_separator}{right_side_file}{status_separator}{status}",
-                                           left_side_file=source_path,
-                                           op_separator=padded_separator,
-                                           right_side_file=stripped_target_path,
-                                           status_separator=status_separator,
-                                           status=file_write_status);
-                    file_printouts.push(printout);
-                }
-
-
-                // Print operation status - each separator is responsible for adding its own spaces where necessary
-                // println!("{left_side_file}{op_separator}{right_side_file}{status_separator}{status}",
-                // let printout = format!("{left_side_file}{op_separator}{right_side_file}{status_separator}{status}",
-                //          left_side_file=padded_filename,
-                //          op_separator=op_separator,
-                //          right_side_file=padded_path,
-                //          status_separator=status_separator,
-                //          status=write_result);
-                // file_printouts.push(printout);
-            } // end loop files
-
-            // if file_printouts.len() > 2 {
-            //     file_printouts.iter().take(5).for_each(|f| println!("{}", f));
-            //     println!("{}",
-            //              ColoredString::cyan(
-            //                  format!("      snipped output for {} files", file_printouts.len() - 2).as_str()));
-            // } else {
-            //     file_printouts.iter().for_each(|f| println!("{}", f));
-            // }
-            file_printouts.iter().for_each(|f| println!("{}", f));
+            // Output is different for dry-runs and copy/move operations, so print it separately
+            if is_dry_run {
+                process_files_dry_run(files_and_paths_vec, device_destination_path,
+                                      &source_unique_files, dir_count_total, curr_dir_ix, indent_level,
+                                      &args, &mut stats, padder)
+            } else {
+                process_files_write(files_and_paths_vec, device_destination_path,
+                                    &args, &mut stats, padder);
+            };
 
         } // end loop device dirs
 
         // leave some empty space before the next date dir
         println!();
     } // end loop date dirs
+}
+
+fn process_files_dry_run(
+    files_and_paths_vec: &Vec<SupportedFile>,
+    device_destination_path:PathBuf,
+    source_unique_files: &Option<Vec<HashSet<OsString>>>,
+    dir_count_total: usize,
+    curr_dir_ix: usize,
+    indent_level: usize,
+    args: &Args,
+    stats: &mut FileStats,
+    padder: &mut Padder,
+) {
+
+    // Count files to know which symbols to use for the dir tree
+    // i.e. last entry is prefixed by └ and the rest by ├
+    let file_count_total = files_and_paths_vec.len();
+
+    let mut file_printouts: Vec<String> = Vec::new();
+
+    let mut compact_counter = CompactCounter::new(args.compacting_threshold);
+
+    for (file_index, file) in files_and_paths_vec.iter().enumerate() {
+
+        let is_last_dir = curr_dir_ix == dir_count_total;
+        let is_last_element = file_index == file_count_total - 1;
+
+        // Attach filename to the directory path
+        let file_destination_path = device_destination_path.clone()
+            .join(&file.file_name);
+
+        // Check restrictions - file exists or is read-only
+        let file_restrictions = dry_run_check_file_restrictions(
+            &file,
+            &file_destination_path,
+            &source_unique_files,
+            args,
+            stats);
+
+        let get_output_for_file = |file_name: String| {
+            // Prepare padded strings for output
+            let indented_target_filename = indent_string(
+                indent_level,
+                // file.get_file_name_str(),
+                file_name,
+                is_last_dir,
+                is_last_element);
+            let file_separator = padder.format_dryrun_file_separator(indented_target_filename.clone(), args);
+
+            let source_path = file.get_source_display_name_str(args);
+            let status_separator = padder.format_dryrun_status_separator_dotted(source_path.clone(), args);
+
+            let printout = format!("{left_side_file}{op_separator}{right_side_file}{status_separator}{status}",
+                                   left_side_file=indented_target_filename,
+                                   op_separator=file_separator,
+                                   right_side_file=source_path,
+                                   status_separator=status_separator,
+                                   status=file_restrictions);
+            return printout;
+        };
+
+        // Status output compacting is not enabled, print all files normally
+        if !args.is_compacting_enabled() {
+            file_printouts.push(get_output_for_file(file.get_file_name_str()));
+
+            // Status output compacting is enabled, so print only the first consecutive files with the same
+        } else {
+            // first iteration
+            if file_index == 0 {
+                // last_file_status_count = (1, file_restrictions.clone(), 0);
+                compact_counter.reset_status(file_restrictions.clone());
+                file_printouts.push(get_output_for_file(file.get_file_name_str()));
+                // println!("if 0            | pushing {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
+
+            } else {
+
+                // for every other iteration, we check
+                // - if it's the same status
+                // - if we've reached the snip threshold
+
+                // println!("comparing {} with {} = {}", file_restrictions, last_file_status_count.1, file_restrictions == last_file_status_count.1);
+
+                // Same status as previous file - only print if not more 5  consecutive
+                // if file_restrictions == compact_counter.current_status {
+                if compact_counter.is_same_status(&file_restrictions) {
+
+                    // continue to process, add statuses in vec
+                    // if compact_counter.current_status_count < args.compacting_threshold {
+                    if !compact_counter.has_reached_threshold() {
+                        // last_file_status_count.0 += 1;
+                        compact_counter.inc_current_status();
+                        file_printouts.push(get_output_for_file(file.get_file_name_str()))
+                        // println!("same status < 5 | pushing {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
+
+                        // reached snip threshold, just increment snip count
+                    } else {
+                        // last_file_status_count.2 += 1;
+                        compact_counter.inc_skipped_status();
+                        // println!("same status >=5 | not pushing {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
+                    }
+
+                    // Status has just changed
+                } else {
+
+                    // print skipped count for previous status, if any
+                    if compact_counter.has_skipped_statuses() {
+
+                        // TODO so ugly, refactor
+
+                        let snip_count = compact_counter.skipped_status_count;
+
+                        let snip_status = format!("snipped output for {} files with same status", snip_count);
+
+                        let colored_snip_status = format!("{}",
+                                                          ColoredString::cyan(snip_status.as_str()));
+
+                        // println!("changed status > 2 | snipping for {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
+
+                        // TODO indent based on file indent
+                        let indented_snip_output = padder.format_dryrun_device_dir(
+                            // snip_status,
+                            colored_snip_status,
+                            is_last_dir,
+                            // if it's last dir, it's also the last element of type dir
+                            is_last_dir,
+                            args);
+
+                        let snipped_status_count = format!("{} x {}", snip_count, compact_counter.current_status);
+
+                        let snip_output = format!("{} {}", indented_snip_output, snipped_status_count);
+
+                        file_printouts.push(snip_output);
+                    }
+
+                    // then reset count and start again
+                    // last_file_status_count = (1, file_restrictions.clone(), 0);
+                    compact_counter.reset_status(file_restrictions.clone());
+                    file_printouts.push(get_output_for_file(file.get_file_name_str()))
+                    // println!("reset status    | pushing {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
+                }
+            }
+
+            // Flush any remaining skipped statuses not yet pushed to file_printouts ???
+            if is_last_element && compact_counter.has_skipped_statuses() {
+                let snip_count = compact_counter.skipped_status_count;
+
+                let snip_status = format!("snipped output for {} files with same status", snip_count);
+
+                let colored_snip_status = format!("{}",
+                                                  ColoredString::cyan(snip_status.as_str()));
+
+                // println!("changed status > 2 | snipping for {} => tuple {:?} ", file.get_file_name_str(), last_file_status_count);
+
+                // TODO indent based on file indent
+                let indented_snip_output = padder.format_dryrun_device_dir(
+                    // snip_status,
+                    colored_snip_status,
+                    is_last_dir,
+                    // if it's last dir, it's also the last element of type dir
+                    is_last_dir,
+                    args);
+
+                let snipped_status_count = format!("{} x {}", snip_count, compact_counter.current_status);
+
+                let snip_output = format!("{} {}", indented_snip_output, snipped_status_count);
+
+                file_printouts.push(snip_output);
+            }
+        }
+    } // end loop files
+
+    file_printouts.iter().for_each(|f| println!("{}", f));
+}
+
+fn process_files_write(
+    files_and_paths_vec: &Vec<SupportedFile>,
+    device_destination_path:PathBuf,
+    args: &Args,
+    mut stats: &mut FileStats,
+    padder: &mut Padder,
+) /*-> Vec<String>*/ {
+
+    // let mut file_printouts: Vec<String> = Vec::new();
+
+    for file in files_and_paths_vec.iter() {
+
+        let mut file_destination_path = device_destination_path.clone().join(&file.file_name);
+
+        // Prepare padded strings for output
+        let source_path = file.get_source_display_name_str(args);
+        let padded_separator = padder.format_write_file_separator(source_path.clone());
+        let stripped_target_path = file_destination_path.strip_prefix(&args.target_dir).unwrap().display().to_string();
+        let status_separator = padder.format_write_status_separator_dotted(stripped_target_path.clone());
+
+        // Copy/move file
+        let file_write_status = copy_file_if_not_exists(
+            &file,
+            &mut file_destination_path,
+            &args, &mut stats);
+
+        // Format everything to be printed
+        // (source_path, padded_separator, stripped_target_path, status_separator, file_write_status)
+
+        // let printout = format!("{left_side_file}{op_separator}{right_side_file}{status_separator}{status}",
+        //                        left_side_file = source_path,
+        //                        op_separator = padded_separator,
+        //                        right_side_file = stripped_target_path,
+        //                        status_separator = status_separator,
+        //                        status = file_write_status);
+
+        process_files_print_status(source_path, padded_separator, stripped_target_path, status_separator, file_write_status)
+
+        // file_printouts.push(printout);
+    }
+
+    // file_printouts
+}
+
+fn process_files_print_status(left_side_file: String, op_separator: String, right_side_file: String, status_separator: String, op_status: String) {
+    println!("{}{}{}{}{}",
+          left_side_file, op_separator, right_side_file, status_separator,op_status);
 }
 
 /// Read file metadata and return size in bytes
