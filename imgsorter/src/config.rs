@@ -10,6 +10,7 @@ use toml::*;
 
 // Config defaults
 const DEFAULT_MIN_COUNT: i64 = 1;
+const DEFAULT_SNIPPING_COUNT: usize = 0;
 const DEFAULT_COPY: bool = true;
 const DEFAULT_SILENT: bool = false;
 const DEFAULT_DRY_RUN: bool = false;
@@ -48,6 +49,10 @@ pub struct Args {
     /// The minimum number of files with the same date necessary
     /// for a dedicated subdir to be created
     pub min_files_per_dir: i64,
+
+    /// When doing a dry run, omit output for files with the same
+    /// status if exceeding this threshold to save visual space
+    pub snipping_threshold: usize,
 
     /// The name of the subdir which will hold files for any given date
     /// with less than or equal to the [min_files_per_dir] threshold
@@ -106,6 +111,7 @@ impl Args {
                 target_dir: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
                 source_recursive: DEFAULT_SOURCE_RECURSIVE,
                 min_files_per_dir: DEFAULT_MIN_COUNT,
+                snipping_threshold: DEFAULT_SNIPPING_COUNT,
                 oneoffs_dir_name: String::from(DEFAULT_ONEOFFS_DIR_NAME),
                 cwd,
                 silent: DEFAULT_SILENT,
@@ -339,6 +345,10 @@ impl Args {
                                                 args.min_files_per_dir = min_files_per_dir;
                                             }
 
+                                            if let Some(min_files_before_snipping_output) = get_positive_integer_value(&folders, "min_files_before_snipping_output", &mut missing_vals, &mut invalid_vals) {
+                                                args.snipping_threshold = min_files_before_snipping_output as usize;
+                                            }
+
                                             if let Some(oneoffs_dir_name) = get_string_value(&folders, "target_oneoffs_subdir_name", &mut missing_vals) {
                                                 // get_string_value already filters out empty strings, but just to be safe
                                                 if !oneoffs_dir_name.is_empty() {
@@ -566,6 +576,10 @@ impl Args {
 
     pub fn has_multiple_sources(&self) -> bool {
         self.source_dir.len() > 1
+    }
+
+    pub fn is_status_snipping_disabled(&self) -> bool {
+        self.snipping_threshold <= 0
     }
 }
 

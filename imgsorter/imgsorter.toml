@@ -30,6 +30,15 @@ target_dir = 'D:\Temp\New folder test remove - Copy'
 # If this option is missing, the default "1" will be used.
 min_files_per_dir = 1
 
+# When sorting a large number of files, set this property to a number
+# higher than zero to print a more compact output during dry runs.
+# This is done by snipping the output of consecutive files in the same folder
+# with the same status which exceed this exceeding this number, instead of
+# simply listing all files with identical statuses. For example:
+# " └── (snipped output for files with same status ..... (5x) file will be copied)"
+# If this option is missing or set to 0, no snipping will occur
+min_files_before_snipping_output = 3
+
 # The name of the folder which will hold all files for any given date,
 #   which holds less than or equal the [min_files_per_dir] threshold.
 # If this option is missing, the default 'Miscellaneous' will be used.
