@@ -1,7 +1,9 @@
-[-] 'dirs created' stat - differentiate between "date dirs" and "device dirs"
-
-- implement Display for Args and print before confirmation
-- documentation - readme
+[ ] 0 - Prio
+    [-] 3e - 'dirs created' stat - differentiate between "date dirs" and "device dirs"
+    [ ] 7? - implement Display for Args and print before confirmation
+    [ ] 2? - min_devices_per_dir - similar to min_files_per_dir, but for devices
+    [ ] 2? - always create device subdir, even if for single ones
+    [ ] documentation - readme
 
 [ ] 1 - CLI / config file args
     [x] CLI or config file?
@@ -17,7 +19,7 @@
     [ ] allow configurable target_sorted_subdir_name = 'imgsorted'
     [x] verbose option - output more info (less than debug)
 
-[x] 2 - File handling
+[ ] 2 - File handling
     [x] a - subdirs by device name
     [x] b - filter supported files
     [x] c - handle video - mp4, etc.
@@ -33,6 +35,9 @@
     [x] additional file formats - amr, etc
     [x] calculate total file size
     [x] don't create device subdirs if only one file per device (even if device count > 1)
+    [ ] min_devices_per_dir - similar to min_files_per_dir, but for devices
+        - this also overrides images directly in date dir for single devices
+    [ ] always create device subdir, even if for single ones
 
 [ ] 3 - Stats
     [x] a - show in progress statistics
@@ -40,12 +45,13 @@
     [!] c - img count in dir name - not feasible, prone to errors; is included in dry run output only
     [ ] d - reenable Stats.time_fetching_dirs
     [x] dry run specific statistics
-    [-] 'dirs created' stat - differentiate between "date dirs" and "device dirs"
-    [ ] stats for "could not read EXIF"
+    [-] e - 'dirs created' stat - differentiate between "date dirs" and "device dirs"
+          - done for dry runs, write remaining
     [x] table-like stats instead of simple list (e.g. "Images moved/copied/skipped    0 | 10 | 2" )
     [!] don't include move/copy stats for copy/move operations - not doing, it's relevant in case of delete errors
     [x] stats for file size
     [x] stats for time taken - prefetching dirs, parsing files, copying files
+    [ ] stats for "could not read EXIF"
 
 [ ] 4 - Config
     [x] a - config file - rename device with custom name (i.e. personal name instead of camera name) - see 8d
@@ -61,6 +67,7 @@
     [ ] g - macro for padding formats which take a variable for fill char - https://stackoverflow.com/questions/69173413/does-the-rust-format-macro-provide-for-user-specified-fill-characters
     [ ] h - improve maps duplication - use drain_filter or partition or retain or something else
     [ ] i - move map methods to *DeviceTree
+    [ ] j - prefilter for Images and Videos only when parsing?
     [ ] k - Reimplement is_source_unique
     [x] g - Store total count of files and maybe file size when reading source files
     [x] h - Fix/refactor/improve padding calculation
@@ -68,7 +75,8 @@
     [ ] n - don't make isolate_single_images consuming
     [ ] RightPadding & ColoredString should take both &str and String
     [ ] cache result of padding length calculations and other improvements
-    [ ] improve performance of parse_dir_contents (150-218 secs for 6000 files)
+    [-] improve performance of parse_dir_contents (150-218 secs for 6000 files)
+        - things are better after using kamadak-rexif (222 secs for 14000 files)
     [x] run clippy
     [ ] single method for printing stats instead of two almost identical?
 
@@ -78,7 +86,7 @@
     [x] d - fix eroare "Access is denied." when running the program a second time and target files exist 
           - the error happens when the target dir exists and attempting to read metadate
     [x] e - run with debug - optional debug printouts
-    [ ] f - handle source path not exists / guard against setting invalid CliArgs values
+    [ ] f - handle source path not exists - use CWD as source default?/ guard against setting invalid CliArgs values
     [ ] g - fix edge cases for moving assorted files ()
     [ ] h - filename padding during dry runs is sometimes bigger
           - should be calculated as max (target_path_len + depth_len)
@@ -94,7 +102,7 @@
 [ ] 7 - Output
     [x] print unknown extensions for skipped files
     [ ] implement Display for Args and print before confirmation
-    [ ] better confirmation
+    [ ] better confirmation?
     [ ] Move operation statuses to map and calculate max header and separator lengths based on them
     [x] colored separator arrows
     [ ] separator arrow color should match file copy status (needs rework of how statuses are returned and colored)
@@ -122,3 +130,4 @@
     [ ] main flows
 
 [ ] 10 - Cleanup
+[ ] 11 - Tests - ???

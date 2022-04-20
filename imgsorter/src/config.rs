@@ -310,7 +310,7 @@ impl Args {
                                             // source directories are found - there's nothing to do without a source
                                             if let Some(source_paths) = get_array_value(folders, "source_dirs", &mut missing_vals) {
                                                 args.set_source_paths(get_paths(source_paths))?;
-                                            // TODO run in CWD??
+                                            // TODO 6f: run in CWD??
                                             } else {
                                                 println!("{}", ColoredString::red(
                                                     format!(
@@ -475,7 +475,7 @@ impl Args {
 
             let new_source_dirs = walk_source_dirs_recursively(&args);
             if new_source_dirs.is_empty() {
-                // TODO replace with Err
+                // TODO 6f: replace with Err
                 panic!("Source folders are empty or don't exist");
             } else {
                 if args.verbose { println!("> Setting {} source folder(s)", new_source_dirs.len()); }

@@ -45,7 +45,7 @@ min_files_per_dir = 2
 #   ·-- (snipped output for 2 files with same status)
 #   └── IMG-20190129.jpg <--- D:\Pics\IMG-20190129.jpg ... file will be copied
 # If this option is missing or set to 0, no truncating will occur
-min_files_before_compacting_output = 3
+min_files_before_compacting_output = 0
 
 # The name of the folder which will hold all files for any given date,
 #   which holds less than or equal the [min_files_per_dir] threshold.

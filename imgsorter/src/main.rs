@@ -803,7 +803,7 @@ fn main() -> Result<(), std::io::Error> {
     // Useful only for dry run statuses
     let source_unique_files = get_source_unique_files(&source_contents, &args);
 
-    // TODO prefilter for Images and Videos only
+    // TODO 5j: prefilter for Images and Videos only
     // Iterate files, read modified date and create subdirs
     // Copy images and videos to subdirs based on modified date
     let time_parsing_files = Instant::now();
@@ -1242,7 +1242,7 @@ fn process_target_dir_files(
 
             // Create subdir path
             if !is_dry_run {
-                // TODO separate Date from Device dirs
+                // TODO 7?: separate Date from Device dirs
                 create_subdir_if_required(&device_destination_path, args, &mut stats);
             }
 
@@ -1692,7 +1692,7 @@ fn create_subdir_if_required(target_subdir: &Path, args: &Args, stats: &mut File
     } else {
         match fs::create_dir_all(target_subdir) {
             Ok(_) => {
-                // TODO separate Date from Device dirs
+                // TODO 7?: separate Date from Device dirs
                 stats.inc_dir_total_by_type(&DirType::Date);
                 println!();
                 println!("{}",
@@ -1740,7 +1740,7 @@ fn get_file_type(extension_opt: &Option<String>, args: &Args) -> FileType {
         Some(extension) => {
             match extension.to_lowercase().as_str() {
                 // "Supported" extensions
-                "jpg" | "jpeg" | "png" | "tiff" | "crw" | "nef" =>
+                "jpg" | "jpeg" | "png" | "tiff" | "crw" | "nef" | "heic" =>
                     FileType::Image,
                 "mp4" | "mov" | "3gp" | "avi" =>
                     FileType::Video,
