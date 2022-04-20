@@ -112,7 +112,7 @@ impl TargetDateDeviceTree {
 
             let all_files_unique: HashSet<&OsString> = HashSet::from_iter(all_files_names.iter());
             let all_files_count = all_files_unique.len();
-            all_files_count <= args.min_files_per_dir as usize
+            all_files_count < args.min_files_per_dir as usize
         };
 
         let has_oneoff_files = |device_tree: &DeviceTree| {

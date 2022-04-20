@@ -22,13 +22,14 @@ source_dirs = [
 # If this option is missing, the directory from which the program is launched will be used.
 target_dir = 'D:\Temp\New folder test remove - Copy'
 
-# There must be more than this number of files for any given date
-#   for a dedicated device subfolder to be created. Otherwise, a separate
+# There must be at least this number of files for any given date
+#   for a dedicated target date folder to be created. Otherwise, a separate
 #   single folder will be created to hold all these files ("one-offs") together.
+# This doesn't apply to target date folders which will contain images from at least two devices.
 # See also the target_oneoffs_subdir_name option.
-# Setting it to 0 will effectively disable this functionality
+# Setting it to 0 or 1 will effectively disable this functionality
 # If this option is missing, the default "1" will be used.
-min_files_per_dir = 1
+min_files_per_dir = 2
 
 # When sorting a large number of files, set this property to a number
 #  higher than zero to print a more compact output during dry runs.
