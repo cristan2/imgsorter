@@ -4,8 +4,9 @@
 
 [folders]
 
-# This are the folders where the images to be sorted are located.
-# If this option is missing, the directory from which the program is launched will be used.
+# (MANDATORY)
+# This are the folders where the images and other files to be sorted are located.
+# If this option is missing, the program will exit.
 # See also option `source_recursive`:
 # - if it is true, then all folders contained within these folders will also be read
 # - if it is false or missing, all subfolders will be ignored
@@ -77,7 +78,9 @@ verbose = false
 align_file_output = true
 
 # Whether to read any subfolders in the source folders.
-# This will progressively read all subfolders, including subfolders of subfolders.
+# If this is true, the program will successively read all subfolders
+#  inside the configured source folders, including subfolders of subfolders.
+# If this is false, any subfolders inside the configured source folders will be ignored.
 # If this option is missing, the default "false" will be used.
 source_recursive = true
 
@@ -95,7 +98,9 @@ silent = false
 [custom]
 
 # Replace model names of camera as retrieved from EXIF info with
-# custom names for improved clarity, e.g. "Samsung A41" instead of "SM-A415F"
+# custom names for improved clarity. For example, setting a value of
+# 'SM-A415F'="Samsung A41" will cause the resulting directory to be
+# named "Samsung A41" instead of "SM-A415F"
 [custom.devices]
 #'HUAWEI VNS-L21'="Huawei P9 Lite"
 #'SM-A415F'="Samsung A41"

@@ -3,7 +3,6 @@
     [ ] 7? - implement Display for Args and print before confirmation
     [ ] 2? - min_devices_per_dir - similar to min_files_per_dir, but for devices
     [ ] 2? - always create device subdir, even if for single ones
-    [ ] documentation - readme
 
 [ ] 1 - CLI / config file args
     [x] CLI or config file?
@@ -126,6 +125,7 @@
     [ ] more comments and examples for Padder methods + rearrange more logically
 
 [ ] 9 - Docs
+    [x] readme
     [ ] explain statistics info
     [ ] main flows
 
