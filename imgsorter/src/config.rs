@@ -10,6 +10,7 @@ use toml::*;
 
 // Config defaults
 const DEFAULT_MIN_COUNT: i64 = 1;
+const DEFAULT_ALWAYS_CREATE_DEVICE_DIR: bool = false;
 const DEFAULT_COMPACTING_MIN_COUNT: usize = 0;
 const DEFAULT_COPY: bool = true;
 const DEFAULT_SILENT: bool = false;
@@ -26,6 +27,7 @@ pub const AUDIO: &str = "audio";
 // Unexposed defaults
 const DBG_ON: bool = false;
 const DEFAULT_TARGET_SUBDIR: &str = "imgsorted";
+pub const DEFAULT_UNKNOWN_DEVICE_DIR_NAME: &str = "Unknown";
 pub const DEFAULT_NO_DATE_STR: &str = "no date";
 pub const DATE_DIR_FORMAT: &str = "%Y.%m.%d";
 
@@ -49,6 +51,9 @@ pub struct Args {
     /// The minimum number of files with the same date necessary
     /// for a dedicated subdir to be created
     pub min_files_per_dir: i64,
+
+    /// Always create device subdirs, even if there's only a single one
+    pub always_create_device_subdirs: bool,
 
     /// When doing a dry run, omit output for files with the same
     /// status if exceeding this threshold to save visual space
@@ -108,6 +113,7 @@ impl Args {
             target_dir: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
             source_recursive: DEFAULT_SOURCE_RECURSIVE,
             min_files_per_dir: DEFAULT_MIN_COUNT,
+            always_create_device_subdirs: DEFAULT_ALWAYS_CREATE_DEVICE_DIR,
             compacting_threshold: DEFAULT_COMPACTING_MIN_COUNT,
             oneoffs_dir_name: String::from(DEFAULT_ONEOFFS_DIR_NAME),
             cwd,
@@ -379,6 +385,10 @@ impl Args {
 
                                             if let Some(align_file_output) = get_boolean_value(options, "align_file_output", &mut missing_vals) {
                                                 args.align_file_output = align_file_output;
+                                            }
+
+                                            if let Some(always_create_device_subdirs) = get_boolean_value(options, "always_create_device_subdirs", &mut missing_vals) {
+                                                args.always_create_device_subdirs = always_create_device_subdirs;
                                             }
 
                                             if let Some(copy_not_move) = get_boolean_value(options, "copy_not_move", &mut missing_vals) {

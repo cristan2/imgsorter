@@ -617,7 +617,7 @@ pub struct SupportedFile {
 
 // TODO 5e: find better name
 impl SupportedFile {
-    pub fn parse_from(dir_entry: DirEntry, source_dir_index: usize, args: &Args) -> SupportedFile {
+    pub fn parse_from(dir_entry: DirEntry, source_dir_index: usize, args: &mut Args) -> SupportedFile {
         let extension = get_extension(&dir_entry);
         let file_type = get_file_type(&extension, args);
         let metadata = dir_entry.metadata().unwrap();
@@ -642,13 +642,17 @@ impl SupportedFile {
 
         // Replace EXIF camera model with a custom name, if one was defined in config
         let device_name: DirEntryType = match exif_data.camera_model {
-            Some(camera_model) => args
-                .custom_device_names
-                .get(camera_model.to_lowercase().as_str())
-                .map_or(
-                    DirEntryType::Directory(camera_model),
-                    |custom_camera_name| DirEntryType::Directory(custom_camera_name.clone())),
-            None => DirEntryType::Files,
+            Some(camera_model) =>
+                args
+                    .custom_device_names
+                    .get(camera_model.to_lowercase().as_str())
+                    .map_or(
+                        DirEntryType::Directory(camera_model),
+                        |custom_camera_name| DirEntryType::Directory(custom_camera_name.clone())),
+            None if args.always_create_device_subdirs =>
+                DirEntryType::Directory(DEFAULT_UNKNOWN_DEVICE_DIR_NAME.to_string()),
+            None =>
+                DirEntryType::Files,
         };
 
         SupportedFile {
@@ -1201,7 +1205,7 @@ fn process_target_dir_files(
             // TODO 2g: add more logic to this case and maybe skip copying the file without EXIF info
             let has_double_file = device_count_for_date == 2 && file_count_for_date == 2;
 
-            let do_create_device_subdirs = has_at_least_one_distinct_device && !has_double_file;
+            let do_create_device_subdirs = args.always_create_device_subdirs || has_at_least_one_distinct_device && !has_double_file;
 
             // If there's more than one DirEntryType, attach device dir to destination path
             let device_destination_path = if do_create_device_subdirs {

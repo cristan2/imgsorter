@@ -77,6 +77,11 @@ verbose = false
 # If this option is missing, the default "true" will be used.
 align_file_output = true
 
+# Whether to create a device subfolder even if there only a single one
+#  or when the file's device can't be read (if it's missing or is an unsupported file type)
+# If this option is missing, the default "false" will be used
+always_create_device_subdirs = false
+
 # Whether to read any subfolders in the source folders.
 # If this is true, the program will successively read all subfolders
 #  inside the configured source folders, including subfolders of subfolders.
