@@ -697,7 +697,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut stats = FileStats::new();
 
-    if args.debug {
+    if args.verbose {
         dbg!(&args);
     }
 
@@ -794,7 +794,8 @@ fn main() -> Result<(), std::io::Error> {
                 println!("This is a dry run. No folders will be created. No files will be copied or moved.");
                 args.dry_run = true;
             }
-            ConfirmationType::Proceed => (),
+            ConfirmationType::Proceed =>
+                args.dry_run = false
         }
     }
 

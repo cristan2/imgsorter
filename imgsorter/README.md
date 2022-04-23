@@ -122,3 +122,6 @@ Images are sorted into folders based on their date and, if EXIF data is availabl
 
 ### I know what I'm doing, I don't want to bother confirming every operation
 Fine, just set the configuration key `silent` to `true` and you're good to go. 
+
+### I know what I'm doing, but the configuration file is too messy
+For convenience, there's a second configuration file you can use, `imgsorter_clean.toml`, which contains the same configuration settings as `imgsorter.toml` but without any comments. Just rename this file to `imgsorter.toml` and use it instead (remember to delete or rename the old one first).

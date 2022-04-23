@@ -2,6 +2,10 @@
 # https://github.com/cristan2/rust-utils/tree/master/imgsorter
 # Based on the TOML format: https://toml.io/en/
 
+##########################################################################################
+# FOLDERS
+# These settings allow you to configure the source and target folders for your files
+##########################################################################################
 [folders]
 
 # (MANDATORY)
@@ -11,10 +15,8 @@
 # - if it is true, then all folders contained within these folders will also be read
 # - if it is false or missing, all subfolders will be ignored
 source_dirs = [
-#  'D:\Temp\New folder test remove - Copy',
-  'D:\Temp\New folder test remove - Copy 2',
-  'D:\Temp\New folder test remove - Copy 2 - Copy',
-  'invalid_folder'
+  'path_to_source_folder',
+  'path_to_source_folder_2',
 ]
 
 # The destination folder for the sorted files.
@@ -22,17 +24,17 @@ source_dirs = [
 # If the destination folder exists, a subfolder called "imgsorted" will be created inside and used.
 # If this option is set to an invalid path, the program will try to use it as a folder name to create
 #  inside the folder from which the program is launched
-# If this option is missing, the folder from which the program is launched will be used.
-target_dir = 'D:\Temp\New folder test remove - Copy'
+# If this option is missing or empty, the folder from which the program is launched will be used.
+target_dir = ''
 
 # There must be at least this number of files for any given date
-#   for a dedicated target date folder to be created. Otherwise, a separate
-#   single folder will be created to hold all these files ("one-offs") together.
+#  for a dedicated target date folder to be created. Otherwise, a separate
+#  single folder will be created to hold all these files ("one-offs") together.
 # This doesn't apply to target date folders which will contain images from at least two devices.
 # See also the target_oneoffs_subdir_name option.
 # Setting it to 0 or 1 will effectively disable this functionality
 # If this option is missing, the default "1" will be used.
-min_files_per_dir = 2
+min_files_per_dir = 1
 
 # When sorting a large number of files, set this property to a number
 #  higher than zero to print a more compact output during dry runs.
@@ -55,13 +57,19 @@ min_files_before_compacting_output = 0
 # If this option is missing, the default 'Miscellaneous' will be used.
 target_oneoffs_subdir_name = 'Miscellaneous'
 
+##########################################################################################
+# Options
+# These settings allow you to toggle various options for the behaviour of the program
+##########################################################################################
 [options]
 
 # Whether to do a simulation of the process, without writing any files.
 # This will display additional information, like the resulting dir structure,
 #   including the total number of devices, files and file size.
-# If this option is missing, the default "false" will be used.
-dry_run = false
+# Normally, you can set this option interactively when the program asks for confirmation
+# This value here only takes effect when enabling the `silent` option (see below)
+# If this option is missing, the default "true" will be used.
+dry_run = true
 
 # Whether to print additional information during processing
 verbose = false
@@ -88,7 +96,7 @@ always_create_device_subdirs = false
 # If this is true, the program will successively read all subfolders
 #  inside the configured source folders, including subfolders of subfolders.
 # If this is false, any subfolders inside the configured source folders will be ignored.
-# If this option is missing, the default "false" will be used.
+# If this option is missing, the default "true" will be used.
 source_recursive = true
 
 # Whether to also read device Make information from EXIF in addition to the device name (which is always read)
@@ -101,6 +109,7 @@ include_device_make = true
 # If this option is true or missing, files will be *copied* to
 #  the destination and the source files will be left untouched.
 # If this option is false, files are copied to the destination then DELETED from the source.
+# If this option is missing, the default "true" will be used.
 copy_not_move = true
 
 # Whether to ask for user confirmation before processing files.
@@ -108,6 +117,10 @@ copy_not_move = true
 # !! Be careful when using this when "copy_no_move" is true, as files will be moved without confirmation.
 silent = false
 
+##########################################################################################
+# CUSTOMIZE
+# These settings allow you to customize the inputs or outputs of the program
+##########################################################################################
 [custom]
 
 # Replace device names as retrieved from EXIF info where available
@@ -116,14 +129,13 @@ silent = false
 # For example, setting a value of 'Samsung SM-A415F'="Maria's phone"
 #  will create a folder named "Maria's phone" instead of "Samsung SM-A415F"
 [custom.devices]
-#'HUAWEI VNS-L21'="Huawei P9 Lite"
-#'Samsung SM-A415F'="Maria's phone"
-#'SM-A415F'="Samsung A41"
+#'make model'="Custom Name"
+#'SM-A415F'="Maria's phone"
 
 # Additional file extensions to be recognized and processed
 # Note: these are not supported and only basic metadata
 # will be available (i.e. modified date)
 [custom.extensions]
-image = [ ]
+image = [ "psd", "gif" ]
 video = [ ]
-audio = [ "m4a" ]
+audio = [ ]

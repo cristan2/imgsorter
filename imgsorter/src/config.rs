@@ -14,10 +14,10 @@ const DEFAULT_ALWAYS_CREATE_DEVICE_DIR: bool = false;
 const DEFAULT_COMPACTING_MIN_COUNT: usize = 0;
 const DEFAULT_COPY: bool = true;
 const DEFAULT_SILENT: bool = false;
-const DEFAULT_DRY_RUN: bool = false;
+const DEFAULT_DRY_RUN: bool = true;
 const DEFAULT_VERBOSE: bool = false;
 const DEFAULT_ALIGN_OUTPUT: bool = true;
-const DEFAULT_SOURCE_RECURSIVE: bool = false;
+const DEFAULT_SOURCE_RECURSIVE: bool = true;
 const DEFAULT_INCLUDE_DEVICE_MAKE: bool = true;
 static DEFAULT_ONEOFFS_DIR_NAME: &str = "Miscellaneous";
 

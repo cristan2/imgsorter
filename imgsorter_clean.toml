@@ -1,0 +1,37 @@
+# Configuration file for imgsorter
+# https://github.com/cristan2/rust-utils/tree/master/imgsorter
+# Based on the TOML format: https://toml.io/en/
+
+# This is a compact version of `imgsorter.toml`
+# It contains the same configuration settings, only without any comments
+
+[folders]
+# (MANDATORY)
+source_dirs = [
+  'path_to_source_folder',
+  'path_to_source_folder_2',
+]
+target_dir = ''
+min_files_per_dir = 1
+min_files_before_compacting_output = 0
+target_oneoffs_subdir_name = 'Miscellaneous'
+
+[options]
+dry_run = true
+verbose = false
+align_file_output = true
+always_create_device_subdirs = false
+source_recursive = true
+include_device_make = true
+copy_not_move = true
+silent = false
+
+[custom]
+
+[custom.devices]
+#'make model'="Custom Name"
+
+[custom.extensions]
+image = [ "psd", "gif" ]
+video = [ ]
+audio = [ ]
