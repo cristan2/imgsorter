@@ -89,6 +89,12 @@ always_create_device_subdirs = false
 # If this option is missing, the default "false" will be used.
 source_recursive = true
 
+# Whether to also read device Make information from EXIF in addition to the device name (which is always read)
+# from supported files. The device make will pe prepended to the device name
+#   e.g. "Samsung SM-A415F", where Samsung is the Make, and SM-A415F is the Model
+# If this option is missing, the default "true" will be used.
+include_device_make = true
+
 # Whether files are copied instead of moved to the destination folder.
 # If this option is true or missing, files will be *copied* to
 #  the destination and the source files will be left untouched.
@@ -102,12 +108,14 @@ silent = false
 
 [custom]
 
-# Replace model names of camera as retrieved from EXIF info with
-# custom names for improved clarity. For example, setting a value of
-# 'SM-A415F'="Samsung A41" will cause the resulting directory to be
-# named "Samsung A41" instead of "SM-A415F"
+# Replace device names as retrieved from EXIF info where available
+#  (camera model prepended by camera make if `include_device_make` is true)
+#  with custom names for better clarity.
+# For example, setting a value of 'Samsung SM-A415F'="Maria's phone"
+#  will create a folder named "Maria's phone" instead of "Samsung SM-A415F"
 [custom.devices]
 #'HUAWEI VNS-L21'="Huawei P9 Lite"
+#'Samsung SM-A415F'="Maria's phone"
 #'SM-A415F'="Samsung A41"
 
 # Additional file extensions to be recognized and processed

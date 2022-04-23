@@ -18,6 +18,7 @@ const DEFAULT_DRY_RUN: bool = false;
 const DEFAULT_VERBOSE: bool = false;
 const DEFAULT_ALIGN_OUTPUT: bool = true;
 const DEFAULT_SOURCE_RECURSIVE: bool = false;
+const DEFAULT_INCLUDE_DEVICE_MAKE: bool = true;
 static DEFAULT_ONEOFFS_DIR_NAME: &str = "Miscellaneous";
 
 pub const IMAGE: &str = "image";
@@ -87,6 +88,9 @@ pub struct Args {
     /// Not exposed in config, for dev-only
     pub debug: bool,
 
+    /// Whether to also include device Make in addition to the device name
+    pub include_device_make: bool,
+
     /// EXIF-retrieved names of device models can be replaced with custom names
     /// for improved clarity, e.g. "Samsung A41" instead of "SM-A415F"
     /// This is a simple mapping from device name to custom name.
@@ -123,6 +127,7 @@ impl Args {
             verbose: DEFAULT_VERBOSE,
             align_file_output: DEFAULT_ALIGN_OUTPUT,
             debug: DBG_ON,
+            include_device_make: DEFAULT_INCLUDE_DEVICE_MAKE,
             custom_device_names: HashMap::new(),
             custom_extensions,
         })
@@ -385,6 +390,10 @@ impl Args {
 
                                             if let Some(align_file_output) = get_boolean_value(options, "align_file_output", &mut missing_vals) {
                                                 args.align_file_output = align_file_output;
+                                            }
+
+                                            if let Some(include_device_make) = get_boolean_value(options, "include_device_make", &mut missing_vals) {
+                                                args.include_device_make = include_device_make;
                                             }
 
                                             if let Some(always_create_device_subdirs) = get_boolean_value(options, "always_create_device_subdirs", &mut missing_vals) {

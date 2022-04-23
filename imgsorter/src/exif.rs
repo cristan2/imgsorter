@@ -17,6 +17,7 @@ const KAMADAK_EXIF_DATE_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 #[derive(Debug)]
 pub struct ExifDateDevice {
     pub date: Option<String>,
+    pub camera_make: Option<String>,
     pub camera_model: Option<String>,
 }
 
@@ -24,8 +25,34 @@ impl ExifDateDevice {
     pub fn new() -> ExifDateDevice {
         ExifDateDevice {
             date: None,
+            camera_make: None,
             camera_model: None,
         }
+    }
+
+    // Compose the device name based on the device make and model
+    // If include_make is false, just return the model
+    // Otherwise, make return a composite of "make model",
+    // unless the model already starts with the make name,
+    // e.g. "HUAWEI HUAWEI CAN-L11" should return "HUAWEI CAN-L11"
+    pub fn get_device_name(&self, include_make: bool) -> Option<String> {
+        self.camera_model
+            .as_ref()
+            .map(|camera_model| {
+                if include_make {
+                    self.camera_make.as_ref().map_or_else(
+                        || camera_model.clone(),
+                    |camera_make| {
+                        if camera_model.to_lowercase().starts_with(&camera_make.to_lowercase()) {
+                            camera_model.clone()
+                        } else {
+                            format!("{} {}", &camera_make, camera_model)
+                        }
+                    })
+                } else {
+                    camera_model.clone()
+                }
+            })
     }
 }
 
@@ -56,6 +83,7 @@ fn parse_exif_date(exif_date_str: String, exif_date_format: &str, args: &Args) -
 pub fn read_exif_date_and_device(file: &DirEntry, args: &Args) -> ExifDateDevice {
     let mut exif_data = ExifDateDevice {
         date: None,
+        camera_make: None,
         camera_model: None,
     };
 
@@ -77,6 +105,12 @@ pub fn read_exif_date_and_device(file: &DirEntry, args: &Args) -> ExifDateDevice
                     ExifTag::Model => {
                         let tag_value = exif_entry.value.to_string().trim().to_string();
                         exif_data.camera_model = Some(tag_value)
+                    }
+
+                    // Camera model
+                    ExifTag::Make => {
+                        let tag_value = exif_entry.value.to_string().trim().to_string();
+                        exif_data.camera_make = Some(tag_value)
                     }
 
                     // Comments based on https://feedback-readonly.photoshop.com/conversations/lightroom-classic/date-time-digitized-and-date-time-differ-from-date-modified-and-date-created/5f5f45ba4b561a3d425c6f77
@@ -144,6 +178,7 @@ fn read_exif<P: AsRef<Path>>(file_name: P) -> ExifResult {
 pub fn read_kamadak_exif_date_and_device(file: &DirEntry, args: &Args) -> ExifDateDevice {
     let mut exif_date_device = ExifDateDevice {
         date: None,
+        camera_make: None,
         camera_model: None,
     };
 
@@ -153,12 +188,37 @@ pub fn read_kamadak_exif_date_and_device(file: &DirEntry, args: &Args) -> ExifDa
         return exif_date_device;
     }
 
+    // Some models are retrieved with extra characters which require removal
+    // e.g.: "HUAWEI CAN-L11", ""
+    // e.g.: "ALLVIEW P5 camera              "  // <-- yes, lots of extra spaces
+    fn clean_device_model_or_make(device_str: &String) -> String {
+        device_str
+            .replace("\"", "")
+            .replace(",", "")
+            .trim()
+            .to_string()
+    }
+
     match read_kamadak_exif(file.path()) {
         Ok(exif) => {
-            // Camera model
+
+            exif_date_device.camera_make = exif
+                .get_field(Tag::Make, In::PRIMARY)
+                .map(|camera_make|{
+                    let original_make_str = camera_make.display_value().to_string();
+                    let trimmed_make = clean_device_model_or_make(&original_make_str);
+                    if args.debug {
+                        println!("make: '{}' -> '{}'", original_make_str, &trimmed_make);
+                    }
+                    clean_device_model_or_make(&trimmed_make)
+                });
+
             if let Some(camera_model) = exif.get_field(Tag::Model, In::PRIMARY) {
                 let original_model_str = camera_model.display_value().to_string();
-                let trimmed_model = original_model_str.replace("\"", "");
+                let trimmed_model = clean_device_model_or_make(&original_model_str);
+                if args.debug {
+                    println!("model: '{}' -> '{}'", original_model_str, &trimmed_model);
+                }
                 exif_date_device.camera_model = Some(trimmed_model);
             };
 

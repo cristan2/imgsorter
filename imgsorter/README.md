@@ -62,7 +62,7 @@ Next, you can inspect the options available in `imgsorter.toml` to customize dif
 * Options can only be set by editing the `imgsorter.toml` configuration file
 * File date for supported images is based on the EXIF 'DateTimeOriginal' or 'DateTime' properties
 * File date for other files is based on the "modified date" file property
-* Device name for supported images is based solely on the EXIF `Model` property (ignore `Make`) for simplicity
+* Device names are created based on the EXIF `Make` and `Model` properties, where available
 * Target directory for supported images is a subdirectory inside the date directory named after the device name (based on EXIF)
 * Target directory for other files is inside the root of the date file
 * Will **not** overwrite target files if they exist. There's no option currently to toggle this behaviour

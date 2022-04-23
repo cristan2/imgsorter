@@ -633,26 +633,26 @@ impl SupportedFile {
             _ => ExifDateDevice::new(),
         };
 
-        // Read image date - prefer EXIF tags over system date
-        let date_str = {
-            exif_data.date
-                .unwrap_or_else(|| get_system_modified_date(&metadata)
-                    .unwrap_or_else(|| DEFAULT_NO_DATE_STR.to_string()))
-        };
-
         // Replace EXIF camera model with a custom name, if one was defined in config
-        let device_name: DirEntryType = match exif_data.camera_model {
+        let device_name: DirEntryType = match &exif_data.get_device_name(args.include_device_make) {
             Some(camera_model) =>
                 args
                     .custom_device_names
                     .get(camera_model.to_lowercase().as_str())
                     .map_or(
-                        DirEntryType::Directory(camera_model),
+                        DirEntryType::Directory(camera_model.clone()),
                         |custom_camera_name| DirEntryType::Directory(custom_camera_name.clone())),
             None if args.always_create_device_subdirs =>
                 DirEntryType::Directory(DEFAULT_UNKNOWN_DEVICE_DIR_NAME.to_string()),
             None =>
                 DirEntryType::Files,
+        };
+
+        // Read image date - prefer EXIF tags over system date
+        let date_str = {
+            exif_data.date
+                .unwrap_or_else(|| get_system_modified_date(&metadata)
+                    .unwrap_or_else(|| DEFAULT_NO_DATE_STR.to_string()))
         };
 
         SupportedFile {
