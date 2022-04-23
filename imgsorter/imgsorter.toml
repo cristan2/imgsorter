@@ -20,7 +20,9 @@ source_dirs = [
 # The destination folder for the sorted files.
 # If the destination folder does not exist, it will be created.
 # If the destination folder exists, a subfolder called "imgsorted" will be created inside and used.
-# If this option is missing, the directory from which the program is launched will be used.
+# If this option is set to an invalid path, the program will try to use it as a folder name to create
+#  inside the folder from which the program is launched
+# If this option is missing, the folder from which the program is launched will be used.
 target_dir = 'D:\Temp\New folder test remove - Copy'
 
 # There must be at least this number of files for any given date

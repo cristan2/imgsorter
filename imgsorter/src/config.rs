@@ -322,21 +322,43 @@ impl Args {
                                 match toml_content.get("folders") {
                                     Some(folders_opt) => {
                                         if let Some(folders) = folders_opt.as_table() {
-                                            // args.set_source_paths will return an error and we exit if no valid
-                                            // source directories are found - there's nothing to do without a source
-                                            if let Some(source_paths) = get_array_value(folders, "source_dirs", &mut missing_vals) {
-                                                args.set_source_paths(get_paths(source_paths))?;
-                                            // TODO 6f: run in CWD??
-                                            } else {
-                                                println!("{}", ColoredString::red(
+
+                                            fn print_source_folders_help() {
+                                                println!("{}",
                                                     format!(
-                                                       "Config file has no valid source folders!\n{}\n{}\n{}\n{}\n{}",
-                                                       "Edit imgsorter.toml and add the following lines, filling in valid paths:",
-                                                       "source_dirs = [",
-                                                       "  'D:\\Example dir\\Pictures',",
-                                                       "  'E:\\My dir\\Pictures',",
-                                                       "]").as_str()));
-                                                return Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+                                                        "{}\n{}\n{}\n{}\n{}",
+                                                        "Edit imgsorter.toml and add valid source folders like in this example:",
+                                                        "source_dirs = [",
+                                                        "  'D:\\Example dir\\Pictures',",
+                                                        "  'E:\\My dir\\Pictures',",
+                                                        "]"));
+                                            }
+
+                                            // If no valid source paths are found, use current working directory and print a red warning
+                                            // otherwise, use whatever sources are valid and print a yellow warning for the rest
+                                            if let Some(source_paths) = get_array_value(folders, "source_dirs", &mut missing_vals) {
+                                                match args.set_source_paths(get_paths(source_paths)) {
+                                                    Err(all_invalid_sources) => {
+                                                        println!("{}", ColoredString::red(
+                                                            format!(
+                                                                "All source folders are invalid!\n> {}",
+                                                                all_invalid_sources).as_str()));
+                                                        print_source_folders_help();
+                                                        println!("Using current working directory for now: {}", args.source_dir[0].display());
+                                                    }
+                                                    Ok(Some(invalid_folders)) => {
+                                                        println!("{}", ColoredString::orange(
+                                                            format!(
+                                                                "> Some source folders were invalid and were ignored:\n  {}",
+                                                                invalid_folders).as_str()));
+                                                        print_source_folders_help()
+                                                    },
+                                                    Ok(None) => ()
+                                                }
+                                            } else {
+                                                println!("{}", ColoredString::red("No source folders found!"));
+                                                print_source_folders_help();
+                                                println!("Using current working directory for now: {}", args.source_dir[0].display());
                                             }
 
                                             // Not exposed in config; use for dev only
@@ -499,7 +521,7 @@ impl Args {
 
             let new_source_dirs = walk_source_dirs_recursively(&args);
             if new_source_dirs.is_empty() {
-                // TODO 6f: replace with Err
+                // TODO 6f: can this happen anymore?
                 panic!("Source folders are empty or don't exist");
             } else {
                 if args.verbose { println!("> Setting {} source folder(s)", new_source_dirs.len()); }
@@ -541,7 +563,7 @@ impl Args {
     //     self
     // }
 
-    fn set_source_paths(&mut self, sources: Vec<PathBuf>) -> Result<(), std::io::Error> {
+    fn set_source_paths(&mut self, sources: Vec<PathBuf>) -> Result<Option<String>, String> {
         let (valid_paths, invalid_paths): (Vec<PathBuf>, Vec<PathBuf>) =
             sources.into_iter().partition(|path| path.exists());
 
@@ -552,20 +574,14 @@ impl Args {
             .join("\n  ");
 
         if valid_paths.is_empty() {
-            println!("{}", ColoredString::red(
-                format!(
-                    "Invalid source folders!\n> {}",
-                    list_of_invalid).as_str()));
-            Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+            Err(list_of_invalid)
         } else {
-            if !list_of_invalid.is_empty() {
-                println!("{}", ColoredString::orange(
-                    format!(
-                        "> Some source folders were invalid and were ignored:\n  {}",
-                        list_of_invalid).as_str()));
-            }
             self.source_dir = valid_paths;
-            Ok(())
+            if !list_of_invalid.is_empty() {
+                Ok(Some(list_of_invalid))
+            } else {
+                Ok(None)
+            }
         }
     }
 

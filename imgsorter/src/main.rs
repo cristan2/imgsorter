@@ -1716,7 +1716,14 @@ fn create_subdir_if_required(target_subdir: &Path, args: &Args, stats: &mut File
                 println!("{}",
                          ColoredString::bold_white(
                              format!("[Created folder {}]",
-                            target_subdir.strip_prefix(&args.target_dir).unwrap().display()).as_str()));
+                                 if args.verbose {
+                                     // This was just created successfully, so unwrap should be safe
+                                     let canonical_path = target_subdir.canonicalize().unwrap();
+                                     canonical_path.display().to_string()
+                                 } else {
+                                     target_subdir.strip_prefix(&args.target_dir).unwrap().display().to_string()
+                                 }
+                            ).as_str()));
             },
             Err(e) => {
                 // TODO 2f: handle dir creation fail?
