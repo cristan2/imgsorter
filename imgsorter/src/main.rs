@@ -640,8 +640,12 @@ impl SupportedFile {
                     .custom_device_names
                     .get(camera_model.to_lowercase().as_str())
                     .map_or(
-                        DirEntryType::Directory(camera_model.clone()),
-                        |custom_camera_name| DirEntryType::Directory(custom_camera_name.clone())),
+                        {
+                            args.non_custom_device_names.insert(camera_model.clone());
+                            DirEntryType::Directory(camera_model.clone())
+                        },
+                        |custom_camera_name| DirEntryType::Directory(custom_camera_name.clone())
+                    ),
             None if args.always_create_device_subdirs =>
                 DirEntryType::Directory(DEFAULT_UNKNOWN_DEVICE_DIR_NAME.to_string()),
             None =>
@@ -811,7 +815,7 @@ fn main() -> Result<(), std::io::Error> {
     // Iterate files, read modified date and create subdirs
     // Copy images and videos to subdirs based on modified date
     let time_parsing_files = Instant::now();
-    let mut target_dir_tree = parse_dir_contents(source_contents, &args, &mut stats, &mut padder);
+    let mut target_dir_tree = parse_dir_contents(source_contents, &mut args, &mut stats, &mut padder);
 
     stats.set_time_parse_files(time_parsing_files.elapsed());
 
@@ -838,7 +842,17 @@ fn main() -> Result<(), std::io::Error> {
         println!("Skipped files with these unknown extensions: {}",
                  target_dir_tree.unknown_extensions
                      .into_iter()
-                     .filter(|s|!s.is_empty())
+                     .map(|s|format!("'{}'", s))
+                     .collect::<Vec<String>>().join(", "));
+        println!();
+    }
+
+    // Print unknown extensions
+    if !args.non_custom_device_names.is_empty() {
+        println!("Device models with non-custom names: {}",
+                 args.non_custom_device_names
+                     .iter()
+                     .map(|s|format!("'{}'", s))
                      .collect::<Vec<String>>().join(", "));
         println!();
     }
@@ -932,7 +946,7 @@ fn read_supported_files(
 /// Read directory and parse contents into supported data models
 fn parse_dir_contents(
     source_dir_contents: Vec<Vec<DirEntry>>,
-    args: &Args,
+    args: &mut Args,
     stats: &mut FileStats,
     padder: &mut Padder,
 ) -> TargetDateDeviceTree {

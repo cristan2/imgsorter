@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::DirEntry;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -97,6 +97,10 @@ pub struct Args {
     /// Keys should always be stored in lowercase for case-insensitive retrieval
     pub custom_device_names: HashMap<String, String>,
 
+    /// This is not user-provided, it's used during parsing to build a set of
+    /// "raw" device names, i.e. those that do not have a custom name defined
+    pub non_custom_device_names: HashSet<String>,
+
     /// User-defined extensions for files to be processed which otherwise the program would skip
     pub custom_extensions: HashMap<String, Vec<String>>,
 }
@@ -129,6 +133,7 @@ impl Args {
             debug: DBG_ON,
             include_device_make: DEFAULT_INCLUDE_DEVICE_MAKE,
             custom_device_names: HashMap::new(),
+            non_custom_device_names: HashSet::new(),
             custom_extensions,
         })
     }
