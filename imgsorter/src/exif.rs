@@ -43,6 +43,7 @@ impl ExifDateDevice {
                     self.camera_make.as_ref().map_or_else(
                         || camera_model.clone(),
                     |camera_make| {
+                        // Only include the camera make if the model doesn't already contain it
                         if camera_model.to_lowercase().starts_with(&camera_make.to_lowercase()) {
                             camera_model.clone()
                         } else {

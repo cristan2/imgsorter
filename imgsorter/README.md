@@ -1,6 +1,6 @@
 # imgsorter
 
-Read image, video and audio files in a directory and copy or move them to subdirectories based on the file date and possibly the device name.
+Read image, video and audio files in a folder and copy or move them to subfolders based on the file date and possibly the device name.
 
 Input:
 ```
@@ -45,7 +45,7 @@ Next, you can inspect the options available in `imgsorter.toml` to customize dif
 * Move or copy supported files from the source folders to date subfolders in the target folder 
 * Date subfolders in the target folder are based on the source files' date in 'YYYY-MM-DD' format 
 * The program will ask for confirmation before moving or copying files
-* Option to do a 'dry run' which simulates the process without writing any files or directories
+* Option to do a 'dry run' which simulates the process without writing any files or folders
 
 ## Supported files
 * _"Fully supported"_ means "can read EXIF", meaning file will be copied with accurate info about creation date and device name
@@ -53,24 +53,24 @@ Next, you can inspect the options available in `imgsorter.toml` to customize dif
 * _"Unsupported"_ means file will be ignored
 
 
-* Fully supported files: `jpg`, `png`, `tiff`, `heic`
-* Partially supported image files: `nef`, `crw`
+* Fully supported file formats: `jpg`, `png`, `tiff`, `heic` or `heif`, `webp`, `avif`
+* Partially supported image files: `nef`, `nrw`, `crw`
 * Partially supported video files: `mp4`, `mov`, `3gp`, `avi`
-* Partially supported audio files: `ogg`, `amr`
+* Partially supported audio files: `ogg`, `amr`, "m4a"
 
 ## Notes/limitations
-* Options can only be set by editing the `imgsorter.toml` configuration file
+* Options can only be set by editing the [imgsorter.toml](imgsorter.toml) configuration file
 * File date for supported images is based on the EXIF 'DateTimeOriginal' or 'DateTime' properties
 * File date for other files is based on the "modified date" file property
 * Device names are created based on the EXIF `Make` and `Model` properties, where available
-* Target directory for supported images is a subdirectory inside the date directory named after the device name (based on EXIF)
-* Target directory for other files is inside the root of the date file
+* Target folder for supported images is a subfolder (inside the date folder) named after the device name (based on EXIF)
+* Target folder for other files is inside the root of the date file
 * Will **not** overwrite target files if they exist. There's no option currently to toggle this behaviour
 * Multiple runs on different source dirs with the **same** target dir may result in mixed images from several devices placed in the same folder
 * Unsupported files are ignored and skipped when copying or moving
 
 ## Usage
-### Recommended workflow
+### Example workflow
 * Start by identifying the folder(s) containing the files to be sorted
 * Optionally, pre-filter them manually by selecting all files you don't want to sort by date and device and move them to a different folder (e.g. keep all cat pictures in a single folder, regardless of their date)
 * Edit the source paths in the configuration file
@@ -81,17 +81,20 @@ Next, you can inspect the options available in `imgsorter.toml` to customize dif
   * how many folders will be created
   * how many files will be placed in the Miscellaneous folder
   * if there are many folders with too few files which might be better bunched together in the Miscellaneous folder instead
-* Make the necessary adjustments in the configuration file
-* Do another dry run and inspect the changes to be made
+* Make the necessary adjustments in the configuration file, like for example:
+  * set different limits for minimum files per directory
+  * customize device names
+  * include additional file extensions to be processed
+* Do a second dry run and confirm changes
 * Run the program again and choose 'y' to copy the files
-* Inspect the result and delete the source files manually (or enable the "move" option before)
+* Inspect the result and delete the source files manually (unless you enabled the "copy_not_move" configuration option before)
 * Repeat the process with different source folder(s)
 
 **Note**: the sorting works best if you set all source folders in a single run. If you do several sorting operations with the same target folder, it's possible not all files will be sorted correctly. For instance, images from different devices might be placed together in a single date folder instead of being separated by device. To correct this, once you are finished sorting all your source folders to the same target folder, you can do one last sort operation and set the previous target folder as the source. This way, *all* files will be read and sorted correctly. 
 
 ## FAQ
 ### Is there no other way to configure this program other than editing a configuration file?
-For the moment no, there isn't. Most settings have sensible defaults, but you'll have to at least configure the source folders. You can then read the description for each setting to get a sense of their purpose and what other configuration options you have available.
+Currently, no, there isn't. Most settings have sensible defaults, but you'll have to at least configure the source folders. You can then read the description for each setting in the [configuration file](imgsorter.toml) to get a sense of their purpose and what other configuration options you have available.
 
 ### The program just copies files, how do I **move** them?
 Edit the configuration file and set `copy_not_move` to `true`.

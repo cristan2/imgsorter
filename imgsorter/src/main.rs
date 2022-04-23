@@ -501,7 +501,7 @@ Device folders to create|total: │{devc_d_create}│{devc_d_total}│
 ––––––––––––––––––––––––––––––––––––––––––––––––––––––
 Source folders to skip:         {dir_ignore}
 Unknown files to skip:          {f_skip}
-File delete errors:             {fd_err}
+File delete errors:             n/a
 File create errors:             n/a
 Folder create errors:           n/a
 -----------------------------------------------
@@ -535,8 +535,6 @@ Total time taken:               {t_total} sec
             dir_ignore=FileStats::color_if_non_zero(self.dirs_ignored, Warning),
 
             f_skip=FileStats::color_if_non_zero(self.unknown_skipped, Warning),
-
-            fd_err=FileStats::color_if_non_zero(self.error_file_delete, Error),
 
             tfetch_dir=ColoredString::bold_white(format!("{}:{}",
                 self.time_fetch_dirs.as_secs(),
@@ -712,7 +710,7 @@ fn main() -> Result<(), std::io::Error> {
 
     // TODO 6f: handle path not exists
     // TODO 5g: instead of Vec<Vec<DirEntry>>, return a `SourceDirTree` struct
-    // which wraps the Vec's but contains additional metadata, such as no of files or total size
+    //   which wraps the Vec's but contains additional metadata, such as no of files or total size
     // Read dir contents and filter out error results
     let source_contents = args
         .source_dir
@@ -1210,7 +1208,7 @@ fn process_target_dir_files(
             // This condition helps prevent creating a device subdir for a single file, if there's also
             // a "None" device with a single file. In practice, this is most likely to be a situation where
             // a picture taken with a camera (computed device is Some("device") based on EXIF) is sent
-            // via whatsapp and would end up in a "Sent" folder without EXIF info (computed device is None)
+            // via a messenger app and would end up in a "Sent" folder without EXIF info (computed device is None)
             // Before                 After
             // ------                 -----
             // [date_dir]             [date_dir]
@@ -1765,12 +1763,20 @@ fn get_file_type(extension_opt: &Option<String>, args: &Args) -> FileType {
     match extension_opt {
         Some(extension) => {
             match extension.to_lowercase().as_str() {
-                // "Supported" extensions
-                "jpg" | "jpeg" | "png" | "tiff" | "crw" | "nef" | "heic" =>
+                // "Supported" image extensions
+                "jpg" | "jpeg" | "png" | "tiff" | "heic"| "heif"| "webp" |
+                    // Partially supported image extensions
+                    "crw" | "nef" | "nrw" =>
                     FileType::Image,
-                "mp4" | "mov" | "3gp" | "avi" =>
+
+                // "Supported" video extensions
+                "avif" |
+                    // Partially supported video extensions
+                    "mp4" | "mov" | "3gp" | "avi" =>
                     FileType::Video,
-                "amr" | "ogg" =>
+
+                // Partially supported audio extensions
+                "amr" | "ogg" | "m4a" =>
                     FileType::Audio,
 
                 // User-configured extensions
