@@ -16,6 +16,7 @@
     [ ] arg flag for logfile
     [ ] skip files without EXIF (videos, images from other programs, etc.)?
     [ ] allow configurable target_sorted_subdir_name = 'imgsorted'
+    [ ] include version in code at build time + show version in output
     [x] verbose option - output more info (less than debug)
 
 [ ] 2 - File handling

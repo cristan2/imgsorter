@@ -16,6 +16,9 @@ use imgsorter::exif::*;
 use imgsorter::utils::*;
 use OutputColor::*;
 
+pub const VERSION: &str = "0.1.0";
+
+
 /// Convenience wrapper over a map holding all files for a given device
 /// where the string representation of the optional device is the map key
 struct DeviceTree {
@@ -691,6 +694,11 @@ impl SupportedFile {
 }
 
 fn main() -> Result<(), std::io::Error> {
+
+    println!("───────────────────────────────────────────────────────────────────────────");
+    println!("                             IMGSORTER v{versn}                            ", versn = VERSION);
+    println!("───────────────────────────────────────────────────────────────────────────");
+
     let mut args = Args::new_from_toml("imgsorter.toml")?;
 
     let mut stats = FileStats::new();
