@@ -202,9 +202,14 @@ impl Args {
 
         type TomlMap = toml::map::Map<String, toml::Value>;
 
-        // temporarily store missing keys so we can print them once we've checked all config values
+        // Temporarily store missing keys and other errors so we can print them
+        // once we've checked all config values and determined verbosity option
+        let mut error_messages: Vec<String> = Vec::new();
         let mut missing_vals: Vec<String> = Vec::new();
         let mut invalid_vals: Vec<(String, String)> = Vec::new();
+
+        let (config_file_path, message) = get_config_file_path(config_file);
+        error_messages.push(message);
 
         fn get_boolean_value(toml_table: &TomlMap, key: &str, missing_vals: &mut Vec<String>) -> Option<bool> {
             let bool_opt = toml_table
@@ -310,8 +315,9 @@ impl Args {
             vec_strings.into_iter().map(|s| s.to_lowercase()).collect()
         }
 
-        match fs::read_to_string(config_file) {
+        match fs::read_to_string(&config_file_path) {
             Ok(file_contents) => {
+                println!("Using config file at: {}", &config_file_path.display().to_string());
                 match file_contents.parse::<Value>() {
                     Ok(raw_toml) => {
                         match raw_toml.as_table() {
@@ -326,8 +332,9 @@ impl Args {
                                             fn print_source_folders_help() {
                                                 println!("{}",
                                                     format!(
-                                                        "{}\n{}\n{}\n{}\n{}",
-                                                        "Edit imgsorter.toml and add valid source folders like in this example:",
+                                                        "{}\n{}\n{}\n{}\n{}\n{}",
+                                                        "Edit imgsorter.toml and add valid source folders like this:",
+                                                        "[folders]",
                                                         "source_dirs = [",
                                                         "  'D:\\Example dir\\Pictures',",
                                                         "  'E:\\My dir\\Pictures',",
@@ -495,7 +502,9 @@ impl Args {
             }
             Err(e) => {
                 println!("{}", ColoredString::red(format!(
-                    "Could not read config file {}. Continuing with defaults.", config_file).as_str()));
+                        "Could not read config file at {}. Continuing with defaults.",
+                        &config_file_path.display().to_string())
+                    .as_str()));
                 eprintln!("{}", e);
             }
         };
@@ -613,6 +622,45 @@ impl Args {
 
     pub fn is_compacting_enabled(&self) -> bool {
         self.compacting_threshold > 0
+    }
+}
+
+fn get_config_file_path(config_file_name: &str) -> (PathBuf, String) {
+    let cfg_relative_path = PathBuf::from(config_file_name);
+
+    match get_program_executable_path() {
+        Ok(path) => {
+            let config_path = path.join(config_file_name);
+            if config_path.exists() {
+                let message = format!("Found config file at: {}", &path.display().to_string());
+                (config_path, message)
+            } else {
+                let message = ColoredString::orange(format!(
+                    "Trying relative path. Config file not found at: {}.", &path.display().to_string()).as_str());
+                (cfg_relative_path, message)
+            }
+        }
+        Err(path_reading_err) => {
+            (cfg_relative_path, path_reading_err)
+        }
+    }
+}
+
+fn get_program_executable_path() -> Result<PathBuf, String> {
+    match std::env::current_exe() {
+        Ok(executable_path) => {
+            match executable_path.parent() {
+                Some(path) =>
+                    Ok(path.to_path_buf()),
+                None => {
+                    Err(ColoredString::red("Could not extract program."))
+                }
+            }
+        },
+        Err(e) => {
+            eprintln!("{}", e);
+            Err(ColoredString::red("Could not read path for program executable."))
+        },
     }
 }
 
