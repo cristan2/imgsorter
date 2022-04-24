@@ -7,6 +7,7 @@ use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use std::{fmt, fs, io};
+use std::io::Read;
 
 use chrono::{DateTime, Utc};
 use filesize::PathExt;
@@ -499,7 +500,7 @@ Images to move|copy|skip:       │{p_img_move}│{p_img_copy}│{p_img_skip}│
 Videos to move|copy|skip:       │{p_vid_move}│{p_vid_copy}│{p_vid_skip}│
 Audios to move|copy|skip:       │{p_aud_move}│{p_aud_copy}│{p_aud_skip}│
 ––––––––––––––––––––––––––––––––––––––––––––––––––––––
-Date folders to create|total:   │{date_d_create}│{date_d_total}│
+Date folders   to create|total: │{date_d_create}│{date_d_total}│
 Device folders to create|total: │{devc_d_create}│{devc_d_total}│
 ––––––––––––––––––––––––––––––––––––––––––––––––––––––
 Source folders to skip:         {dir_ignore}
@@ -787,7 +788,7 @@ fn main() -> Result<(), std::io::Error> {
             println!("> This is a dry run. No folders will be created. No files will be copied or moved.");
         }
     } else {
-        match ask_for_confirmation(&args) {
+        match ask_for_op_confirmation(&args) {
             ConfirmationType::Cancel => {
                 println!("Cancelled by user, exiting.");
                 return Ok(());
@@ -866,6 +867,9 @@ fn main() -> Result<(), std::io::Error> {
 
     // Print final stats
     stats.print_stats(&args);
+
+    // Ask user input to prevent console window from closing before reading output
+    ask_for_exit_confirmation();
 
     Ok(())
 }
@@ -1599,7 +1603,7 @@ fn dry_run_check_file_restrictions(
     }
 }
 
-fn ask_for_confirmation(args: &Args) -> ConfirmationType {
+fn ask_for_op_confirmation(args: &Args) -> ConfirmationType {
     println!("{}",
              // TODO 5f: replace '\n' with system newlines
              ColoredString::magenta(
@@ -1627,6 +1631,11 @@ fn ask_for_confirmation(args: &Args) -> ConfirmationType {
             _ => println!("...press one of 'y/yes', 'n/no' or 'd/dry', then Enter"),
         }
     }
+}
+
+fn ask_for_exit_confirmation() {
+    println!("{}", ColoredString::magenta("Press Enter to exit"));
+    io::stdin().read(&mut [0]).unwrap();
 }
 
 fn copy_file_if_not_exists(

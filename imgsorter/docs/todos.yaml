@@ -1,10 +1,11 @@
 [ ] 0 - Prio
+    [ ] 1? - build/package (github action to include binary in release?) + version
     [-] 3e - 'dirs created' stat - differentiate between "date dirs" and "device dirs"
     [ ] 7? - implement Display for Args and print before confirmation
     [ ] 2? - min_devices_per_dir - similar to min_files_per_dir, but for devices
-    [ ] 2? - always create device subdir, even if for single ones
+    [ ] - Reading source files - progress info for non-verbose
 
-[ ] 1 - CLI / config file args
+[ ] 1 - Program / CLI / config file args
     [x] CLI or config file?
     [x] a - arg for paths
     [x] b - arg for min file count required to create date dir (i.e. avoid 1-image dirs)
@@ -18,6 +19,11 @@
     [ ] allow configurable target_sorted_subdir_name = 'imgsorted'
     [ ] include version in code at build time + show version in output
     [x] verbose option - output more info (less than debug)
+    [ ] build/package (including config + readme) and launch window stay open
+    [x] add license
+    [ ] version file + changelog
+    [ ] canonicalize source override input when "."
+    [ ] Args::new_from_toml should not return ? since we're using default values
 
 [ ] 2 - File handling
     [x] a - subdirs by device name
@@ -37,7 +43,6 @@
     [x] don't create device subdirs if only one file per device (even if device count > 1)
     [ ] min_devices_per_dir - similar to min_files_per_dir, but for devices
         - this also overrides images directly in date dir for single devices
-    [ ] always create device subdir, even if for single ones
 
 [ ] 3 - Stats
     [x] a - show in progress statistics

@@ -143,65 +143,15 @@ impl Args {
         })
     }
 
-    // fn new_with_options(
-    //     // Full path from where to read images to be sorted
-    //     source: Option<String>,
-    //     // Subdir inside the CWD from where to read images to be sorted
-    //     // Note: if `source` is provided, this is ignored
-    //     cwd_source_subdir: Option<String>,
-    //     // Full path where the sorted images will be moved
-    //     target: Option<String>,
-    //     source_recursive: Option<bool>,
-    //     // Subdir inside the CWD where the sorted images will be moved
-    //     // Note: if `target` is provided, this is ignored
-    //     cwd_target_subdir: Option<String>,
-    //     min_files: Option<i64>,
-    //     oneoffs_dir_name: Option<String>,
-    //     silent: Option<bool>,
-    //     copy_not_move: Option<bool>,
-    //     dry_run: Option<bool>,
-    //     debug_on: Option<bool>
-    // ) -> Result<Args, std::io::Error> {
-    //
-    //     fn create_path(provided_path: Option<String>, path_subdir: Option<String>, cwd: &PathBuf) -> PathBuf {
-    //         match provided_path {
-    //             // if a full path has been provided, use that
-    //             Some(path) =>
-    //                 PathBuf::from(path),
-    //             // otherwise, use the cwd...
-    //             None => {
-    //                 // but create a subdir if one was provided
-    //                 match path_subdir {
-    //                     Some(subdir) =>
-    //                         cwd.join(subdir),
-    //                     None =>
-    //                         cwd.clone()
-    //                 }
-    //             }
-    //         }
-    //     }
-    //
-    //     let cwd = env::current_dir()?;
-    //
-    //     Ok(
-    //         Args {
-    //             source_dir: vec![create_path(source, cwd_source_subdir, &cwd)],
-    //             target_dir: create_path(
-    //                 target,
-    //                 cwd_target_subdir.or(Some(String::from(DEFAULT_TARGET_SUBDIR))),
-    //                 &cwd),
-    //             source_recursive: source_recursive.unwrap_or(DEFAULT_SOURCE_RECURSIVE),
-    //             min_files_per_dir: min_files.unwrap_or(DEFAULT_MIN_COUNT),
-    //             oneoffs_dir_name: oneoffs_dir_name.unwrap_or(String::from(DEFAULT_ONEOFFS_DIR_NAME)),
-    //             cwd,
-    //             silent: silent.unwrap_or(DEFAULT_SILENT),
-    //             copy_not_move: copy_not_move.unwrap_or(DEFAULT_COPY),
-    //             dry_run: dry_run.unwrap_or(DEFAULT_DRY_RUN),
-    //             debug: debug_on.unwrap_or(DBG_ON),
-    //         }
-    //     )
-    // }
-
+    /// Several ways to launch the program
+    /// - edit registry - use context menu in dir - imgsort current dir - sends current dir as path override
+    /// - add program dir to path - use terminal - navigate to any dir
+    ///   - launch using program name only - uses source in config file
+    ///   - launch using program name and "." - uses current dir as path override
+    ///   - launch using program name and any path - uses that path as path override
+    /// In all cases, config file should be read from the executable location, if present,
+    /// otherwise fallback to relative path, which likely will fall as well (should only work for debug builds in IDE)\
+    /// and will end up not using the config file and just use the preset defaults
     pub fn new_from_toml(config_file: &str) -> Result<Args, std::io::Error> {
         let mut args = Args::new()?;
 
