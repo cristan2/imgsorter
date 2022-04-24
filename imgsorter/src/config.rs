@@ -38,6 +38,10 @@ pub struct Args {
     /// If not provided, the current working dir will be used
     pub source_dir: Vec<PathBuf>,
 
+    /// Set to true only if we received a source_dir from the CLI
+    /// Not exposed in config, only used during config parsing
+    using_cli_source: bool,
+
     /// The directory where the images to be sorted will be moved.
     /// If not provided, the current working dir will be used.
     /// If the target does not exist, it will be created
@@ -118,6 +122,7 @@ impl Args {
 
         Ok(Args {
             source_dir: vec![cwd.clone()],
+            using_cli_source: false,
             target_dir: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
             source_recursive: DEFAULT_SOURCE_RECURSIVE,
             min_files_per_dir: DEFAULT_MIN_COUNT,
@@ -200,16 +205,36 @@ impl Args {
     pub fn new_from_toml(config_file: &str) -> Result<Args, std::io::Error> {
         let mut args = Args::new()?;
 
-        type TomlMap = toml::map::Map<String, toml::Value>;
-
         // Temporarily store missing keys and other errors so we can print them
         // once we've checked all config values and determined verbosity option
-        let mut error_messages: Vec<String> = Vec::new();
+        let mut verbose_messages: Vec<String> = Vec::new();
         let mut missing_vals: Vec<String> = Vec::new();
         let mut invalid_vals: Vec<(String, String)> = Vec::new();
 
         let (config_file_path, message) = get_config_file_path(config_file);
-        error_messages.push(message);
+        verbose_messages.push(message);
+
+        // The program can receive a source path from the CLI, either a path directly provided by user
+        // or the current working directory from the system when launched from the Windows explorer context menu
+        // If we receive this, use it as both the source and target dirs and toggle the [using_cli_source] flag to skip
+        // reading the source and target values from config. Otherwise, do nothing and fallback to config.
+        if let Some(cli_source) = get_cli_source_override() {
+            let cli_src_path = vec![PathBuf::from(cli_source.clone())];
+            match args.set_source_paths(cli_src_path) {
+                Ok(None) => {
+                    println!("Using source path at: {}", &cli_source);
+                    args.set_target_dir(cli_source);
+                    args.using_cli_source = true;
+                }
+                _ => {
+                    let message = ColoredString::orange(format!(
+                        "User provided path is not valid: {}", &cli_source).as_str());
+                    verbose_messages.push(message);
+                }
+            }
+        }
+
+        type TomlMap = toml::map::Map<String, toml::Value>;
 
         fn get_boolean_value(toml_table: &TomlMap, key: &str, missing_vals: &mut Vec<String>) -> Option<bool> {
             let bool_opt = toml_table
@@ -341,46 +366,50 @@ impl Args {
                                                         "]"));
                                             }
 
-                                            // If no valid source paths are found, use current working directory and print a red warning
-                                            // otherwise, use whatever sources are valid and print a yellow warning for the rest
-                                            if let Some(source_paths) = get_array_value(folders, "source_dirs", &mut missing_vals) {
-                                                match args.set_source_paths(get_paths(source_paths)) {
-                                                    Err(all_invalid_sources) => {
-                                                        println!("{}", ColoredString::red(
-                                                            format!(
-                                                                "All source folders are invalid!\n> {}",
-                                                                all_invalid_sources).as_str()));
-                                                        print_source_folders_help();
-                                                        println!("Using current working directory for now: {}", args.source_dir[0].display());
+                                            // Use config source and target paths only if we didn't receive a CLI path override
+                                            if !args.using_cli_source {
+                                                // If no valid source paths are found, use current working directory and print a red warning
+                                                // otherwise, use whatever sources are valid and print a yellow warning for the rest
+                                                if let Some(source_paths) = get_array_value(folders, "source_dirs", &mut missing_vals) {
+                                                    println!("Using source paths from configuration file.");
+                                                    match args.set_source_paths(get_paths(source_paths)) {
+                                                        Err(all_invalid_sources) => {
+                                                            println!("{}", ColoredString::red(
+                                                                format!(
+                                                                    "All source folders are invalid!\n> {}",
+                                                                    all_invalid_sources).as_str()));
+                                                            print_source_folders_help();
+                                                            println!("Using current working directory for now: {}", args.source_dir[0].display());
+                                                        }
+                                                        Ok(Some(invalid_folders)) => {
+                                                            println!("{}", ColoredString::orange(
+                                                                format!(
+                                                                    "> Some source folders were invalid and were ignored:\n  {}",
+                                                                    invalid_folders).as_str()));
+                                                            print_source_folders_help()
+                                                        }
+                                                        Ok(None) => ()
                                                     }
-                                                    Ok(Some(invalid_folders)) => {
-                                                        println!("{}", ColoredString::orange(
-                                                            format!(
-                                                                "> Some source folders were invalid and were ignored:\n  {}",
-                                                                invalid_folders).as_str()));
-                                                        print_source_folders_help()
-                                                    },
-                                                    Ok(None) => ()
+                                                } else {
+                                                    println!("{}", ColoredString::red("No source folders found!"));
+                                                    print_source_folders_help();
+                                                    println!("Using current working directory for now: {}", args.source_dir[0].display());
                                                 }
-                                            } else {
-                                                println!("{}", ColoredString::red("No source folders found!"));
-                                                print_source_folders_help();
-                                                println!("Using current working directory for now: {}", args.source_dir[0].display());
-                                            }
 
-                                            // Not exposed in config; use for dev only
-                                            // source_subdir = 'test_pics'
-                                            if let Some(source_subdir) = get_string_value(folders, "source_subdir", &mut missing_vals) {
-                                                // get_string_value already filters out empty strings, but just to be safe
-                                                if !source_subdir.is_empty() {
-                                                    args.append_source_subdir(source_subdir.as_str());
+                                                // Not exposed in config; use for dev only
+                                                // source_subdir = 'test_pics'
+                                                if let Some(source_subdir) = get_string_value(folders, "source_subdir", &mut missing_vals) {
+                                                    // get_string_value already filters out empty strings, but just to be safe
+                                                    if !source_subdir.is_empty() {
+                                                        args.append_source_subdir(source_subdir.as_str());
+                                                    }
                                                 }
-                                            }
 
-                                            if let Some(target_dir) = get_string_value(folders, "target_dir", &mut missing_vals) {
-                                                // get_string_value already filters out empty strings, but just to be safe
-                                                if !target_dir.is_empty() {
-                                                    args.set_target_dir(target_dir);
+                                                if let Some(target_dir) = get_string_value(folders, "target_dir", &mut missing_vals) {
+                                                    // get_string_value already filters out empty strings, but just to be safe
+                                                    if !target_dir.is_empty() {
+                                                        args.set_target_dir(target_dir);
+                                                    }
                                                 }
                                             }
 
@@ -644,6 +673,14 @@ fn get_config_file_path(config_file_name: &str) -> (PathBuf, String) {
             (cfg_relative_path, path_reading_err)
         }
     }
+}
+
+fn get_cli_source_override() -> Option<String> {
+    let cli_args: Vec<String> = env::args().collect();
+
+    cli_args
+        .get(1)
+        .cloned()
 }
 
 fn get_program_executable_path() -> Result<PathBuf, String> {
