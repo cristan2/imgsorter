@@ -159,17 +159,24 @@ impl TargetDateDeviceTree {
     /// Find the maximum length of the path string that may be present in the output
     /// This can only be computed after the tree has been filled with devices and files
     /// because of the requirement to only create device subdirs if there are at least 2 devices
+    ///   (unless always_create_device_subdirs is true, in which case >1 is ignored)
     /// The resulting value covers two cases:
     /// - there's at least one date dir with >1 device subdirs -> target path length will be formed of `date/device_name`
     /// - there's no date dir with >1 devices -> target path will just include `date`
     /// Note: this must be called AFTER [Self::isolate_single_images()] so that the length of
     /// the oneoffs directory can be taken into account, if present
     fn compute_max_path_len(&mut self, args: &Args) -> usize {
+
+        let has_minimum_required_subdirs = |device_tree: &DeviceTree| {
+            args.always_create_device_subdirs ||
+                device_tree.file_tree.keys().clone().len() > 1
+        };
+
         let max_date_dir_path_len = &self
             .dir_tree
             .iter()
             // filter only date dirs with at least 2 devices
-            .filter(|(_, device_tree)| device_tree.file_tree.keys().clone().len() > 1)
+            .filter(|(_, device_tree)| has_minimum_required_subdirs(device_tree))
             // now search all devices for the max path len
             .map(|(_, device_tree)| device_tree.max_dir_path_len)
             .max();

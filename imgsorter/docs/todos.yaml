@@ -103,6 +103,10 @@
     [x] string padding for dry run
     [x] device_tree.max_dir_path_len ignores the length of oneoffs dir - having a long dir name leads to panic!
     [ ] SupportedFile.extension is never used
+    [x] padding fails when copying and always_create_device_subdirs is true
+    [ ] do_create_device_subdirs in process_target_dir_files() must always match TargetDateDeviceTree.compute_max_path_len
+        - maybe shouldn't have to keep them in sync?
+        - better way to keep them in sync
 
 [ ] 7 - Output
     [x] print unknown extensions for skipped files
