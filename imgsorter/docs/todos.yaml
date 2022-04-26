@@ -1,6 +1,5 @@
 [ ] 0 - Prio
     [ ] 1? - build/package (github action to include binary in release?) + version
-    [-] 3e - 'dirs created' stat - differentiate between "date dirs" and "device dirs"
     [ ] 7? - implement Display for Args and print before confirmation
     [ ] 2? - min_devices_per_dir - similar to min_files_per_dir, but for devices
     [ ] - Reading source files - progress info for non-verbose
@@ -43,6 +42,7 @@
     [x] don't create device subdirs if only one file per device (even if device count > 1)
     [ ] min_devices_per_dir - similar to min_files_per_dir, but for devices
         - this also overrides images directly in date dir for single devices
+    [ ] when moving files, delete empty source folders too
 
 [ ] 3 - Stats
     [x] a - show in progress statistics
@@ -50,8 +50,7 @@
     [!] c - img count in dir name - not feasible, prone to errors; is included in dry run output only
     [ ] d - reenable Stats.time_fetching_dirs
     [x] dry run specific statistics
-    [-] e - 'dirs created' stat - differentiate between "date dirs" and "device dirs"
-          - done for dry runs, write remaining
+    [x] e - 'dirs created' stat - differentiate between "date dirs" and "device dirs"
     [x] table-like stats instead of simple list (e.g. "Images moved/copied/skipped    0 | 10 | 2" )
     [!] don't include move/copy stats for copy/move operations - not doing, it's relevant in case of delete errors
     [x] stats for file size

@@ -284,7 +284,8 @@ pub struct FileStats {
     device_dirs_created: i32,
     error_file_create: i32,
     error_file_delete: i32,
-    error_dir_create: i32,
+    error_date_dir_create: i32,
+    error_device_dir_create: i32,
     time_fetch_dirs: Duration,
     time_parse_files: Duration,
     time_write_files: Duration,
@@ -313,7 +314,8 @@ impl FileStats {
             device_dirs_created: 0,
             error_file_create: 0,
             error_file_delete: 0,
-            error_dir_create: 0,
+            error_date_dir_create: 0,
+            error_device_dir_create: 0,
             time_fetch_dirs: Duration::new(0, 0),
             time_parse_files: Duration::new(0, 0),
             time_write_files: Duration::new(0, 0),
@@ -340,7 +342,8 @@ impl FileStats {
     fn inc_device_dirs_created(&mut self) { self.device_dirs_created += 1 }
     pub fn inc_error_file_create(&mut self) { self.error_file_create += 1 }
     pub fn inc_error_file_delete(&mut self) { self.error_file_delete += 1 }
-    pub fn inc_error_dir_create(&mut self) { self.error_dir_create += 1 }
+    pub fn inc_error_date_dir_create(&mut self) { self.error_date_dir_create += 1 }
+    pub fn inc_error_device_dir_create(&mut self) { self.error_device_dir_create += 1 }
     pub fn set_time_fetch_dirs(&mut self, elapsed: Duration) { self.time_fetch_dirs = elapsed }
     pub fn set_time_parse_files(&mut self, elapsed: Duration) { self.time_parse_files = elapsed }
     pub fn set_time_write_files(&mut self, elapsed: Duration) { self.time_write_files = elapsed }
@@ -357,6 +360,13 @@ impl FileStats {
         match dir {
             DirType::Date => self.inc_date_dirs_created(),
             DirType::Device => self.inc_device_dirs_created(),
+        }
+    }
+
+    pub fn inc_error_dir_create_by_type(&mut self, dir: &DirType) {
+        match dir {
+            DirType::Date => self.inc_error_date_dir_create(),
+            DirType::Device => self.inc_error_device_dir_create(),
         }
     }
 
@@ -440,7 +450,8 @@ Source folders ignored:       {dir_ignore}
 Unknown files skipped:        {f_skip}
 File delete errors:           {fd_err}
 File create errors:           {fc_err}
-Folder create errors:         {dc_err}
+Date folders create errors:   {date_c_err}
+Device folders create errors: {devc_c_err}
 ──────────────────────────────────────────────
 Time fetching folders:        {tfetch_dir} sec
 Time parsing files:           {tparse_file} sec
@@ -475,7 +486,8 @@ Total time taken:             {t_total} sec
 
             fd_err=FileStats::color_if_non_zero(self.error_file_delete, Error),
             fc_err=FileStats::color_if_non_zero(self.error_file_create, Error),
-            dc_err=FileStats::color_if_non_zero(self.error_dir_create, Error),
+            date_c_err=FileStats::color_if_non_zero(self.error_date_dir_create, Error),
+            devc_c_err=FileStats::color_if_non_zero(self.error_device_dir_create, Error),
 
             tfetch_dir=ColoredString::bold_white(format!("{}:{}",
                 self.time_fetch_dirs.as_secs(),
@@ -507,7 +519,8 @@ Source folders to skip:         {dir_ignore}
 Unknown files to skip:          {f_skip}
 File delete errors:             n/a
 File create errors:             n/a
-Folder create errors:           n/a
+Date folders create errors:     n/a
+Device folders create errors:   n/a
 -----------------------------------------------
 Time fetching folders:          {tfetch_dir} sec
 Time parsing files:             {tparse_file} sec
@@ -1173,7 +1186,7 @@ fn process_target_dir_files(
 
             // Check restrictions - if target exists
             let target_dir_exists =
-                dry_run_check_target_dir_exists(&date_destination_path, stats, &DirType::Date);
+                dry_run_check_target_dir_exists(&date_destination_path, &DirType::Date, stats);
 
             // Print everything together
             println!("{}",
@@ -1183,6 +1196,9 @@ fn process_target_dir_files(
                         dir_status=target_dir_exists)
                     .as_str())
             );
+        } else {
+            // Create date subdir
+            create_subdir_if_required(&date_destination_path, &DirType::Date, args, &mut stats);
         }
 
 
@@ -1256,10 +1272,14 @@ fn process_target_dir_files(
 
                     // Check restrictions - if target exists
                     let target_dir_status_check =
-                        dry_run_check_target_dir_exists(&device_path, stats, &DirType::Device);
+                        dry_run_check_target_dir_exists(&device_path, &DirType::Device, stats);
 
                     // Print everything together
                     println!("{} {}", indented_device_dir_name, target_dir_status_check);
+                } else {
+                    // Create device subdir
+                    create_subdir_if_required(
+                        &device_path, &DirType::Device, args, &mut stats);
                 }
 
                 device_path
@@ -1269,11 +1289,6 @@ fn process_target_dir_files(
                 date_destination_path.clone()
             };
 
-            // Create subdir path
-            if !is_dry_run {
-                // TODO 7?: separate Date from Device dirs
-                create_subdir_if_required(&device_destination_path, args, &mut stats);
-            }
 
             /*****************************************************************************/
             /* --- Iterate each file in a device directory and print or copy/move it --- */
@@ -1516,8 +1531,8 @@ fn get_files_size(files: &[SupportedFile]) -> u64 {
 /// Read a directory path and return a string signalling if the path exists
 fn dry_run_check_target_dir_exists(
     path: &Path,
-    stats: &mut FileStats,
     dir_type: &DirType,
+    stats: &mut FileStats,
 ) -> String {
     stats.inc_dir_total_by_type(dir_type);
     if path.exists() {
@@ -1712,22 +1727,33 @@ fn copy_file_if_not_exists(
     }
 }
 
-fn create_subdir_if_required(target_subdir: &Path, args: &Args, stats: &mut FileStats) {
-    // TODO separate Date from Device dirs
-    // and only increase once per date dir !!!
-    stats.inc_dir_total_by_type(&DirType::Date);
+fn create_subdir_if_required(
+    target_subdir: &Path,
+    dir_type: &DirType,
+    args: &Args,
+    stats: &mut FileStats
+) {
+
+    stats.inc_dir_total_by_type(dir_type);
 
     if target_subdir.exists() {
-        println!();
-        println!("{}",
-                 ColoredString::orange(
-                     format!("[Folder {} already exists]",
-                             target_subdir.strip_prefix(&args.target_dir).unwrap().display()).as_str()));
+        // Don't need any stats here
+
+        match dir_type {
+            DirType::Device => {
+                println!();
+                println!("{}",
+                         ColoredString::orange(
+                             format!("[Folder {} already exists]",
+                                     target_subdir.strip_prefix(&args.target_dir).unwrap().display()).as_str()));
+            },
+            // Don't print anything for date devices, it would be too many
+            _ => {}
+        }
     } else {
         match fs::create_dir_all(target_subdir) {
             Ok(_) => {
-                // TODO 7?: separate Date from Device dirs
-                stats.inc_dir_total_by_type(&DirType::Date);
+                stats.inc_dir_created_by_type(dir_type);
                 println!();
                 println!("{}",
                          ColoredString::bold_white(
@@ -1742,8 +1768,8 @@ fn create_subdir_if_required(target_subdir: &Path, args: &Args, stats: &mut File
                             ).as_str()));
             },
             Err(e) => {
+                stats.inc_error_dir_create_by_type(dir_type);
                 // TODO 2f: handle dir creation fail?
-                stats.inc_error_dir_create();
                 println!("Failed to create folder {}: {:?}",
                          target_subdir.strip_prefix(&args.target_dir).unwrap().display(),
                          e.kind())

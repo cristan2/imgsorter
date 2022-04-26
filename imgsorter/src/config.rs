@@ -143,15 +143,15 @@ impl Args {
         })
     }
 
-    /// Several ways to launch the program
-    /// - edit registry - use context menu in dir - imgsort current dir - sends current dir as path override
-    /// - add program dir to path - use terminal - navigate to any dir
-    ///   - launch using program name only - uses source in config file
-    ///   - launch using program name and "." - uses current dir as path override
-    ///   - launch using program name and any path - uses that path as path override
-    /// In all cases, config file should be read from the executable location, if present,
-    /// otherwise fallback to relative path, which likely will fall as well (should only work for debug builds in IDE)\
-    /// and will end up not using the config file and just use the preset defaults
+    ///// Several ways to launch the program
+    ///// - edit registry - use context menu in dir - imgsort current dir - sends current dir as path override
+    ///// - add program dir to path - use terminal - navigate to any dir
+    /////   - launch using program name only - uses source in config file
+    /////   - launch using program name and "." - uses current dir as path override
+    /////   - launch using program name and any path - uses that path as path override
+    ///// In all cases, config file should be read from the executable location, if present,
+    ///// otherwise fallback to relative path, which likely will fall as well (should only work for debug builds in IDE)\
+    ///// and will end up not using the config file and just use the preset defaults
     pub fn new_from_toml(config_file: &str) -> Result<Args, std::io::Error> {
         let mut args = Args::new()?;
 
@@ -523,34 +523,6 @@ impl Args {
         Ok(args)
     }
 
-    /// Change the source directory. This will also change the target
-    /// directory to a subdir in the same directory. To set a different
-    /// target directory, use [set_target_dir]
-    // fn set_source_dir(mut self, source: &str) -> Args {
-    //     let new_path = PathBuf::from(source);
-    //     self.target_dir = new_path.clone().join(DEFAULT_TARGET_SUBDIR);
-    //     self.source_dir = vec![new_path];
-    //     self
-    // }
-
-    /// Change the source directory. This will also change the target
-    /// directory to a subdir in the same directory. To set a different
-    /// target directory, use [set_target_dir]
-    // fn set_source_dirs(mut self, sources: Vec<&str>) -> Args {
-    //     let source_paths = sources.iter()
-    //         .map(|src_dir| PathBuf::from(src_dir))
-    //         .collect::<Vec<PathBuf>>();
-    //
-    //     // self.target_dir = new_path.clone().join(DEFAULT_TARGET_SUBDIR);
-    //     self.source_dir = source_paths;
-    //     self
-    // }
-
-    // fn add_source_dir(mut self, src_dir: &str) -> Args {
-    //     self.source_dir.push(PathBuf::from(src_dir));
-    //     self
-    // }
-
     fn set_source_paths(&mut self, sources: Vec<PathBuf>) -> Result<Option<String>, String> {
         let (valid_paths, invalid_paths): (Vec<PathBuf>, Vec<PathBuf>) =
             sources.into_iter().partition(|path| path.exists());
@@ -589,11 +561,6 @@ impl Args {
             self.source_dir[0].push(subdir);
         }
     }
-
-    // fn append_target_subdir(mut self, subdir: &str) -> Args {
-    //     self.target_dir.push(subdir);
-    //     self
-    // }
 
     pub fn has_multiple_sources(&self) -> bool {
         self.source_dir.len() > 1
