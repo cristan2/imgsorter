@@ -17,7 +17,7 @@ use imgsorter::exif::*;
 use imgsorter::utils::*;
 use OutputColor::*;
 
-pub const VERSION: &str = "0.1.0";
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 
 /// Convenience wrapper over a map holding all files for a given device
@@ -583,7 +583,7 @@ impl Default for FileStats {
     }
 }
 
-/// Enum entires meant to represent the target directories
+/// Enum entries meant to represent the target directories
 /// named after the device name. Derive ordering and
 /// equality traits for more natural ordering when used
 /// as keys in a BTreeMap (will show files after directories)
