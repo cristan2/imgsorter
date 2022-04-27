@@ -1,7 +1,6 @@
 [ ] 0 - Prio
     [ ] 1? - build/package (github action to include binary in release?) + version
     [ ] 7? - implement Display for Args and print before confirmation
-    [ ] - Reading source files - progress info for non-verbose
 
 [ ] 1 - Program / CLI / config file args
     [x] CLI or config file?

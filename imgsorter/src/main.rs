@@ -770,21 +770,28 @@ fn main() -> Result<(), std::io::Error> {
         // TODO 6f: check paths exist
         // Build the string used for printing source directory name(s) before confirmation
         let source_dirs = {
-            let source_dir_str = String::from("Source directory:   ");
+            let source_dir_str  = String::from("Source directory:   ");
+            let source_dirs_str = String::from("Source directories: ");
 
             match args.source_dir.len() {
                 0 =>
                     format!("{}{}", source_dir_str, ColoredString::red("No source dirs specified")),
                 1 =>
                     format!("{}{}", source_dir_str, args.source_dir[0].display().to_string()),
-                _ => {
-                    let spacing_other_lines = " ".repeat(source_dir_str.chars().count());
+                len => {
+                    let spacing_other_lines = " ".repeat(source_dirs_str.chars().count());
+                    let len_max_digits = get_integer_char_count(len as i32);
                     args.source_dir
                         .iter()
                         .enumerate()
                         .map(|(index, src_path)| {
-                            let _first_part = if index == 0 {&source_dir_str} else {&spacing_other_lines};
-                            format!("{}{}. {}", _first_part, index, &src_path.display().to_string()) })
+                            let _first_part = if index == 0 {&source_dirs_str} else {&spacing_other_lines};
+                            format!("{}{}. {}",
+                                    // print dir indexes starting from 1
+                                    _first_part,
+                                    LeftPadding::zeroes(index+1, len_max_digits),
+                                    &src_path.display().to_string())
+                        })
                         .collect::<Vec<_>>()
                         .join("\n")
                 }

@@ -439,6 +439,10 @@ impl RightPadding {
 }
 
 impl LeftPadding {
+    pub fn zeroes<T: Into<usize>>(no: T, width: usize) -> String {
+        format!("{:0>width$}", no.into(), width = width)
+    }
+
     pub fn zeroes3<T: Into<u64>>(no: T) -> String {
         format!("{:0>width$}", no.into(), width = 3)
     }
@@ -537,6 +541,7 @@ pub fn simple_percentage(part: usize, total: usize) -> usize {
     (part as f32/total as f32 * 100_f32) as usize
 }
 
+/// Count number of digits in a number
 pub fn get_integer_char_count(i: i32) -> usize {
     get_string_char_count(i.to_string())
 }
