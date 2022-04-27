@@ -389,16 +389,21 @@ impl Args {
                                     Some(options_opt) => {
                                         if let Some(options) = options_opt.as_table() {
 
+                                            // Not exposed in config; use for dev only
+                                            // debug_on = true
+                                            if let Some(debug_on) = get_boolean_value_silent(options, "debug") {
+                                                args.debug = debug_on;
+                                                args.verbose = debug_on;
+                                            } else if let Some(verbose) = get_boolean_value(options, "verbose", &mut missing_vals) {
+                                                args.verbose = verbose;
+                                            }
+
                                             if let Some(source_recursive) = get_boolean_value(options, "source_recursive", &mut missing_vals) {
                                                 args.source_recursive = source_recursive;
                                             }
 
                                             if let Some(dry_run) = get_boolean_value(options, "dry_run", &mut missing_vals) {
                                                 args.dry_run = dry_run;
-                                            }
-
-                                            if let Some(verbose) = get_boolean_value(options, "verbose", &mut missing_vals) {
-                                                args.verbose = verbose;
                                             }
 
                                             if let Some(align_file_output) = get_boolean_value(options, "align_file_output", &mut missing_vals) {
@@ -419,12 +424,6 @@ impl Args {
 
                                             if let Some(silent) = get_boolean_value(options, "silent", &mut missing_vals) {
                                                 args.silent = silent;
-                                            }
-
-                                            // Not exposed in config; use for dev only
-                                            // debug_on = true
-                                            if let Some(debug_on) = get_boolean_value_silent(options, "debug_on") {
-                                                args.debug = debug_on;
                                             }
                                         }
                                     }

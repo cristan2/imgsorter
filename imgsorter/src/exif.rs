@@ -153,7 +153,7 @@ pub fn read_exif_date_and_device(file: &DirEntry, args: &Args) -> ExifDateDevice
         }
 
         Err(e) => {
-            if args.verbose {
+            if args.debug {
                 println!("{} could not read EXIF for {:?}: {}",
                          ColoredString::warn_arrow(), file.file_name(), e.to_string());
             }
@@ -209,6 +209,7 @@ pub fn read_kamadak_exif_date_and_device(file: &DirEntry, args: &Args) -> ExifDa
                     let original_make_str = camera_make.display_value().to_string();
                     let trimmed_make = clean_device_model_or_make(&original_make_str);
                     if args.debug {
+                        println!("file '{:?}'", &file.file_name());
                         println!("make: '{}' -> '{}'", original_make_str, &trimmed_make);
                     }
                     clean_device_model_or_make(&trimmed_make)
@@ -248,7 +249,7 @@ pub fn read_kamadak_exif_date_and_device(file: &DirEntry, args: &Args) -> ExifDa
             // Ignore other EXIF tags
         }
         Err(e) => {
-            if args.verbose {
+            if args.debug {
                 println!("{} could not read EXIF for {:?}: {}",
                          ColoredString::warn_arrow(), file.file_name(), e.to_string());
             }

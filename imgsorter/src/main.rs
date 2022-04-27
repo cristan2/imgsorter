@@ -889,7 +889,11 @@ fn main() -> Result<(), std::io::Error> {
     stats.print_stats(&args);
 
     // Ask user input to prevent console window from closing before reading output
-    ask_for_exit_confirmation();
+    if args.silent {
+        println!("> Silent mode is enabled. Exiting without user confirmation.");
+    } else {
+        ask_for_exit_confirmation();
+    }
 
     Ok(())
 }
@@ -1416,7 +1420,8 @@ fn process_files_dry_run(
         };
 
         // Output compacting is not enabled, print all file statuses directly
-        if !args.is_compacting_enabled() {
+        // Ignore compacting when debug mode is enabled
+        if !args.is_compacting_enabled() || args.verbose {
             let output = get_output_for_file();
             println!("{}", output);
         }
