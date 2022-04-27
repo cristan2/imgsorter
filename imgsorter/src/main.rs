@@ -792,7 +792,7 @@ fn main() -> Result<(), std::io::Error> {
         };
 
         println!("═══════════════════════════════════════════════════════════════════════════");
-        // TODO This would only be relevant if we're saving any files or reading config
+        // TODO ??? This would only be relevant if we're saving any files or reading config
         // println!("Current working directory: {}", &args.cwd.display());
         println!("{}", source_dirs);
         println!("Target directory:   {}", &args.target_dir.display());
@@ -990,8 +990,9 @@ fn parse_dir_contents(
 
     let mut count_so_far = 0;
 
-    // If verbose is not enabled, print a generic message to show it's working
-    // Otherwise, we'll print a progress message for each source directory
+    // We'll print reading progress in two ways:
+    // - if verbose, print a progress message in two parts for each source directory with time taken
+    // - if verbose, print a simple incrementing counter of individual files out of the total
     if !args.verbose {
         println!("Reading source files...")
     }
@@ -1073,12 +1074,21 @@ fn parse_dir_contents(
                     skipped_files.push(current_file.get_file_name_str());
                 }
             }
+
+            if !args.verbose {
+                count_so_far += 1;
+
+                print_progress_overwrite(
+                    format!("{}/{} ({}%)",
+                            count_so_far, total_no_files, simple_percentage(count_so_far, total_no_files)).as_str());
+            };
         }
 
-        // Record progress
-        count_so_far += current_file_count;
-
         if args.verbose {
+
+            // Record progress
+            count_so_far += current_file_count;
+
             // This is the second part of the progres line for this directory
             // See also the previous [print_progress] call which prints the first part of this line
             // e.g. `[3566/4239] Parsing 2 files from D:\Temp\source_path\... done (0.018 sec)`
@@ -1086,7 +1096,7 @@ fn parse_dir_contents(
                                    time_parsing_dir.elapsed().as_secs(),
                                    LeftPadding::zeroes3(time_parsing_dir.elapsed().subsec_millis())));
             println!();
-            // Print files intented with two spaces
+            // Print files indented with two spaces
             let skipped = skipped_files
                 .into_iter()
                 .filter(|s| !s.is_empty())

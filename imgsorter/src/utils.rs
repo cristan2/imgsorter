@@ -524,8 +524,17 @@ pub fn print_progress(msg: String) {
     let _ = std::io::stdout().flush();
 }
 
+pub fn print_progress_overwrite(msg: &str) {
+    print!("\r{}", msg);
+    let _ = std::io::stdout().flush();
+}
+
 pub fn get_string_char_count(s: String) -> usize {
     s.chars().count()
+}
+
+pub fn simple_percentage(part: usize, total: usize) -> usize {
+    (part as f32/total as f32 * 100_f32) as usize
 }
 
 pub fn get_integer_char_count(i: i32) -> usize {
