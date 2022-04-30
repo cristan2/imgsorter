@@ -1,9 +1,9 @@
 # Configuration file for imgsorter
-# https://github.com/cristan2/rust-utils/tree/master/imgsorter
+# https://github.com/cristan2/imgsorter/tree/master
 # Based on the TOML format: https://toml.io/en/
 
 # This is a compact version of `imgsorter.toml`
-# It contains the same configuration settings, only without any comments
+# It contains the same configuration settings without any comments
 
 [folders]
 # (MANDATORY)

@@ -107,6 +107,9 @@ There are two possible scenarios which can lead to this. Some images don't have 
 
 Note that if this is enabled, partially supported files which don't have a (readable) EXIF device information will be placed in a default folder named "Unknown". This also affects files in date directories which contain a mix of supported and partially supported files - previously, the partially supported files would be placed directly in the root of the date folder, while now an "Unknown" folder will be created for them.
 
+### Some date folders contain a single device folder even if the dry run status said "2 devices"
+Related to the above question - see second scenario. The devices count in dry runs (e.g. `[2017.03.12] (2 devices, 5 files, 26.11 MB)`) also counts a "device" for files without any EXIF data. These files will normally be placed in the root of the date folder, so no actual device folders are created for them. Only the files with the required EXIF data will have device folders created for them.
+
 ### The width of the output is too big
 The width of the printed messages for dry runs is based on the maximum length of the source paths
 to align everything prettily. If the printed messages are too big for your window, you can disable
@@ -123,8 +126,28 @@ Not all file types are supported by default. If your source folders contain unkn
 ### The device names are not very descriptive. What does `SM-A415F` even mean?
 Images are sorted into folders based on their date and, if EXIF data is available, the device name which was used to record the image or video. However, this might be different than the name you're expecting. For instance, "SM-A415F" is the model name for "Samsung A41". If you don't like these names, you can set custom names for each model by adding them in the configuration file under `[custom.devices]`. like for example `'SM-A415F'="Maria's phone"`.
 
-### I know what I'm doing, I don't want to bother confirming every operation
+### (Advanced) I know what I'm doing, I don't want to bother confirming every operation
 Fine, just set the configuration key `silent` to `true` and you're good to go. 
 
-### I know what I'm doing, but the configuration file is too messy
+### (Advanced) I know what I'm doing, but the configuration file is too messy
 For convenience, there's a second configuration file you can use, `imgsorter_clean.toml`, which contains the same configuration settings as `imgsorter.toml` but without any comments. Just rename this file to `imgsorter.toml` and use it instead (remember to delete or rename the old one first).
+
+### (Advanced) In Windows, I want to have the program available as a context menu entry in File Explorer
+You'll need to manually edit the Windows Registry:
+* Open the Registry Editor from a Run or shell prompt and type `regedit`
+* Navigate to `HKEY_CLASSES_ROOT\Directory\Background\shell`
+* Right click on it and add a new Key named `imgsorter`
+* The new key will have a `(Default)` String Value. Double click it and add the following data: "imgsort this dir". This will be description shown in the context menu.
+* Right click on the `imgsorter` key and create a new Key named `command`
+* This too will have a `(Default)` String Value. Double click it and add the path to the program's executable, e.g. `"C:\Program Files\imgsorter\imgsorter.exe" "%V"`. Note the `"%V"` at the end - this will provide the path to the folder you're in when you invoke the program using the context menu.
+* If you want the context menu to show an icon next to the shortcut, right click on the `imgsorter` Key and add a new String Value named `Icon`. Double click it and add the path to an `ico` or `dll` file containing the icon you want to use, e.g. `C:\Program Files\imgsorter\imgsorter.ico`. You can use the icon that comes included with the program, `imgsorter.ico`, or you can use your own. 
+
+Note that when starting the program using the context menu entry, the target folder will be a new subfolder named `imgsorted` inside the source folder.
+
+## License
+
+[MIT License](LICENSE)
+
+Crates listed by Cargo.toml come with their own license.
+
+`imgsorter.ico` comes from [reshot.com](https://www.reshot.com/free-svg-icons/item/album-open-JHFAYBEX9T/) under a [Reshot Free License](https://www.reshot.com/license/)
