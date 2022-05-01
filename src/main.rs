@@ -714,6 +714,19 @@ impl SupportedFile {
     }
 }
 
+/// The main program body. This is an overview of the main flows:
+/// * set up args/run options
+/// * read list of files in all source dirs
+/// * ask for operation confirmation - dry run or write files
+/// * parse source files and build a model of the destination dir structure (this is where the sorting occurs)
+///   * if dry run, filter only source unique files
+///   * parse files and sort them into the internal target dir model
+///   * isolate one-off images
+///   * calculate max file and path lengths for dry run output padding
+/// * process files based on the destination dir model
+///   * if dry run, only show target dir structure and potential copy status of each file
+///   * if write, copy the files to the destination; if move is enabled, delete source files after copy
+/// * print stats and exit
 fn main() -> Result<(), std::io::Error> {
 
     println!("───────────────────────────────────────────────────────────────────────────");

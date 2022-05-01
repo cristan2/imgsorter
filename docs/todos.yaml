@@ -21,6 +21,7 @@
     [ ] version file + changelog
     [ ] canonicalize source override input when "."
     [ ] Args::new_from_toml should not return ? since we're using default values
+    [ ] installer + context menu + path
 
 [ ] 2 - File handling
     [x] a - subdirs by device name
@@ -119,6 +120,7 @@
     [ ] show dir tree when presenting the source paths before confirmation, instead of a simple list of paths
         - show full path only for the sources in config, not for the recursively found subdirs
         - maybe show no of files next to each dir
+    [ ] even more compact option for dry runs - show only target dir structure, without any files
 
 [ ] 8 - Nice to have
     [ ] a - undo ?
@@ -136,6 +138,7 @@
     [x] readme
     [ ] explain statistics info
     [ ] main flows
+    [ ] crate license
 
 [ ] 10 - Cleanup
 [ ] 11 - Tests - ???

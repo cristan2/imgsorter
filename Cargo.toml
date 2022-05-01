@@ -1,6 +1,6 @@
 [package]
 name = "imgsorter"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["cristan <13849765+cristan2@users.noreply.github.com>"]
 edition = "2018"
 
