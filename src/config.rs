@@ -143,15 +143,15 @@ impl Args {
         })
     }
 
-    ///// Several ways to launch the program
-    ///// - edit registry - use context menu in dir - imgsort current dir - sends current dir as path override
-    ///// - add program dir to path - use terminal - navigate to any dir
-    /////   - launch using program name only - uses source in config file
-    /////   - launch using program name and "." - uses current dir as path override
-    /////   - launch using program name and any path - uses that path as path override
-    ///// In all cases, config file should be read from the executable location, if present,
-    ///// otherwise fallback to relative path, which likely will fall as well (should only work for debug builds in IDE)\
-    ///// and will end up not using the config file and just use the preset defaults
+    /// Several ways to launch the program
+    /// - edit registry - use context menu in dir - imgsort current dir - sends current dir as path override
+    /// - add program dir to path - use terminal - navigate to any dir
+    ///   - launch using program name only - uses source in config file
+    ///   - launch using program name and "." - uses current dir as path override
+    ///   - launch using program name and any path - uses that path as path override
+    /// In all cases, config file should be read from the executable location, if present,
+    /// otherwise fallback to relative path, which likely will fall as well (should only work for debug builds in IDE)\
+    /// and will end up not using the config file and just use the preset defaults
     pub fn new_from_toml(config_file: &str) -> Result<Args, std::io::Error> {
         let mut args = Args::new()?;
 
@@ -168,11 +168,12 @@ impl Args {
         // or the current working directory from the system when launched from the Windows explorer context menu
         // If we receive this, use it as both the source and target dirs and toggle the [using_cli_source] flag to skip
         // reading the source and target values from config. Otherwise, do nothing and fallback to config.
-        if let Some(cli_source) = get_cli_source_override() {
+        if let Some(cli_source) = get_cli_source_path() {
             let cli_src_path = vec![PathBuf::from(cli_source.clone())];
-            match args.set_source_paths(cli_src_path) {
-                Ok(None) => {
+            match validate_source_paths(cli_src_path) {
+                Ok((valid_paths, _)) => {
                     println!("Using source path at: {}", &cli_source);
+                    args.set_source_paths(valid_paths);
                     args.set_target_dir(cli_source);
                     args.using_cli_source = true;
                 }
@@ -307,7 +308,8 @@ impl Args {
                                             fn print_source_folders_help() {
                                                 println!("{}",
                                                     format!(
-                                                        "{}\n{}\n{}\n{}\n{}\n{}",
+                                                        // TODO 5f: use OS-specific path separators
+                                                        "{}\n-----{}\n{}\n{}\n{}\n{}\n-----",
                                                         "Edit imgsorter.toml and add valid source folders like this:",
                                                         "[folders]",
                                                         "source_dirs = [",
@@ -321,24 +323,31 @@ impl Args {
                                                 // If no valid source paths are found, use current working directory and print a red warning
                                                 // otherwise, use whatever sources are valid and print a yellow warning for the rest
                                                 if let Some(source_paths) = get_array_value(folders, "source_dirs", &mut missing_vals) {
+
                                                     println!("Using source paths from configuration file.");
-                                                    match args.set_source_paths(get_paths(source_paths)) {
+
+                                                    match validate_source_paths(get_paths(source_paths)) {
                                                         Err(all_invalid_sources) => {
                                                             println!("{}", ColoredString::red(
                                                                 format!(
-                                                                    "All source folders are invalid!\n> {}",
-                                                                    all_invalid_sources).as_str()));
+                                                                    "All source folders are invalid!\n {}",
+                                                                    paths_to_str(all_invalid_sources)).as_str()));
                                                             print_source_folders_help();
+                                                            // The cwd previously set as default value will remain used
                                                             println!("Using current working directory for now: {}", args.source_dir[0].display());
                                                         }
-                                                        Ok(Some(invalid_folders)) => {
-                                                            println!("{}", ColoredString::orange(
-                                                                format!(
-                                                                    "> Some source folders were invalid and were ignored:\n  {}",
-                                                                    invalid_folders).as_str()));
-                                                            print_source_folders_help()
+
+                                                        Ok((valid_paths, invalid_paths)) => {
+                                                            if !invalid_paths.is_empty() {
+                                                                println!("{}", ColoredString::orange(
+                                                                    format!(
+                                                                        "Some source folders were invalid and were ignored:\n {}",
+                                                                        paths_to_str(invalid_paths)).as_str()));
+                                                                print_source_folders_help()
+                                                            }
+
+                                                            args.set_source_paths(valid_paths);
                                                         }
-                                                        Ok(None) => ()
                                                     }
                                                 } else {
                                                     println!("{}", ColoredString::red("No source folders found!"));
@@ -361,7 +370,7 @@ impl Args {
                                                         args.set_target_dir(target_dir);
                                                     }
                                                 }
-                                            }
+                                            } // end if !args.using_cli_source
 
                                             if let Some(min_files_per_dir) = get_positive_integer_value(folders, "min_files_per_dir", &mut missing_vals, &mut invalid_vals) {
                                                 args.min_files_per_dir = min_files_per_dir;
@@ -522,25 +531,9 @@ impl Args {
         Ok(args)
     }
 
-    fn set_source_paths(&mut self, sources: Vec<PathBuf>) -> Result<Option<String>, String> {
-        let (valid_paths, invalid_paths): (Vec<PathBuf>, Vec<PathBuf>) =
-            sources.into_iter().partition(|path| path.exists());
-
-        let list_of_invalid = invalid_paths
-            .iter()
-            .flat_map(|s| s.to_str())
-            .collect::<Vec<_>>()
-            .join("\n  ");
-
-        if valid_paths.is_empty() {
-            Err(list_of_invalid)
-        } else {
-            self.source_dir = valid_paths;
-            if !list_of_invalid.is_empty() {
-                Ok(Some(list_of_invalid))
-            } else {
-                Ok(None)
-            }
+    fn set_source_paths(&mut self, sources: Vec<PathBuf>) {
+        if !sources.is_empty() {
+            self.source_dir = sources;
         }
     }
 
@@ -591,7 +584,7 @@ fn get_config_file_path(config_file_name: &str) -> (PathBuf, String) {
     }
 }
 
-fn get_cli_source_override() -> Option<String> {
+fn get_cli_source_path() -> Option<String> {
     let cli_args: Vec<String> = env::args().collect();
 
     cli_args
@@ -615,6 +608,27 @@ fn get_program_executable_path() -> Result<PathBuf, String> {
             Err(ColoredString::red("Could not read path for program executable."))
         },
     }
+}
+
+/// Check if the provided sources exist and return a `valid_path`
+/// Vec only if there's at least one valid source path
+fn validate_source_paths(sources: Vec<PathBuf>) -> Result<(Vec<PathBuf>, Vec<PathBuf>), Vec<PathBuf>> {
+    let (valid_paths, invalid_paths): (Vec<PathBuf>, Vec<PathBuf>) =
+        sources.into_iter().partition(|path| path.exists());
+
+    if valid_paths.is_empty() {
+        Err(invalid_paths)
+    } else {
+        Ok((valid_paths, invalid_paths))
+    }
+}
+
+fn paths_to_str(paths: Vec<PathBuf>) -> String {
+    paths
+        .iter()
+        .flat_map(|s| s.to_str())
+        .collect::<Vec<_>>()
+        .join("\n ")
 }
 
 fn walk_source_dirs_recursively(args: &Args) -> Vec<PathBuf> {
