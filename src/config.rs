@@ -36,7 +36,10 @@ pub const DATE_DIR_FORMAT: &str = "%Y.%m.%d";
 pub struct Args {
     /// The directory or directories where the images to be sorted are located.
     /// If not provided, the current working dir will be used
-    pub source_dir: Vec<PathBuf>,
+    /// It's listed as a Vec<Vec<PathBuf>> to cover both cases when source_recursive is enabled
+    /// or not - the outer Vec references the explicitly configured paths, while the inner Vec's
+    /// will hold all subdirectories of those paths
+    pub source_dir: Vec<Vec<PathBuf>>,
 
     /// Set to true only if we received a source_dir from the CLI
     /// Not exposed in config, only used during config parsing
@@ -121,7 +124,7 @@ impl Args {
         custom_extensions.insert(AUDIO.to_lowercase(), Vec::new());
 
         Ok(Args {
-            source_dir: vec![cwd.clone()],
+            source_dir: vec![vec![cwd.clone()]],
             using_cli_source: false,
             target_dir: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
             source_recursive: DEFAULT_SOURCE_RECURSIVE,
@@ -173,7 +176,7 @@ impl Args {
             match validate_source_paths(cli_src_path) {
                 Ok((valid_paths, _)) => {
                     println!("Using source path at: {}", &cli_source);
-                    args.set_source_paths(valid_paths);
+                    args.set_source_paths(vec![valid_paths]);
                     args.set_target_dir(cli_source);
                     args.using_cli_source = true;
                 }
@@ -334,7 +337,7 @@ impl Args {
                                                                     paths_to_str(all_invalid_sources)).as_str()));
                                                             print_source_folders_help();
                                                             // The cwd previously set as default value will remain used
-                                                            println!("Using current working directory for now: {}", args.source_dir[0].display());
+                                                            println!("Using current working directory for now: {}", args.source_dir[0][0].display());
                                                         }
 
                                                         Ok((valid_paths, invalid_paths)) => {
@@ -346,13 +349,19 @@ impl Args {
                                                                 print_source_folders_help()
                                                             }
 
-                                                            args.set_source_paths(valid_paths);
+                                                            let path_vecs: Vec<Vec<PathBuf>> =
+                                                                valid_paths
+                                                                    .into_iter()
+                                                                    .map(|path|vec![path])
+                                                                    .collect();
+
+                                                            args.set_source_paths(path_vecs);
                                                         }
                                                     }
                                                 } else {
                                                     println!("{}", ColoredString::red("No source folders found!"));
                                                     print_source_folders_help();
-                                                    println!("Using current working directory for now: {}", args.source_dir[0].display());
+                                                    println!("Using current working directory for now: {}", args.source_dir[0][0].display());
                                                 }
 
                                                 // Not exposed in config; use for dev only
@@ -517,11 +526,11 @@ impl Args {
 
             let new_source_dirs = walk_source_dirs_recursively(&args);
             if new_source_dirs.is_empty() {
-                // TODO 6f: can this happen anymore?
+                // This shouldn't happen, but let's be sure
                 panic!("Source folders are empty or don't exist");
             } else {
                 if args.verbose { println!("> Setting {} source folder(s)", new_source_dirs.len()); }
-                args.source_dir = new_source_dirs;
+                args.set_source_paths(new_source_dirs);
             }
 
             // TODO 3d: import FileStats and reenable this
@@ -531,8 +540,8 @@ impl Args {
         Ok(args)
     }
 
-    fn set_source_paths(&mut self, sources: Vec<PathBuf>) {
-        if !sources.is_empty() {
+    fn set_source_paths(&mut self, sources: Vec<Vec<PathBuf>>) {
+        if !(sources.is_empty() || sources.iter().all(|v|v.is_empty())) {
             self.source_dir = sources;
         }
     }
@@ -549,8 +558,8 @@ impl Args {
     }
 
     fn append_source_subdir(&mut self, subdir: &str) {
-        if self.source_dir.len() == 1 {
-            self.source_dir[0].push(subdir);
+        if self.source_dir.len() == 1 && self.source_dir[0].len() == 1{
+            self.source_dir[0][0].push(subdir);
         }
     }
 
@@ -631,7 +640,17 @@ fn paths_to_str(paths: Vec<PathBuf>) -> String {
         .join("\n ")
 }
 
-fn walk_source_dirs_recursively(args: &Args) -> Vec<PathBuf> {
+/// For each configured source directory, read all its inner subdirectories
+/// recursively into a separate Vec, so the end result will be a 2D Vec where
+/// the outer elements hold all subdirs of each of the configured source dirs,
+/// while the inner elements represent the actual subdir paths, e.g.:
+/// ```
+/// [
+///   [src_dir_1, src_dir_1/subdir1, src_dir_1/subdir2],
+///   [src_dir_2, src_dir_2/subdir1, src_dir_2/subdir2/another_subdir_level],
+/// ]
+/// ```
+fn walk_source_dirs_recursively(args: &Args) -> Vec<Vec<PathBuf>> {
     fn walk_dir(
         source_dir: PathBuf,
         vec_accum: &mut Vec<PathBuf>,
@@ -658,11 +677,16 @@ fn walk_source_dirs_recursively(args: &Args) -> Vec<PathBuf> {
         Ok(())
     }
 
-    let mut new_source_dirs = Vec::new();
-
-    args.source_dir.clone().into_iter().for_each(|d| {
-        walk_dir(d, &mut new_source_dirs, args).ok();
-    });
-
-    new_source_dirs
+    args.source_dir.clone()
+        .into_iter()
+        .flat_map(|source_dir|
+            source_dir
+                .into_iter()
+                .map(|d| {
+                    let mut start_vec: Vec<PathBuf> = Vec::new();
+                    walk_dir(d, &mut start_vec, args).ok();
+                    start_vec
+                })
+        )
+        .collect()
 }

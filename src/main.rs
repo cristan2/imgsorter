@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use std::{fmt, fs, io};
 use std::io::Read;
+use std::ops::Add;
 
 use chrono::{DateTime, Utc};
 use filesize::PathExt;
@@ -715,7 +716,7 @@ impl SupportedFile {
 }
 
 /// The main program body. This is an overview of the main flows:
-/// * set up args/run options
+/// * parse config file and set up args/run options
 /// * read list of files in all source dirs
 /// * ask for operation confirmation - dry run or write files
 /// * parse source files and build a model of the destination dir structure (this is where the sorting occurs)
@@ -743,7 +744,6 @@ fn main() -> Result<(), std::io::Error> {
 
     // Needs to be created after checking for recursive source dirs,
     // since we need to pass args.has_multiple_sources()
-    // let mut padder = Padder::new(args.has_multiple_sources());
     let mut padder = Padder::new(args.has_multiple_sources());
 
     /*****************************************************************************/
@@ -754,27 +754,32 @@ fn main() -> Result<(), std::io::Error> {
     // TODO 5g: instead of Vec<Vec<DirEntry>>, return a `SourceDirTree` struct
     //   which wraps the Vec's but contains additional metadata, such as no of files or total size
     // Read dir contents and filter out error results
-    let source_contents = args
+    let source_files: Vec<Vec<DirEntry>> = args
         .source_dir
-        .clone()
         .iter()
-        .filter_map(|src_dir| read_supported_files(src_dir, &mut stats, &mut args).ok())
-        .collect::<Vec<_>>();
+        .flat_map(|src_dir_vec| {
+            src_dir_vec
+                .iter()
+                .filter_map(|src_dir|
+                    read_supported_files(src_dir, &mut stats, &args).ok())
+                .collect::<Vec<_>>()
+        })
+        .collect();
 
     /*****************************************************************************/
     /* ---                 Print options before confirmation                 --- */
     /*****************************************************************************/
 
-    let total_source_files: usize = source_contents.iter().map(|dir| dir.len()).sum();
+    let source_files_count: usize = source_files.iter().map(|dir| dir.len()).sum();
 
     // Exit early if there are no source files
-    if total_source_files < 1 {
-        println!("{}", ColoredString::red("There are no source files, exiting."));
+    if source_files_count < 1 {
+        println!("{}", ColoredString::red("There are no supported files in the current source(s), exiting."));
         return Ok(());
     }
 
     {
-        let copy_status = if args.copy_not_move {
+        let write_op = if args.copy_not_move {
             ColoredString::orange("copied:")
         } else {
             ColoredString::red("moved: ")
@@ -790,33 +795,80 @@ fn main() -> Result<(), std::io::Error> {
                 0 =>
                     format!("{}{}", source_dir_str, ColoredString::red("No source dirs specified")),
                 1 =>
-                    format!("{}{}", source_dir_str, args.source_dir[0].display().to_string()),
+                    format!("{}{}",
+                            source_dir_str,
+                            args.source_dir[0]
+                                .iter()
+                                .map(|d|d.display().to_string())
+                                .collect::<Vec<_>>()
+                                .join(",")
+                    ),
                 len => {
                     let spacing_other_lines = " ".repeat(source_dirs_str.chars().count());
                     let len_max_digits = get_integer_char_count(len as i32);
-                    args.source_dir
-                        .iter()
-                        .enumerate()
-                        .map(|(index, src_path)| {
-                            let _first_part = if index == 0 {&source_dirs_str} else {&spacing_other_lines};
-                            format!("{}{}. {}",
-                                    // print dir indexes starting from 1
-                                    _first_part,
-                                    LeftPadding::zeroes(index+1, len_max_digits),
-                                    &src_path.display().to_string())
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n")
+
+                    // Show all source directories
+                    if args.verbose {
+                        args.source_dir
+                            .iter()
+                            .enumerate()
+                            .map(|(outer_index, outer_src_path)| {
+                                outer_src_path
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(index, inner_src_path)| {
+                                        let _first_part = if outer_index == 0 && index == 0 {&source_dirs_str} else {&spacing_other_lines};
+                                        format!("{}{}-{}. {}",
+                                                // print dir indexes starting from 1
+                                                _first_part,
+                                                outer_index+1,
+                                                LeftPadding::zeroes(index+1, len_max_digits),
+                                                &inner_src_path.display().to_string())
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("\n")
+                                    .add("\n")
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    // Show compact version of the source dirs
+                    } else {
+                        args.source_dir
+                            .iter()
+                            .enumerate()
+                            .map(|(outer_index, outer_src)| {
+                                let spacing_first_line = if outer_index == 0 { &source_dirs_str } else { &spacing_other_lines };
+                                let first_line =
+                                    format!("{}{}. {}",
+                                            // print dir indexes starting from 1
+                                            spacing_first_line,
+                                            LeftPadding::zeroes(outer_index + 1, len_max_digits),
+                                            &outer_src[0].display().to_string());
+
+                                if outer_src.len() > 1 {
+                                    let second_line =
+                                        // subtract -1 since we're displaying the first item explicitly
+                                        format!("{}·- {} more folders",
+                                                &spacing_other_lines,
+                                                outer_src.len() - 1);
+
+                                    format!("{}\n{}", first_line, second_line)
+                                } else {
+                                    first_line
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    }
                 }
             }
         };
 
         println!("═══════════════════════════════════════════════════════════════════════════");
         // TODO ??? This would only be relevant if we're saving any files or reading config
-        // println!("Current working directory: {}", &args.cwd.display());
         println!("{}", source_dirs);
         println!("Target directory:   {}", &args.target_dir.display());
-        println!("Files to be {} {}", copy_status, total_source_files);
+        println!("Files to be {} {}", write_op, source_files_count);
         println!("═══════════════════════════════════════════════════════════════════════════");
         // TODO 1f: print all options for this run?
     }
@@ -857,13 +909,13 @@ fn main() -> Result<(), std::io::Error> {
 
     // Extract unique file names across all source directories.
     // Useful only for dry run statuses
-    let source_unique_files = get_source_unique_files(&source_contents, &args);
+    let source_unique_files = get_source_unique_files(&source_files, &args);
 
     // TODO 5j: prefilter for Images and Videos only
     // Iterate files, read modified date and create subdirs
     // Copy images and videos to subdirs based on modified date
     let time_parsing_files = Instant::now();
-    let mut target_dir_tree = parse_dir_contents(source_contents, &mut args, &mut stats, &mut padder);
+    let mut target_dir_tree = parse_dir_contents(source_files, &mut args, &mut stats, &mut padder);
 
     stats.set_time_parse_files(time_parsing_files.elapsed());
 
@@ -959,11 +1011,11 @@ fn get_source_unique_files(
     Option::from(all_unique_files)
 }
 
-/// Read contents of source dir and filter out directories or those which failed to read
+/// Read contents of the provided dir and filter out subdirectories or files which failed to read
 fn read_supported_files(
     source_dir: &Path,
     stats: &mut FileStats,
-    args: &mut Args,
+    args: &Args,
 ) -> Result<Vec<DirEntry>, std::io::Error> {
     // TODO 5d: handle all ?'s
     let dir_entries = fs::read_dir(source_dir)?
@@ -1032,13 +1084,14 @@ fn parse_dir_contents(
             // This is the first part of the progres line for this directory
             // See also the next [print_progress] call which prints the time taken to this same line
             // e.g. `[3566/4239] Parsing 2 files from D:\Temp\source_path\... done (0.018 sec)`
-            print_progress(format!(
-                "[{}/{}] Parsing {} files from '{}'... ",
-                count_so_far,
-                total_no_files,
-                current_file_count,
-                args.source_dir[source_ix].display()
-            ));
+            // TODO fix this
+            // print_progress(format!(
+            //     "[{}/{}] Parsing {} files from '{}'... ",
+            //     count_so_far,
+            //     total_no_files,
+            //     current_file_count,
+            //     args.source_dir[source_ix].display()
+            // ));
         }
 
         // Parse each file into its internal representation and add it to the target tree

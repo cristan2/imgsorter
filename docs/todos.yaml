@@ -14,14 +14,14 @@
     [ ] arg flag for logfile
     [ ] skip files without EXIF (videos, images from other programs, etc.)?
     [ ] allow configurable target_sorted_subdir_name = 'imgsorted'
-    [ ] include version in code at build time + show version in output
+    [x] include version in code at build time + show version in output
     [x] verbose option - output more info (less than debug)
     [ ] build/package (including config + readme) and launch window stay open
     [x] add license
-    [ ] version file + changelog
+    [x] version file + changelog
     [ ] canonicalize source override input when "."
     [ ] Args::new_from_toml should not return ? since we're using default values
-    [ ] installer + context menu + path
+    [ ] installer + context menu + path + executable metadata windows (version)
 
 [ ] 2 - File handling
     [x] a - subdirs by device name
@@ -89,7 +89,7 @@
     [x] d - fix eroare "Access is denied." when running the program a second time and target files exist 
           - the error happens when the target dir exists and attempting to read metadate
     [x] e - run with debug - optional debug printouts
-    [-] f - handle source path not exists - use CWD as source default?/ guard against setting invalid CliArgs values
+    [x] f - handle source path not exists - use CWD as source default?/ guard against setting invalid CliArgs values
     [ ] g - fix edge cases for moving assorted files ()
     [ ] h - filename padding during dry runs is sometimes bigger
           - should be calculated as max (target_path_len + depth_len)
