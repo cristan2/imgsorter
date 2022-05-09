@@ -633,14 +633,11 @@ pub struct SupportedFile {
     date_str: String,
     metadata: Metadata,
     device_name: DirEntryType,
-    // index of the vec holding the files in the original source dir of this file
-    // this is used to detect duplicates across multiple source dirs when doing dry runs
-    source_dir_index: usize,
 }
 
 // TODO 5e: find better name
 impl SupportedFile {
-    pub fn parse_from(dir_entry: DirEntry, source_dir_index: usize, args: &mut Args) -> SupportedFile {
+    pub fn parse_from(dir_entry: DirEntry, args: &mut Args) -> SupportedFile {
         let extension = get_extension(&dir_entry);
         let file_type = get_file_type(&extension, args);
         let metadata = dir_entry.metadata().unwrap();
@@ -690,7 +687,6 @@ impl SupportedFile {
             date_str,
             metadata,
             device_name,
-            source_dir_index,
         }
     }
 
@@ -907,10 +903,6 @@ fn main() -> Result<(), std::io::Error> {
     /* ---        Parse source files and copy/paste or dry run them          --- */
     /*****************************************************************************/
 
-    // Extract unique file names across all source directories.
-    // Useful only for dry run statuses
-    let source_unique_files = get_source_unique_files(&source_files, &args);
-
     // TODO 5j: prefilter for Images and Videos only
     // Iterate files, read modified date and create subdirs
     // Copy images and videos to subdirs based on modified date
@@ -925,7 +917,6 @@ fn main() -> Result<(), std::io::Error> {
         // or do a dry run to simulate a copy/move pass
         process_target_dir_files(
             &mut target_dir_tree,
-            source_unique_files,
             &args,
             &mut stats,
             &mut padder,
@@ -968,47 +959,6 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     Ok(())
-}
-
-/// For dry runs over multiple source dirs we want to show if there are duplicate files across all sources.
-/// This method iterates over all filenames in the source dirs, extracting a set for each dir.
-/// Then it iterates all sets, checking each one against all previous ones and keeps only
-/// unique elements, ensuring duplicate filenames are progressively removed.
-fn get_source_unique_files(
-    source_dir_contents: &[Vec<DirEntry>],
-    args: &Args,
-) -> Option<Vec<HashSet<OsString>>> {
-    // TODO 6i: this method only takes filename into consideration, should also consider date / device
-    //   maybe even use [TargetDateDeviceTree] for this instead of source vecs?
-
-    // This method is only useful for dry runs, return early otherwise
-    if !args.dry_run {
-        return None;
-    }
-
-    let sets_of_files = source_dir_contents
-        .iter()
-        .map(|src_dir| {
-            src_dir
-                .iter()
-                .map(|src_entry| src_entry.file_name())
-                .collect::<HashSet<_>>()
-        })
-        .collect::<Vec<_>>();
-
-    if args.debug { print_sets_with_index("source file sets before filtering for uniques", &sets_of_files); }
-
-    let all_unique_files = sets_of_files
-        .iter()
-        .enumerate()
-        .map(|(curr_ix, _)|
-            // keep_unique_across_sets(&sets_of_files, curr_ix))
-            keep_unique_across_sets(&sets_of_files[0..=curr_ix]))
-        .collect::<Vec<_>>();
-
-    if args.debug { print_sets_with_index("source file sets after filtering for uniques", &all_unique_files); }
-
-    Option::from(all_unique_files)
 }
 
 /// Read contents of the provided dir and filter out subdirectories or files which failed to read
@@ -1073,7 +1023,7 @@ fn parse_dir_contents(
         println!("Reading source files...")
     }
 
-    for (source_ix, source_dir) in source_dir_contents.into_iter().enumerate() {
+    for source_dir in source_dir_contents.into_iter() {
         let time_parsing_dir = Instant::now();
 
         let current_file_count = source_dir.len();
@@ -1096,7 +1046,7 @@ fn parse_dir_contents(
 
         // Parse each file into its internal representation and add it to the target tree
         for entry in source_dir {
-            let current_file: SupportedFile = SupportedFile::parse_from(entry, source_ix, args);
+            let current_file: SupportedFile = SupportedFile::parse_from(entry, args);
 
             // Build final target path for this file
             match &current_file.file_type {
@@ -1202,8 +1152,6 @@ fn parse_dir_contents(
 fn process_target_dir_files(
     // The target tree representation of files to be copied/moved
     new_dir_tree: &mut TargetDateDeviceTree,
-    // For dry runs, this represents a vector of unique files per each source dir
-    source_unique_files: Option<Vec<HashSet<OsString>>>,
     args: &Args,
     mut stats: &mut FileStats,
     padder: &mut Padder,
@@ -1240,6 +1188,10 @@ fn process_target_dir_files(
         println!("{}", ColoredString::bold_white(header_separator.as_str()));
     }
 
+    // This is useful only for dry runs, where we need to track unique files
+    // as we iterate over them to be able to show the status of duplicates.
+    // For write operations, this will remain unused and empty.
+    let mut source_unique_files: HashSet<OsString> = HashSet::new();
 
     /*****************************************************************************/
     /* ---             Iterate each date directory to be created             --- */
@@ -1391,7 +1343,7 @@ fn process_target_dir_files(
             // Output is different for dry-runs and copy/move operations, so process them separately
             if is_dry_run {
                 process_files_dry_run(files_and_paths_vec, device_destination_path,
-                                      &source_unique_files, dir_count_total, curr_dir_ix, indent_level,
+                                      &mut source_unique_files, dir_count_total, curr_dir_ix, indent_level,
                                       args, &mut stats, padder)
             } else {
                 process_files_write(files_and_paths_vec, device_destination_path,
@@ -1426,7 +1378,7 @@ fn process_target_dir_files(
 fn process_files_dry_run(
     files_and_paths_vec: &[SupportedFile],
     device_destination_path: PathBuf,
-    source_unique_files: &Option<Vec<HashSet<OsString>>>,
+    source_unique_files: &mut HashSet<OsString>,
     dir_count_total: usize,
     curr_dir_ix: usize,
     indent_level: usize,
@@ -1644,30 +1596,23 @@ fn dry_run_check_target_dir_exists(
 /// * in both cases, check if the source file exists - no copy will take place
 /// * in both cases, check if the target file exists - file will be skipped
 /// * in both cases, if there are multiple source dirs, check if the file is present more than once - skip all duplicates
-/// * if the is a move, check if the source file is read-only and can't be moved (only copied)
+/// * if this is a move, check if the source file is read-only and can't be moved (only copied)
 fn dry_run_check_file_restrictions(
     source_file: &SupportedFile,
-    target_path: &Path,
-    source_unique_files: &Option<Vec<HashSet<OsString>>>,
+    target_path: &PathBuf,
+    source_unique_files: &mut HashSet<OsString>,
     args: &Args,
     stats: &mut FileStats,
 ) -> String {
-    // TODO 5d: Pre-filtering is not the best method to skip duplicate files.
-    // It can fail for files with the same name in different directories, taken with different devices.
-    // The alternative would be to store each file in a separate name during
-    // the copy/move process and check each it against all previous ones.
-    // If we find it, this means we're now dealing with a duplicate.
 
-    // Check the index of unique files for the source dir of this file
-    // If this set doesn't contain this file, then the file is a duplicate
-    let is_source_unique = || {
-        match source_unique_files {
-            Some(source_dir_sets) => {
-                let source_dir_index: usize = source_file.source_dir_index;
-                let source_dir_unique_files: &HashSet<OsString> = &source_dir_sets[source_dir_index];
-                source_dir_unique_files.contains(&source_file.file_name)
-            }
-            None => true,
+    // If this is the first time we've seen this file, store it so we can find duplicates later
+    let mut is_source_unique = || {
+        let path_string = target_path.clone().into_os_string();
+        if source_unique_files.contains(&path_string) {
+            false
+        } else {
+            source_unique_files.insert(path_string);
+            true
         }
     };
 

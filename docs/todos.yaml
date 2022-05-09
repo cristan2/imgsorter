@@ -71,7 +71,7 @@
     [ ] h - improve maps duplication - use drain_filter or partition or retain or something else
     [ ] i - move map methods to *DeviceTree
     [ ] j - prefilter for Images and Videos only when parsing?
-    [ ] k - Reimplement is_source_unique
+    [x] k - Reimplement is_source_unique
     [x] g - Store total count of files and maybe file size when reading source files
     [x] h - Fix/refactor/improve padding calculation
     [x] m - move `if args.source_recursive` to Args constructor
@@ -93,7 +93,7 @@
     [ ] g - fix edge cases for moving assorted files ()
     [ ] h - filename padding during dry runs is sometimes bigger
           - should be calculated as max (target_path_len + depth_len)
-    [ ] i - get_source_unique_files only looks at file names, not date or device 
+    [x] i - get_source_unique_files only looks at file names, not date or device 
             - dry runs might report more skipped duplicates than will actually be found when writing 
     [x] create_subdir_if_required shouldn't rely on CWD to strip prefix
     [x] only create device name subdirs if there's more than one
