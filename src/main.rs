@@ -750,23 +750,26 @@ fn main() -> Result<(), std::io::Error> {
     // TODO 5g: instead of Vec<Vec<DirEntry>>, return a `SourceDirTree` struct
     //   which wraps the Vec's but contains additional metadata, such as no of files or total size
     // Read dir contents and filter out error results
-    let source_files: Vec<Vec<DirEntry>> = args
+    let source_files: BTreeMap<String, Vec<DirEntry>> = args
         .source_dir
         .iter()
-        .flat_map(|src_dir_vec| {
-            src_dir_vec
+        .map(|src_dir_vec| {
+            let parent_dir_name = src_dir_vec[0].display().to_string();
+            let dir_contents = src_dir_vec
                 .iter()
                 .filter_map(|src_dir|
                     read_supported_files(src_dir, &mut stats, &args).ok())
-                .collect::<Vec<_>>()
+                .flatten()
+                .collect::<Vec<_>>();
+            (parent_dir_name, dir_contents)
         })
-        .collect();
+        .collect::<BTreeMap<_, _>>();
 
     /*****************************************************************************/
     /* ---                 Print options before confirmation                 --- */
     /*****************************************************************************/
 
-    let source_files_count: usize = source_files.iter().map(|dir| dir.len()).sum();
+    let source_files_count: usize = source_files.keys().count();
 
     // Exit early if there are no source files
     if source_files_count < 1 {
@@ -961,7 +964,7 @@ fn main() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-/// Read contents of the provided dir and filter out subdirectories or files which failed to read
+/// Read contents of the provided dir but filter out subdirectories or files which failed to read
 fn read_supported_files(
     source_dir: &Path,
     stats: &mut FileStats,
@@ -1002,15 +1005,15 @@ fn read_supported_files(
 
 /// Read directory and parse contents into supported data models
 fn parse_dir_contents(
-    source_dir_contents: Vec<Vec<DirEntry>>,
+    source_dirs: BTreeMap<String, Vec<DirEntry>>,
     args: &mut Args,
     stats: &mut FileStats,
     padder: &mut Padder,
 ) -> TargetDateDeviceTree {
     let mut new_dir_tree: TargetDateDeviceTree = TargetDateDeviceTree::new();
 
-    // TODO 5g: this should already be available from source_dir_contents metadata
-    let total_no_files: usize = source_dir_contents.iter().map(|vec| vec.len()).sum();
+    // TODO 5l: this should already be available from source_dir_contents metadata
+    let total_no_files: usize = source_dirs.values().map(|vec| vec.len()).sum();
 
     stats.inc_files_total(total_no_files);
 
@@ -1018,15 +1021,15 @@ fn parse_dir_contents(
 
     // We'll print reading progress in two ways:
     // - if verbose, print a progress message in two parts for each source directory with time taken
-    // - if verbose, print a simple incrementing counter of individual files out of the total
+    // - if not verbose, print a simple incrementing counter of individual files out of the total
     if !args.verbose {
         println!("Reading source files...")
     }
 
-    for source_dir in source_dir_contents.into_iter() {
+    for (source_dir_name, source_dir_contents) in source_dirs.into_iter() {
         let time_parsing_dir = Instant::now();
 
-        let current_file_count = source_dir.len();
+        let current_file_count = source_dir_contents.len();
 
         let mut skipped_files: Vec<String> = Vec::new();
 
@@ -1034,18 +1037,18 @@ fn parse_dir_contents(
             // This is the first part of the progres line for this directory
             // See also the next [print_progress] call which prints the time taken to this same line
             // e.g. `[3566/4239] Parsing 2 files from D:\Temp\source_path\... done (0.018 sec)`
-            // TODO fix this
-            // print_progress(format!(
-            //     "[{}/{}] Parsing {} files from '{}'... ",
-            //     count_so_far,
-            //     total_no_files,
-            //     current_file_count,
-            //     args.source_dir[source_ix].display()
-            // ));
+            print_progress(format!(
+                "[{}/{}] ({}%) Parsing {} files from '{}'... ",
+                count_so_far,
+                total_no_files,
+                simple_percentage(count_so_far, total_no_files),
+                current_file_count,
+                &source_dir_name,
+            ));
         }
 
         // Parse each file into its internal representation and add it to the target tree
-        for entry in source_dir {
+        for entry in source_dir_contents.into_iter() {
             let current_file: SupportedFile = SupportedFile::parse_from(entry, args);
 
             // Build final target path for this file

@@ -72,8 +72,8 @@
     [ ] i - move map methods to *DeviceTree
     [ ] j - prefilter for Images and Videos only when parsing?
     [x] k - Reimplement is_source_unique
-    [x] g - Store total count of files and maybe file size when reading source files
-    [x] h - Fix/refactor/improve padding calculation
+    [-] l - Store total count of files and maybe file size when reading source files
+    [x] Fix/refactor/improve padding calculation
     [x] m - move `if args.source_recursive` to Args constructor
     [ ] n - don't make isolate_single_images consuming
     [ ] RightPadding & ColoredString should take both &str and String
