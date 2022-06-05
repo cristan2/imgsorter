@@ -45,6 +45,11 @@ pub struct Args {
     /// Not exposed in config, only used during config parsing
     using_cli_source: bool,
 
+    /// The recursive option might result in multiple sources (subdirs) being used even if
+    ///   the configuration has a single source, so store this flag after checking sources
+    /// Not exposed in config, internal only
+    has_multiple_sources: bool,
+
     /// The directory where the images to be sorted will be moved.
     /// If not provided, the current working dir will be used.
     /// If the target does not exist, it will be created
@@ -126,6 +131,7 @@ impl Args {
         Ok(Args {
             source_dir: vec![vec![cwd.clone()]],
             using_cli_source: false,
+            has_multiple_sources: false,
             target_dir: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
             source_recursive: DEFAULT_SOURCE_RECURSIVE,
             min_files_per_dir: DEFAULT_MIN_COUNT,
@@ -518,7 +524,6 @@ impl Args {
 
         // Once all source folders and options are read, check if we need to
         // recursively read subdirectories and set all sources
-
         if args.source_recursive {
 
             if args.verbose { println!("> Fetching source directories list recursively..."); }
@@ -536,6 +541,11 @@ impl Args {
             // TODO 3d: import FileStats and reenable this
             // stats.set_time_fetch_dirs(_time_fetching_dirs.elapsed());
         }
+
+        // The recursive option above might result in multiple sources being defined,
+        // even if the configuration has a single source, so check this now and store the result
+        let src_len: usize = args.source_dir.iter().map(|v|v.len()).sum();
+        args.has_multiple_sources = src_len > 1;
 
         Ok(args)
     }
@@ -564,7 +574,7 @@ impl Args {
     }
 
     pub fn has_multiple_sources(&self) -> bool {
-        self.source_dir.len() > 1
+        self.has_multiple_sources
     }
 
     pub fn is_compacting_enabled(&self) -> bool {

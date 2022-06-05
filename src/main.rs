@@ -6,9 +6,10 @@ use std::fs::{DirEntry, Metadata};
 use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use std::{fmt, fs, io};
+use std::{fmt, fs, io, thread};
 use std::io::Read;
 use std::ops::Add;
+use itertools::Itertools;
 
 use chrono::{DateTime, Utc};
 use filesize::PathExt;
@@ -23,6 +24,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Convenience wrapper over a map holding all files for a given device
 /// where the string representation of the optional device is the map key
+#[derive(Debug)]
 struct DeviceTree {
     file_tree: BTreeMap<DirEntryType, Vec<SupportedFile>>,
     max_dir_path_len: usize,
@@ -52,6 +54,7 @@ impl DeviceTree {
 ///  └─ [assorted]
 ///      └─ single.file
 /// ```
+#[derive(Debug)]
 struct TargetDateDeviceTree {
     dir_tree: BTreeMap<String, DeviceTree>,
     unknown_extensions: HashSet<String>,
@@ -71,7 +74,7 @@ impl fmt::Display for TargetDateDeviceTree {
                         let device_files = files
                             .iter()
                             .map(|file| {
-                                format!("{} | {}", device_dir, file.file_path.display().to_string())
+                                format!("{} -> {}", device_dir, file.file_path.display().to_string())
                             })
                             .collect::<Vec<String>>();
                         device_files
@@ -199,6 +202,47 @@ impl TargetDateDeviceTree {
                 // default 10 for the length of date dirs, e.g. 2016.12.29
                 max(10, oneoffs_dir_len)
         }
+    }
+
+    // Merge two TargetDateDeviceTree
+    fn extend(&mut self, other: TargetDateDeviceTree) {
+        // append devices and files
+        other.dir_tree
+            .into_iter()
+            .for_each(|(other_date_dir, other_device_tree)|{
+
+                match self.dir_tree.get_mut(&other_date_dir) {
+                    // if this date already exists, append devices to it
+                    Some(devicetree_for_this_date) => {
+
+                        other_device_tree.file_tree
+                            .into_iter()
+                            .for_each(| (other_device, other_files) |{
+
+                                match devicetree_for_this_date.file_tree.get_mut(&other_device) {
+
+                                    // if this device already exists, append files to it
+                                    Some(all_files_for_this_device) => {
+                                        all_files_for_this_device.extend(other_files);
+                                    },
+
+                                    // if this device is not found, just insert the other's entire file list
+                                    None => {
+                                        devicetree_for_this_date.file_tree.insert(other_device, other_files);
+                                    }
+                                }
+                            });
+                    }
+
+                    // if this date is not found, just insert the other's entire device tree
+                    None => {
+                        self.dir_tree.insert(other_date_dir, other_device_tree);
+                    }
+                }
+            });
+
+        // append devices and files
+        self.unknown_extensions.extend(other.unknown_extensions);
     }
 }
 
@@ -637,6 +681,7 @@ pub struct SupportedFile {
 
 // TODO 5e: find better name
 impl SupportedFile {
+    // TODO 10a - replace with parse_from_ref
     pub fn parse_from(dir_entry: DirEntry, args: &mut Args) -> SupportedFile {
         let extension = get_extension(&dir_entry);
         let file_type = get_file_type(&extension, args);
@@ -688,6 +733,65 @@ impl SupportedFile {
             metadata,
             device_name,
         }
+    }
+
+    // TODO 10a - almost-duplicate of parse_from, keep this one
+    pub fn parse_from_ref(dir_entry: &DirEntry, args: &Args) -> (SupportedFile, HashSet<String>) {
+        let extension = get_extension(&dir_entry);
+        let file_type = get_file_type(&extension, args);
+        let metadata = dir_entry.metadata().unwrap();
+
+        let exif_data = match file_type {
+            // It's much faster if we only try to read EXIF for image files
+            FileType::Image => {
+                // Use kamadak-rexif crate
+                read_kamadak_exif_date_and_device(&dir_entry, args)
+                // Use rexif crate
+                // read_exif_date_and_device(&dir_entry, args)
+            }
+            _ => ExifDateDevice::new(),
+        };
+
+        let mut non_custom_device_names: HashSet<String> = HashSet::new();
+
+        // Replace EXIF camera model with a custom name, if one was defined in config
+        let device_name: DirEntryType = match &exif_data.get_device_name(args.include_device_make) {
+            Some(camera_model) =>
+                args
+                    .custom_device_names
+                    .get(camera_model.to_lowercase().as_str())
+                    .map_or(
+                        {
+                            non_custom_device_names.insert(camera_model.clone());
+                            DirEntryType::Directory(camera_model.clone())
+                        },
+                        |custom_camera_name| DirEntryType::Directory(custom_camera_name.clone())
+                    ),
+            None if args.always_create_device_subdirs =>
+                DirEntryType::Directory(DEFAULT_UNKNOWN_DEVICE_DIR_NAME.to_string()),
+            None =>
+                DirEntryType::Files,
+        };
+
+        // Read image date - prefer EXIF tags over system date
+        let date_str = {
+            exif_data.date
+                .unwrap_or_else(|| get_system_modified_date(&metadata)
+                    .unwrap_or_else(|| DEFAULT_NO_DATE_STR.to_string()))
+        };
+
+        (
+            SupportedFile {
+            file_name: dir_entry.file_name(),
+            file_path: dir_entry.path(),
+            file_type,
+            extension,
+            date_str,
+            metadata,
+            device_name,
+            },
+            non_custom_device_names
+        )
     }
 
     pub fn is_dir(&self) -> bool {
@@ -769,7 +873,7 @@ fn main() -> Result<(), std::io::Error> {
     /* ---                 Print options before confirmation                 --- */
     /*****************************************************************************/
 
-    let source_files_count: usize = source_files.keys().count();
+    let source_files_count: usize = source_files.values().map(|d|d.len()).sum();
 
     // Exit early if there are no source files
     if source_files_count < 1 {
@@ -910,7 +1014,9 @@ fn main() -> Result<(), std::io::Error> {
     // Iterate files, read modified date and create subdirs
     // Copy images and videos to subdirs based on modified date
     let time_parsing_files = Instant::now();
-    let mut target_dir_tree = parse_dir_contents(source_files, &mut args, &mut stats, &mut padder);
+    // TODO 10a - keep threaded one
+    // let mut target_dir_tree = parse_source_dirs(source_files, &mut args, &mut stats, &mut padder);
+    let mut target_dir_tree = parse_source_dirs_threaded(source_files, &mut args, &mut stats, &mut padder);
 
     stats.set_time_parse_files(time_parsing_files.elapsed());
 
@@ -1003,8 +1109,9 @@ fn read_supported_files(
     Ok(filtered_entries)
 }
 
+// TODO 10a: no longer necessary after parse_source_dirs_threaded
 /// Read directory and parse contents into supported data models
-fn parse_dir_contents(
+fn parse_source_dirs(
     source_dirs: BTreeMap<String, Vec<DirEntry>>,
     args: &mut Args,
     stats: &mut FileStats,
@@ -1049,6 +1156,7 @@ fn parse_dir_contents(
 
         // Parse each file into its internal representation and add it to the target tree
         for entry in source_dir_contents.into_iter() {
+            // TODO 10a - replace with parse_from_ref
             let current_file: SupportedFile = SupportedFile::parse_from(entry, args);
 
             // Build final target path for this file
@@ -1147,6 +1255,189 @@ fn parse_dir_contents(
     padder.set_max_target_path(new_dir_tree.compute_max_path_len(args));
 
     new_dir_tree
+}
+
+/// Read directory and parse contents into supported data models
+fn parse_source_dirs_threaded(
+    source_dirs: BTreeMap<String, Vec<DirEntry>>,
+    args: &mut Args,
+    stats: &mut FileStats,
+    padder: &mut Padder,
+) -> TargetDateDeviceTree {
+    let mut new_dir_tree: TargetDateDeviceTree = TargetDateDeviceTree::new();
+
+    // TODO 5l: this should already be available from source_dir_contents metadata
+    let total_no_files: usize = source_dirs.values().map(|vec| vec.len()).sum();
+
+    stats.inc_files_total(total_no_files);
+
+    // let mut count_so_far = 0;
+
+    let mut skipped_files: Vec<String> = Vec::new();
+
+    // We'll print reading progress in two ways:
+    // - if verbose, print a progress message in two parts for each source directory with time taken
+    // - if not verbose, print a simple incrementing counter of individual files out of the total
+    if !args.verbose {
+        println!("Reading source files...")
+    }
+
+    let chunks_count = 10;  // needs to be args.max_threads - 1
+    if args.verbose {
+        println!("> using {} threads for {} files", chunks_count, total_no_files);
+    }
+
+    // TODO do we still need _source_dir_name?
+    let source_files = source_dirs
+        .into_iter()
+        .flat_map(|(_source_dir_name, source_dir_contents)| { source_dir_contents })
+        .collect::<Vec<_>>();
+
+    let mut thread_handles = Vec::new();
+
+    // split into owned chunks based on itertools and this answer:
+    //   https://stackoverflow.com/questions/66446258/rust-chunks-method-with-owned-values
+    let chunks: Vec<Vec<DirEntry>> = source_files.into_iter().chunks(chunks_count).into_iter().map(|chunk|chunk.collect()).collect();
+
+    chunks
+        .into_iter()
+        .for_each(|source_entry_chunk| {
+            let args_clone = args.clone();
+            let handle= thread::spawn( move || {
+                // TODO: add progress indicator
+                parse_dir_chunk(source_entry_chunk, &args_clone)
+            });
+            thread_handles.push(handle);
+        });
+
+    for handle in thread_handles {
+        let chunk_result = handle.join().unwrap();
+
+        new_dir_tree.extend(chunk_result.new_dir_tree);
+        padder.set_max_source_filename(chunk_result.max_source_filename);
+        padder.set_max_source_path(chunk_result.max_source_path);
+
+        skipped_files.extend(chunk_result.skipped_files);
+        stats.unknown_skipped += chunk_result.stats_unknown_skipped;
+        args.non_custom_device_names.extend(chunk_result.non_custom_extensions);
+    }
+
+    // TODO print skipped_files
+
+    // This is a consuming call for now, so needs reassignment
+    // TODO 5n: it shouldn't be consuming
+    new_dir_tree = new_dir_tree.isolate_single_images(args);
+
+    // The max path length can only be computed after the tree has been filled with devices and files
+    // because of the requirement to only create device subdirs if there are at least 2 devices
+    padder.set_max_target_path(new_dir_tree.compute_max_path_len(args));
+
+    new_dir_tree
+}
+
+fn parse_dir_chunk(source_entry_chunk: Vec<DirEntry>, args: &Args) -> ParseChunkResult {
+
+    let mut skipped_files: Vec<String> = Vec::new();
+    let mut new_dir_tree: TargetDateDeviceTree = TargetDateDeviceTree::new();
+    let mut non_custom_extensions: HashSet<String> = HashSet::new();
+    let mut stats_unknown_skipped: i32 = 0;
+    let mut max_source_filename: usize = 0;
+    let mut max_source_path: usize = 0;
+
+    source_entry_chunk
+        .into_iter()
+        .for_each(|source_entry| {
+
+            let (current_file, non_custom_ext) = SupportedFile::parse_from_ref(&source_entry, args);
+
+            non_custom_extensions.extend(non_custom_ext);
+
+            match &current_file.file_type {
+                FileType::Image | FileType::Video | FileType::Audio => {
+                    let file_date = current_file.date_str.clone();
+                    let file_device = current_file.device_name.clone();
+
+                    // TODO 5i: replace these with single method in DateDeviceTree
+                    // Attach file's date as a new subdirectory to the current target path
+                    let devicetree_for_this_date = {
+                        new_dir_tree
+                            .dir_tree
+                            .entry(file_date)
+                            .or_insert_with(DeviceTree::new)
+                    };
+
+                    // TODO 5i: replace these with single method in DeviceTree
+                    let all_files_for_this_device = {
+                        devicetree_for_this_date
+                            .file_tree
+                            .entry(file_device)
+                            .or_insert_with(Vec::new)
+                    };
+
+                    // Store the string lengths of the file name and path for padding in stdout
+                    let _device_name_len = match &current_file.device_name {
+                        DirEntryType::Directory(dir_name) =>
+                            get_string_char_count(dir_name.clone()),
+                        DirEntryType::Files =>
+                            0
+                    };
+                    let _date_name_str = &current_file.date_str.chars().count();
+                    // add +1 for each path separator character
+                    let total_target_path_len = _date_name_str + 1 + _device_name_len;
+
+                    let source_filename_len = get_string_char_count(
+                        String::from(
+                            current_file.file_name.clone().to_str().unwrap()));
+                    let source_dir_path_len = get_string_char_count(
+                        String::from(
+                            current_file.file_path.display().to_string()));
+
+                    max_source_filename = max(max_source_filename, source_filename_len);
+                    max_source_path = max(max_source_path, source_dir_path_len);
+
+                    devicetree_for_this_date.max_dir_path_len = max(
+                        devicetree_for_this_date.max_dir_path_len,
+                        total_target_path_len,
+                    );
+
+                    // Add file to dir tree
+                    all_files_for_this_device.push(current_file);
+                }
+
+                FileType::Unknown(ext) => {
+                    stats_unknown_skipped += 1;
+                    new_dir_tree.unknown_extensions.insert(ext.to_lowercase());
+                    skipped_files.push(current_file.get_file_name_str());
+                }
+            }
+
+            // if !args.verbose {
+            //     count_so_far += 1;
+            //
+            //     print_progress_overwrite(
+            //         format!("{}/{} ({}%)",
+            //                 count_so_far, total_no_files, simple_percentage(count_so_far, total_no_files)).as_str());
+            // };
+        });
+
+    ParseChunkResult {
+        new_dir_tree,
+        skipped_files,
+        non_custom_extensions,
+        stats_unknown_skipped,
+        max_source_filename,
+        max_source_path
+    }
+}
+
+#[derive(Debug)]
+struct ParseChunkResult {
+    new_dir_tree: TargetDateDeviceTree,
+    skipped_files: Vec<String>,
+    non_custom_extensions: HashSet<String>,
+    stats_unknown_skipped: i32,
+    max_source_filename: usize,
+    max_source_path: usize
 }
 
 /// Iterate the files according to the projected target structure and

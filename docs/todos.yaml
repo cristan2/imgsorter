@@ -22,6 +22,7 @@
     [ ] canonicalize source override input when "."
     [ ] Args::new_from_toml should not return ? since we're using default values
     [ ] installer + context menu + path + executable metadata windows (version)
+    [ ] CLI options should be read before Args::new, then passed as arg
 
 [ ] 2 - File handling
     [x] a - subdirs by device name
@@ -141,4 +142,5 @@
     [ ] crate license
 
 [ ] 10 - Cleanup
+    [ ] a - remove un-threaded methods
 [ ] 11 - Tests - ???
