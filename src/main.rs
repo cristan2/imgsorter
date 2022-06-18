@@ -338,6 +338,7 @@ pub struct FileStats {
     error_file_delete: i32,
     error_date_dir_create: i32,
     error_device_dir_create: i32,
+    time_fetch_files: Duration,
     time_fetch_dirs: Duration,
     time_parse_files: Duration,
     time_write_files: Duration,
@@ -368,6 +369,7 @@ impl FileStats {
             error_file_delete: 0,
             error_date_dir_create: 0,
             error_device_dir_create: 0,
+            time_fetch_files: Duration::new(0, 0),
             time_fetch_dirs: Duration::new(0, 0),
             time_parse_files: Duration::new(0, 0),
             time_write_files: Duration::new(0, 0),
@@ -396,6 +398,7 @@ impl FileStats {
     pub fn inc_error_file_delete(&mut self) { self.error_file_delete += 1 }
     pub fn inc_error_date_dir_create(&mut self) { self.error_date_dir_create += 1 }
     pub fn inc_error_device_dir_create(&mut self) { self.error_device_dir_create += 1 }
+    pub fn set_time_fetch_files(&mut self, elapsed: Duration) { self.time_fetch_files = elapsed }
     pub fn set_time_fetch_dirs(&mut self, elapsed: Duration) { self.time_fetch_dirs = elapsed }
     pub fn set_time_parse_files(&mut self, elapsed: Duration) { self.time_parse_files = elapsed }
     pub fn set_time_write_files(&mut self, elapsed: Duration) { self.time_write_files = elapsed }
@@ -506,6 +509,7 @@ Date folders create errors:   {date_c_err}
 Device folders create errors: {devc_c_err}
 ──────────────────────────────────────────────
 Time fetching folders:        {tfetch_dir} sec
+Time fetching files:          {tfetch_file} sec
 Time parsing files:           {tparse_file} sec
 Time writing files:           {twrite_file} sec
 ──────────────────────────────────────────────
@@ -544,6 +548,9 @@ Total time taken:             {t_total} sec
             tfetch_dir=ColoredString::bold_white(format!("{}:{}",
                 self.time_fetch_dirs.as_secs(),
                 LeftPadding::zeroes3(self.time_fetch_dirs.subsec_millis())).as_str()),
+            tfetch_file=ColoredString::bold_white(format!("{}:{}",
+                self.time_fetch_files.as_secs(),
+                LeftPadding::zeroes3(self.time_fetch_files.subsec_millis())).as_str()),
             tparse_file=ColoredString::bold_white(format!("{}:{}",
                 self.time_parse_files.as_secs(),
                 LeftPadding::zeroes3(self.time_parse_files.subsec_millis())).as_str()),
@@ -575,6 +582,7 @@ Date folders create errors:     n/a
 Device folders create errors:   n/a
 -----------------------------------------------
 Time fetching folders:          {tfetch_dir} sec
+Time fetching files:            {tfetch_file} sec
 Time parsing files:             {tparse_file} sec
 Time printing files:            {twrite_file} sec
 ––––––––––––––––––––––––––––––––––––––––––––––––––––––
@@ -608,6 +616,9 @@ Total time taken:               {t_total} sec
             tfetch_dir=ColoredString::bold_white(format!("{}:{}",
                 self.time_fetch_dirs.as_secs(),
                 LeftPadding::zeroes3(self.time_fetch_dirs.subsec_millis())).as_str()),
+            tfetch_file=ColoredString::bold_white(format!("{}:{}",
+                self.time_fetch_files.as_secs(),
+                LeftPadding::zeroes3(self.time_fetch_files.subsec_millis())).as_str()),
             tparse_file=ColoredString::bold_white(format!("{}:{}",
                 self.time_parse_files.as_secs(),
                 LeftPadding::zeroes3(self.time_parse_files.subsec_millis())).as_str()),
@@ -838,9 +849,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut stats = FileStats::new();
 
-    if args.verbose {
-        dbg!(&args);
-    }
+    if args.verbose { dbg!(&args); }
 
     // Needs to be created after checking for recursive source dirs,
     // since we need to pass args.has_multiple_sources()
@@ -850,11 +859,14 @@ fn main() -> Result<(), std::io::Error> {
     /* ---                        Read source files                          --- */
     /*****************************************************************************/
 
+    let time_fetching_files = Instant::now();
+
     // TODO 5g: instead of Vec<Vec<DirEntry>>, return a `SourceDirTree` struct
     //   which wraps the Vec's but contains additional metadata, such as no of files or total size
+    // TODO 5p: make this multi-threaded
     // Read dir contents and filter out error results
     let source_files: BTreeMap<String, Vec<DirEntry>> = args
-        .source_dir
+        .source_dirs
         .iter()
         .map(|src_dir_vec| {
             let parent_dir_name = src_dir_vec[0].display().to_string();
@@ -868,10 +880,13 @@ fn main() -> Result<(), std::io::Error> {
         })
         .collect::<BTreeMap<_, _>>();
 
+    stats.set_time_fetch_files(time_fetching_files.elapsed());
+
     /*****************************************************************************/
     /* ---                 Print options before confirmation                 --- */
     /*****************************************************************************/
 
+    // TODO 5l: use this in parse_source_dirs methods instead of recalculating it
     let source_files_count: usize = source_files.values().map(|d|d.len()).sum();
 
     // Exit early if there are no source files
@@ -936,9 +951,13 @@ fn main() -> Result<(), std::io::Error> {
     // Iterate files, read modified date and create subdirs
     // Copy images and videos to subdirs based on modified date
     let time_parsing_files = Instant::now();
-    // TODO 10a - keep threaded one
-    // let mut target_dir_tree = parse_source_dirs(source_files, &mut args, &mut stats, &mut padder);
-    let mut target_dir_tree = parse_source_dirs_threaded(source_files, &mut args, &mut stats, &mut padder);
+
+    let mut target_dir_tree = if args.max_threads == 1 {
+        // TODO 10a: this should no longer be necessary
+        parse_source_dirs(source_files, &mut args, &mut stats, &mut padder)
+    } else {
+        parse_source_dirs_threaded(source_files, &mut args, &mut stats, &mut padder)
+    };
 
     stats.set_time_parse_files(time_parsing_files.elapsed());
 
@@ -1004,7 +1023,7 @@ fn build_source_dirs_list_string(args: &Args) -> String {
         // Show all source directories
         if args.verbose {
             let len_max_digits = get_integer_char_count(args.source_dirs_count as i32);
-            args.source_dir
+            args.source_dirs
                 .iter()
                 .enumerate()
                 .map(|(outer_index, outer_src_path)| {
@@ -1029,8 +1048,8 @@ fn build_source_dirs_list_string(args: &Args) -> String {
             // Show compact version of the source dirs - show only the outer (configured)
             // dirs and then just print a count of their inner dirs
         } else {
-            let len_max_digits = get_integer_char_count(args.source_dir.len() as i32);
-            args.source_dir
+            let len_max_digits = get_integer_char_count(args.source_dirs.len() as i32);
+            args.source_dirs
                 .iter()
                 .enumerate()
                 .map(|(outer_index, outer_src)| {
@@ -1060,7 +1079,7 @@ fn build_source_dirs_list_string(args: &Args) -> String {
     } else {
         format!("{}{}",
                 source_dir_str,
-                args.source_dir[0]
+                args.source_dirs[0]
                     .iter()
                     .map(|d| d.display().to_string())
                     .collect::<Vec<_>>()
@@ -1108,7 +1127,6 @@ fn read_supported_files(
     Ok(filtered_entries)
 }
 
-// TODO 10a: no longer necessary after parse_source_dirs_threaded
 /// Read directory and parse contents into supported data models
 fn parse_source_dirs(
     source_dirs: BTreeMap<String, Vec<DirEntry>>,
@@ -1303,7 +1321,7 @@ fn parse_source_dirs_threaded(
         .for_each(|source_entry_chunk| {
             let args_clone = args.clone();
             let handle= thread::spawn( move || {
-                // TODO: add progress indicator
+                // TODO 10a: add progress indicator
                 parse_dir_chunk(source_entry_chunk, &args_clone)
             });
             thread_handles.push(handle);
@@ -1319,9 +1337,9 @@ fn parse_source_dirs_threaded(
         skipped_files.extend(chunk_result.skipped_files);
         stats.unknown_skipped += chunk_result.stats_unknown_skipped;
         args.non_custom_device_names.extend(chunk_result.non_custom_extensions);
-    }
 
-    // TODO print skipped_files
+        // TODO 10a: print skipped files?
+    }
 
     // This is a consuming call for now, so needs reassignment
     // TODO 5n: it shouldn't be consuming
@@ -1410,6 +1428,7 @@ fn parse_dir_chunk(source_entry_chunk: Vec<DirEntry>, args: &Args) -> ParseChunk
                 }
             }
 
+            // TODO 10a: redesign for multithreaded
             // if !args.verbose {
             //     count_so_far += 1;
             //

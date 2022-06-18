@@ -48,7 +48,6 @@
     [x] a - show in progress statistics
     [x] b - show final statistics - x files found, x dirs created, x files moved, x files left untouched...
     [!] c - img count in dir name - not feasible, prone to errors; is included in dry run output only
-    [ ] d - reenable Stats.time_fetching_dirs
     [x] dry run specific statistics
     [x] e - 'dirs created' stat - differentiate between "date dirs" and "device dirs"
     [x] table-like stats instead of simple list (e.g. "Images moved/copied/skipped    0 | 10 | 2" )
@@ -78,6 +77,7 @@
     [x] m - move `if args.source_recursive` to Args constructor
     [ ] n - don't make isolate_single_images consuming
     [ ] o - redesign/optimize source dirs display for op confirmation
+    [ ] p - make fetch source files multi-threaded 
     [ ] RightPadding & ColoredString should take both &str and String
     [ ] cache result of padding length calculations and other improvements
     [-] improve performance of parse_dir_contents (150-218 secs for 6000 files)
@@ -142,6 +142,9 @@
     [ ] main flows
     [ ] crate license
 
-[ ] 10 - Cleanup
-    [ ] a - remove un-threaded methods
+[ ] 10 - Cleanup / regressions
+    [ ] a - threaded parse dir methods no longer have progress indicators or skipped files printouts
+          - remove unthreaded methods
+    [ ] b - reenable Stats.time_fetching_dirs
+
 [ ] 11 - Tests - ???

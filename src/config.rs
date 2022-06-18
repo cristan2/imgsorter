@@ -40,7 +40,7 @@ pub struct Args {
     /// It's listed as a Vec<Vec<PathBuf>> to cover both cases when source_recursive is enabled
     /// or not - the outer Vec references the explicitly configured paths, while the inner Vec's
     /// will hold all subdirectories of those paths
-    pub source_dir: Vec<Vec<PathBuf>>,
+    pub source_dirs: Vec<Vec<PathBuf>>,
 
     /// Set to true only if we received a source_dir from the CLI
     /// Not exposed in config, only used during config parsing
@@ -133,7 +133,7 @@ impl Args {
         custom_extensions.insert(AUDIO.to_lowercase(), Vec::new());
 
         Ok(Args {
-            source_dir: vec![vec![cwd.clone()]],
+            source_dirs: vec![vec![cwd.clone()]],
             using_cli_source: false,
             source_dirs_count: 0,
             target_dir: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
@@ -348,7 +348,7 @@ impl Args {
                                                                     paths_to_str(all_invalid_sources)).as_str()));
                                                             print_source_folders_help();
                                                             // The cwd previously set as default value will remain used
-                                                            println!("Using current working directory for now: {}", args.source_dir[0][0].display());
+                                                            println!("Using current working directory for now: {}", args.source_dirs[0][0].display());
                                                         }
 
                                                         Ok((valid_paths, invalid_paths)) => {
@@ -372,7 +372,7 @@ impl Args {
                                                 } else {
                                                     println!("{}", ColoredString::red("No source folders found!"));
                                                     print_source_folders_help();
-                                                    println!("Using current working directory for now: {}", args.source_dir[0][0].display());
+                                                    println!("Using current working directory for now: {}", args.source_dirs[0][0].display());
                                                 }
 
                                                 // Not exposed in config; use for dev only
@@ -558,20 +558,20 @@ impl Args {
                 args.set_source_paths(new_source_dirs);
             }
 
-            // TODO 3d: import FileStats and reenable this
+            // TODO 10b: import FileStats and reenable this
             // stats.set_time_fetch_dirs(_time_fetching_dirs.elapsed());
         }
 
         // The recursive option above might result in multiple sources being defined,
         // even if the configuration has a single source, so check this now and store the result
-        args.source_dirs_count = args.source_dir.iter().map(|v|v.len()).sum();
+        args.source_dirs_count = args.source_dirs.iter().map(|v|v.len()).sum();
 
         Ok(args)
     }
 
     fn set_source_paths(&mut self, sources: Vec<Vec<PathBuf>>) {
         if !(sources.is_empty() || sources.iter().all(|v|v.is_empty())) {
-            self.source_dir = sources;
+            self.source_dirs = sources;
         }
     }
 
@@ -587,8 +587,8 @@ impl Args {
     }
 
     fn append_source_subdir(&mut self, subdir: &str) {
-        if self.source_dir.len() == 1 && self.source_dir[0].len() == 1{
-            self.source_dir[0][0].push(subdir);
+        if self.source_dirs.len() == 1 && self.source_dirs[0].len() == 1{
+            self.source_dirs[0][0].push(subdir);
         }
     }
 
@@ -706,7 +706,7 @@ fn walk_source_dirs_recursively(args: &Args) -> Vec<Vec<PathBuf>> {
         Ok(())
     }
 
-    args.source_dir.clone()
+    args.source_dirs.clone()
         .into_iter()
         .flat_map(|source_dir|
             source_dir
