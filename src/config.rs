@@ -32,7 +32,7 @@ pub const DEFAULT_UNKNOWN_DEVICE_DIR_NAME: &str = "Unknown";
 pub const DEFAULT_NO_DATE_STR: &str = "no date";
 pub const DATE_DIR_FORMAT: &str = "%Y.%m.%d";
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Args {
     /// The directory or directories where the images to be sorted are located.
     /// If not provided, the current working dir will be used
@@ -46,9 +46,9 @@ pub struct Args {
     using_cli_source: bool,
 
     /// The recursive option might result in multiple sources (subdirs) being used even if
-    ///   the configuration has a single source, so store this flag after checking sources
+    ///   the configuration has a single source dir, so store the actual count after checking sources
     /// Not exposed in config, internal only
-    has_multiple_sources: bool,
+    pub source_dirs_count: usize,
 
     /// The directory where the images to be sorted will be moved.
     /// If not provided, the current working dir will be used.
@@ -131,7 +131,7 @@ impl Args {
         Ok(Args {
             source_dir: vec![vec![cwd.clone()]],
             using_cli_source: false,
-            has_multiple_sources: false,
+            source_dirs_count: 0,
             target_dir: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
             source_recursive: DEFAULT_SOURCE_RECURSIVE,
             min_files_per_dir: DEFAULT_MIN_COUNT,
@@ -544,8 +544,7 @@ impl Args {
 
         // The recursive option above might result in multiple sources being defined,
         // even if the configuration has a single source, so check this now and store the result
-        let src_len: usize = args.source_dir.iter().map(|v|v.len()).sum();
-        args.has_multiple_sources = src_len > 1;
+        args.source_dirs_count = args.source_dir.iter().map(|v|v.len()).sum();
 
         Ok(args)
     }
@@ -574,7 +573,7 @@ impl Args {
     }
 
     pub fn has_multiple_sources(&self) -> bool {
-        self.has_multiple_sources
+        self.source_dirs_count > 1
     }
 
     pub fn is_compacting_enabled(&self) -> bool {

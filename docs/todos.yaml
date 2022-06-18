@@ -77,6 +77,7 @@
     [x] Fix/refactor/improve padding calculation
     [x] m - move `if args.source_recursive` to Args constructor
     [ ] n - don't make isolate_single_images consuming
+    [ ] o - redesign/optimize source dirs display for op confirmation
     [ ] RightPadding & ColoredString should take both &str and String
     [ ] cache result of padding length calculations and other improvements
     [-] improve performance of parse_dir_contents (150-218 secs for 6000 files)

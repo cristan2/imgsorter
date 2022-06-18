@@ -850,7 +850,6 @@ fn main() -> Result<(), std::io::Error> {
     /* ---                        Read source files                          --- */
     /*****************************************************************************/
 
-    // TODO 6f: handle path not exists
     // TODO 5g: instead of Vec<Vec<DirEntry>>, return a `SourceDirTree` struct
     //   which wraps the Vec's but contains additional metadata, such as no of files or total size
     // Read dir contents and filter out error results
@@ -888,88 +887,11 @@ fn main() -> Result<(), std::io::Error> {
             ColoredString::red("moved: ")
         };
 
-        // TODO 6f: check paths exist
         // Build the string used for printing source directory name(s) before confirmation
-        let source_dirs = {
-            let source_dir_str  = String::from("Source directory:   ");
-            let source_dirs_str = String::from("Source directories: ");
-
-            match args.source_dir.len() {
-                0 =>
-                    format!("{}{}", source_dir_str, ColoredString::red("No source dirs specified")),
-                1 =>
-                    format!("{}{}",
-                            source_dir_str,
-                            args.source_dir[0]
-                                .iter()
-                                .map(|d|d.display().to_string())
-                                .collect::<Vec<_>>()
-                                .join(",")
-                    ),
-                len => {
-                    let spacing_other_lines = " ".repeat(source_dirs_str.chars().count());
-                    let len_max_digits = get_integer_char_count(len as i32);
-
-                    // Show all source directories
-                    if args.verbose {
-                        args.source_dir
-                            .iter()
-                            .enumerate()
-                            .map(|(outer_index, outer_src_path)| {
-                                outer_src_path
-                                    .iter()
-                                    .enumerate()
-                                    .map(|(index, inner_src_path)| {
-                                        let _first_part = if outer_index == 0 && index == 0 {&source_dirs_str} else {&spacing_other_lines};
-                                        format!("{}{}-{}. {}",
-                                                // print dir indexes starting from 1
-                                                _first_part,
-                                                outer_index+1,
-                                                LeftPadding::zeroes(index+1, len_max_digits),
-                                                &inner_src_path.display().to_string())
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join("\n")
-                                    .add("\n")
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    // Show compact version of the source dirs
-                    } else {
-                        args.source_dir
-                            .iter()
-                            .enumerate()
-                            .map(|(outer_index, outer_src)| {
-                                let spacing_first_line = if outer_index == 0 { &source_dirs_str } else { &spacing_other_lines };
-                                let first_line =
-                                    format!("{}{}. {}",
-                                            // print dir indexes starting from 1
-                                            spacing_first_line,
-                                            LeftPadding::zeroes(outer_index + 1, len_max_digits),
-                                            &outer_src[0].display().to_string());
-
-                                if outer_src.len() > 1 {
-                                    let second_line =
-                                        // subtract -1 since we're displaying the first item explicitly
-                                        format!("{}·- {} more folders",
-                                                &spacing_other_lines,
-                                                outer_src.len() - 1);
-
-                                    format!("{}\n{}", first_line, second_line)
-                                } else {
-                                    first_line
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    }
-                }
-            }
-        };
+        let source_dirs_list: String = build_source_dirs_list_string(&args);
 
         println!("═══════════════════════════════════════════════════════════════════════════");
-        // TODO ??? This would only be relevant if we're saving any files or reading config
-        println!("{}", source_dirs);
+        println!("{}", source_dirs_list);
         println!("Target directory:   {}", &args.target_dir.display());
         println!("Files to be {} {}", write_op, source_files_count);
         println!("═══════════════════════════════════════════════════════════════════════════");
@@ -1068,6 +990,83 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     Ok(())
+}
+
+fn build_source_dirs_list_string(args: &Args) -> String {
+    let source_dir_str = String::from("Source directory:   ");
+    let source_dirs_str = String::from("Source directories: ");
+
+    // TODO 5o: reimplement or at least extract this separately
+    if args.has_multiple_sources() {
+        // TODO 5o: need to re-calculate numbering padding and spacing for the second line
+        let spacing_other_lines = " ".repeat(source_dirs_str.chars().count());
+
+        // Show all source directories
+        if args.verbose {
+            let len_max_digits = get_integer_char_count(args.source_dirs_count as i32);
+            args.source_dir
+                .iter()
+                .enumerate()
+                .map(|(outer_index, outer_src_path)| {
+                    outer_src_path
+                        .iter()
+                        .enumerate()
+                        .map(|(index, inner_src_path)| {
+                            let _first_part = if outer_index == 0 && index == 0 { &source_dirs_str } else { &spacing_other_lines };
+                            format!("{}{}-{}. {}",
+                                    // print dir indexes starting from 1
+                                    _first_part,
+                                    outer_index + 1,
+                                    LeftPadding::zeroes(index + 1, len_max_digits),
+                                    &inner_src_path.display().to_string())
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                        .add("\n")
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+            // Show compact version of the source dirs - show only the outer (configured)
+            // dirs and then just print a count of their inner dirs
+        } else {
+            let len_max_digits = get_integer_char_count(args.source_dir.len() as i32);
+            args.source_dir
+                .iter()
+                .enumerate()
+                .map(|(outer_index, outer_src)| {
+                    let spacing_first_line = if outer_index == 0 { &source_dirs_str } else { &spacing_other_lines };
+                    let first_line =
+                        format!("{}{}. {}",
+                                // print dir indexes starting from 1
+                                spacing_first_line,
+                                LeftPadding::zeroes(outer_index + 1, len_max_digits - 1),
+                                &outer_src[0].display().to_string());
+
+                    if outer_src.len() > 1 {
+                        let second_line =
+                            // subtract -1 since we're displaying the first item explicitly
+                            format!("{}·- {} more subfolders",
+                                    &spacing_other_lines,
+                                    outer_src.len() - 1);
+
+                        format!("{}\n{}", first_line, second_line)
+                    } else {
+                        first_line
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+    } else {
+        format!("{}{}",
+                source_dir_str,
+                args.source_dir[0]
+                    .iter()
+                    .map(|d| d.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+        )
+    }
 }
 
 /// Read contents of the provided dir but filter out subdirectories or files which failed to read
