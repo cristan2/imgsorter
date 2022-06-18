@@ -6,8 +6,10 @@ use std::fs::{DirEntry, Metadata};
 use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use std::{fmt, fs, io};
+use std::{fmt, fs, io, thread};
 use std::io::Read;
+use std::ops::Add;
+use itertools::Itertools;
 
 use chrono::{DateTime, Utc};
 use filesize::PathExt;
@@ -22,6 +24,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Convenience wrapper over a map holding all files for a given device
 /// where the string representation of the optional device is the map key
+#[derive(Debug)]
 struct DeviceTree {
     file_tree: BTreeMap<DirEntryType, Vec<SupportedFile>>,
     max_dir_path_len: usize,
@@ -51,6 +54,7 @@ impl DeviceTree {
 ///  └─ [assorted]
 ///      └─ single.file
 /// ```
+#[derive(Debug)]
 struct TargetDateDeviceTree {
     dir_tree: BTreeMap<String, DeviceTree>,
     unknown_extensions: HashSet<String>,
@@ -70,7 +74,7 @@ impl fmt::Display for TargetDateDeviceTree {
                         let device_files = files
                             .iter()
                             .map(|file| {
-                                format!("{} | {}", device_dir, file.file_path.display().to_string())
+                                format!("{} -> {}", device_dir, file.file_path.display().to_string())
                             })
                             .collect::<Vec<String>>();
                         device_files
@@ -199,6 +203,47 @@ impl TargetDateDeviceTree {
                 max(10, oneoffs_dir_len)
         }
     }
+
+    // Merge two TargetDateDeviceTree
+    fn extend(&mut self, other: TargetDateDeviceTree) {
+        // append devices and files
+        other.dir_tree
+            .into_iter()
+            .for_each(|(other_date_dir, other_device_tree)|{
+
+                match self.dir_tree.get_mut(&other_date_dir) {
+                    // if this date already exists, append devices to it
+                    Some(devicetree_for_this_date) => {
+
+                        other_device_tree.file_tree
+                            .into_iter()
+                            .for_each(| (other_device, other_files) |{
+
+                                match devicetree_for_this_date.file_tree.get_mut(&other_device) {
+
+                                    // if this device already exists, append files to it
+                                    Some(all_files_for_this_device) => {
+                                        all_files_for_this_device.extend(other_files);
+                                    },
+
+                                    // if this device is not found, just insert the other's entire file list
+                                    None => {
+                                        devicetree_for_this_date.file_tree.insert(other_device, other_files);
+                                    }
+                                }
+                            });
+                    }
+
+                    // if this date is not found, just insert the other's entire device tree
+                    None => {
+                        self.dir_tree.insert(other_date_dir, other_device_tree);
+                    }
+                }
+            });
+
+        // append devices and files
+        self.unknown_extensions.extend(other.unknown_extensions);
+    }
 }
 
 #[derive(Debug)]
@@ -293,6 +338,7 @@ pub struct FileStats {
     error_file_delete: i32,
     error_date_dir_create: i32,
     error_device_dir_create: i32,
+    time_fetch_files: Duration,
     time_fetch_dirs: Duration,
     time_parse_files: Duration,
     time_write_files: Duration,
@@ -323,6 +369,7 @@ impl FileStats {
             error_file_delete: 0,
             error_date_dir_create: 0,
             error_device_dir_create: 0,
+            time_fetch_files: Duration::new(0, 0),
             time_fetch_dirs: Duration::new(0, 0),
             time_parse_files: Duration::new(0, 0),
             time_write_files: Duration::new(0, 0),
@@ -351,6 +398,7 @@ impl FileStats {
     pub fn inc_error_file_delete(&mut self) { self.error_file_delete += 1 }
     pub fn inc_error_date_dir_create(&mut self) { self.error_date_dir_create += 1 }
     pub fn inc_error_device_dir_create(&mut self) { self.error_device_dir_create += 1 }
+    pub fn set_time_fetch_files(&mut self, elapsed: Duration) { self.time_fetch_files = elapsed }
     pub fn set_time_fetch_dirs(&mut self, elapsed: Duration) { self.time_fetch_dirs = elapsed }
     pub fn set_time_parse_files(&mut self, elapsed: Duration) { self.time_parse_files = elapsed }
     pub fn set_time_write_files(&mut self, elapsed: Duration) { self.time_write_files = elapsed }
@@ -461,6 +509,7 @@ Date folders create errors:   {date_c_err}
 Device folders create errors: {devc_c_err}
 ──────────────────────────────────────────────
 Time fetching folders:        {tfetch_dir} sec
+Time fetching files:          {tfetch_file} sec
 Time parsing files:           {tparse_file} sec
 Time writing files:           {twrite_file} sec
 ──────────────────────────────────────────────
@@ -499,6 +548,9 @@ Total time taken:             {t_total} sec
             tfetch_dir=ColoredString::bold_white(format!("{}:{}",
                 self.time_fetch_dirs.as_secs(),
                 LeftPadding::zeroes3(self.time_fetch_dirs.subsec_millis())).as_str()),
+            tfetch_file=ColoredString::bold_white(format!("{}:{}",
+                self.time_fetch_files.as_secs(),
+                LeftPadding::zeroes3(self.time_fetch_files.subsec_millis())).as_str()),
             tparse_file=ColoredString::bold_white(format!("{}:{}",
                 self.time_parse_files.as_secs(),
                 LeftPadding::zeroes3(self.time_parse_files.subsec_millis())).as_str()),
@@ -530,6 +582,7 @@ Date folders create errors:     n/a
 Device folders create errors:   n/a
 -----------------------------------------------
 Time fetching folders:          {tfetch_dir} sec
+Time fetching files:            {tfetch_file} sec
 Time parsing files:             {tparse_file} sec
 Time printing files:            {twrite_file} sec
 ––––––––––––––––––––––––––––––––––––––––––––––––––––––
@@ -563,6 +616,9 @@ Total time taken:               {t_total} sec
             tfetch_dir=ColoredString::bold_white(format!("{}:{}",
                 self.time_fetch_dirs.as_secs(),
                 LeftPadding::zeroes3(self.time_fetch_dirs.subsec_millis())).as_str()),
+            tfetch_file=ColoredString::bold_white(format!("{}:{}",
+                self.time_fetch_files.as_secs(),
+                LeftPadding::zeroes3(self.time_fetch_files.subsec_millis())).as_str()),
             tparse_file=ColoredString::bold_white(format!("{}:{}",
                 self.time_parse_files.as_secs(),
                 LeftPadding::zeroes3(self.time_parse_files.subsec_millis())).as_str()),
@@ -632,14 +688,12 @@ pub struct SupportedFile {
     date_str: String,
     metadata: Metadata,
     device_name: DirEntryType,
-    // index of the vec holding the files in the original source dir of this file
-    // this is used to detect duplicates across multiple source dirs when doing dry runs
-    source_dir_index: usize,
 }
 
 // TODO 5e: find better name
 impl SupportedFile {
-    pub fn parse_from(dir_entry: DirEntry, source_dir_index: usize, args: &mut Args) -> SupportedFile {
+    // TODO 10a - replace with parse_from_ref
+    pub fn parse_from(dir_entry: DirEntry, args: &mut Args) -> SupportedFile {
         let extension = get_extension(&dir_entry);
         let file_type = get_file_type(&extension, args);
         let metadata = dir_entry.metadata().unwrap();
@@ -689,8 +743,66 @@ impl SupportedFile {
             date_str,
             metadata,
             device_name,
-            source_dir_index,
         }
+    }
+
+    // TODO 10a - almost-duplicate of parse_from, keep this one
+    pub fn parse_from_ref(dir_entry: &DirEntry, args: &Args) -> (SupportedFile, HashSet<String>) {
+        let extension = get_extension(&dir_entry);
+        let file_type = get_file_type(&extension, args);
+        let metadata = dir_entry.metadata().unwrap();
+
+        let exif_data = match file_type {
+            // It's much faster if we only try to read EXIF for image files
+            FileType::Image => {
+                // Use kamadak-rexif crate
+                read_kamadak_exif_date_and_device(&dir_entry, args)
+                // Use rexif crate
+                // read_exif_date_and_device(&dir_entry, args)
+            }
+            _ => ExifDateDevice::new(),
+        };
+
+        let mut non_custom_device_names: HashSet<String> = HashSet::new();
+
+        // Replace EXIF camera model with a custom name, if one was defined in config
+        let device_name: DirEntryType = match &exif_data.get_device_name(args.include_device_make) {
+            Some(camera_model) =>
+                args
+                    .custom_device_names
+                    .get(camera_model.to_lowercase().as_str())
+                    .map_or(
+                        {
+                            non_custom_device_names.insert(camera_model.clone());
+                            DirEntryType::Directory(camera_model.clone())
+                        },
+                        |custom_camera_name| DirEntryType::Directory(custom_camera_name.clone())
+                    ),
+            None if args.always_create_device_subdirs =>
+                DirEntryType::Directory(DEFAULT_UNKNOWN_DEVICE_DIR_NAME.to_string()),
+            None =>
+                DirEntryType::Files,
+        };
+
+        // Read image date - prefer EXIF tags over system date
+        let date_str = {
+            exif_data.date
+                .unwrap_or_else(|| get_system_modified_date(&metadata)
+                    .unwrap_or_else(|| DEFAULT_NO_DATE_STR.to_string()))
+        };
+
+        (
+            SupportedFile {
+            file_name: dir_entry.file_name(),
+            file_path: dir_entry.path(),
+            file_type,
+            extension,
+            date_str,
+            metadata,
+            device_name,
+            },
+            non_custom_device_names
+        )
     }
 
     pub fn is_dir(&self) -> bool {
@@ -715,7 +827,7 @@ impl SupportedFile {
 }
 
 /// The main program body. This is an overview of the main flows:
-/// * set up args/run options
+/// * parse config file and set up args/run options
 /// * read list of files in all source dirs
 /// * ask for operation confirmation - dry run or write files
 /// * parse source files and build a model of the destination dir structure (this is where the sorting occurs)
@@ -737,86 +849,66 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut stats = FileStats::new();
 
-    if args.verbose {
-        dbg!(&args);
-    }
+    if args.verbose { dbg!(&args); }
 
     // Needs to be created after checking for recursive source dirs,
     // since we need to pass args.has_multiple_sources()
-    // let mut padder = Padder::new(args.has_multiple_sources());
     let mut padder = Padder::new(args.has_multiple_sources());
 
     /*****************************************************************************/
     /* ---                        Read source files                          --- */
     /*****************************************************************************/
 
-    // TODO 6f: handle path not exists
+    let time_fetching_files = Instant::now();
+
     // TODO 5g: instead of Vec<Vec<DirEntry>>, return a `SourceDirTree` struct
     //   which wraps the Vec's but contains additional metadata, such as no of files or total size
+    // TODO 5p: make this multi-threaded
     // Read dir contents and filter out error results
-    let source_contents = args
-        .source_dir
-        .clone()
+    let source_files: BTreeMap<String, Vec<DirEntry>> = args
+        .source_dirs
         .iter()
-        .filter_map(|src_dir| read_supported_files(src_dir, &mut stats, &mut args).ok())
-        .collect::<Vec<_>>();
+        .map(|src_dir_vec| {
+            let parent_dir_name = src_dir_vec[0].display().to_string();
+            let dir_contents = src_dir_vec
+                .iter()
+                .filter_map(|src_dir|
+                    read_supported_files(src_dir, &mut stats, &args).ok())
+                .flatten()
+                .collect::<Vec<_>>();
+            (parent_dir_name, dir_contents)
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    stats.set_time_fetch_files(time_fetching_files.elapsed());
 
     /*****************************************************************************/
     /* ---                 Print options before confirmation                 --- */
     /*****************************************************************************/
 
-    let total_source_files: usize = source_contents.iter().map(|dir| dir.len()).sum();
+    // TODO 5l: use this in parse_source_dirs methods instead of recalculating it
+    let source_files_count: usize = source_files.values().map(|d|d.len()).sum();
 
     // Exit early if there are no source files
-    if total_source_files < 1 {
-        println!("{}", ColoredString::red("There are no source files, exiting."));
+    if source_files_count < 1 {
+        println!("{}", ColoredString::red("There are no supported files in the current source(s), exiting."));
         return Ok(());
     }
 
     {
-        let copy_status = if args.copy_not_move {
+        let write_op = if args.copy_not_move {
             ColoredString::orange("copied:")
         } else {
             ColoredString::red("moved: ")
         };
 
-        // TODO 6f: check paths exist
         // Build the string used for printing source directory name(s) before confirmation
-        let source_dirs = {
-            let source_dir_str  = String::from("Source directory:   ");
-            let source_dirs_str = String::from("Source directories: ");
-
-            match args.source_dir.len() {
-                0 =>
-                    format!("{}{}", source_dir_str, ColoredString::red("No source dirs specified")),
-                1 =>
-                    format!("{}{}", source_dir_str, args.source_dir[0].display().to_string()),
-                len => {
-                    let spacing_other_lines = " ".repeat(source_dirs_str.chars().count());
-                    let len_max_digits = get_integer_char_count(len as i32);
-                    args.source_dir
-                        .iter()
-                        .enumerate()
-                        .map(|(index, src_path)| {
-                            let _first_part = if index == 0 {&source_dirs_str} else {&spacing_other_lines};
-                            format!("{}{}. {}",
-                                    // print dir indexes starting from 1
-                                    _first_part,
-                                    LeftPadding::zeroes(index+1, len_max_digits),
-                                    &src_path.display().to_string())
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                }
-            }
-        };
+        let source_dirs_list: String = build_source_dirs_list_string(&args);
 
         println!("═══════════════════════════════════════════════════════════════════════════");
-        // TODO ??? This would only be relevant if we're saving any files or reading config
-        // println!("Current working directory: {}", &args.cwd.display());
-        println!("{}", source_dirs);
+        println!("{}", source_dirs_list);
         println!("Target directory:   {}", &args.target_dir.display());
-        println!("Files to be {} {}", copy_status, total_source_files);
+        println!("Files to be {} {}", write_op, source_files_count);
         println!("═══════════════════════════════════════════════════════════════════════════");
         // TODO 1f: print all options for this run?
     }
@@ -855,15 +947,17 @@ fn main() -> Result<(), std::io::Error> {
     /* ---        Parse source files and copy/paste or dry run them          --- */
     /*****************************************************************************/
 
-    // Extract unique file names across all source directories.
-    // Useful only for dry run statuses
-    let source_unique_files = get_source_unique_files(&source_contents, &args);
-
     // TODO 5j: prefilter for Images and Videos only
     // Iterate files, read modified date and create subdirs
     // Copy images and videos to subdirs based on modified date
     let time_parsing_files = Instant::now();
-    let mut target_dir_tree = parse_dir_contents(source_contents, &mut args, &mut stats, &mut padder);
+
+    let mut target_dir_tree = if args.max_threads == 1 {
+        // TODO 10a: this should no longer be necessary
+        parse_source_dirs(source_files, &mut args, &mut stats, &mut padder)
+    } else {
+        parse_source_dirs_threaded(source_files, &mut args, &mut stats, &mut padder)
+    };
 
     stats.set_time_parse_files(time_parsing_files.elapsed());
 
@@ -873,7 +967,6 @@ fn main() -> Result<(), std::io::Error> {
         // or do a dry run to simulate a copy/move pass
         process_target_dir_files(
             &mut target_dir_tree,
-            source_unique_files,
             &args,
             &mut stats,
             &mut padder,
@@ -918,52 +1011,88 @@ fn main() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-/// For dry runs over multiple source dirs we want to show if there are duplicate files across all sources.
-/// This method iterates over all filenames in the source dirs, extracting a set for each dir.
-/// Then it iterates all sets, checking each one against all previous ones and keeps only
-/// unique elements, ensuring duplicate filenames are progressively removed.
-fn get_source_unique_files(
-    source_dir_contents: &[Vec<DirEntry>],
-    args: &Args,
-) -> Option<Vec<HashSet<OsString>>> {
-    // TODO 6i: this method only takes filename into consideration, should also consider date / device
-    //   maybe even use [TargetDateDeviceTree] for this instead of source vecs?
+fn build_source_dirs_list_string(args: &Args) -> String {
+    let source_dir_str = String::from("Source directory:   ");
+    let source_dirs_str = String::from("Source directories: ");
 
-    // This method is only useful for dry runs, return early otherwise
-    if !args.dry_run {
-        return None;
-    }
+    // TODO 5o: reimplement or at least extract this separately
+    if args.has_multiple_sources() {
+        // TODO 5o: need to re-calculate numbering padding and spacing for the second line
+        let spacing_other_lines = " ".repeat(source_dirs_str.chars().count());
 
-    let sets_of_files = source_dir_contents
-        .iter()
-        .map(|src_dir| {
-            src_dir
+        // Show all source directories
+        if args.verbose {
+            let len_max_digits = get_integer_char_count(args.source_dirs_count as i32);
+            args.source_dirs
                 .iter()
-                .map(|src_entry| src_entry.file_name())
-                .collect::<HashSet<_>>()
-        })
-        .collect::<Vec<_>>();
+                .enumerate()
+                .map(|(outer_index, outer_src_path)| {
+                    outer_src_path
+                        .iter()
+                        .enumerate()
+                        .map(|(index, inner_src_path)| {
+                            let _first_part = if outer_index == 0 && index == 0 { &source_dirs_str } else { &spacing_other_lines };
+                            format!("{}{}-{}. {}",
+                                    // print dir indexes starting from 1
+                                    _first_part,
+                                    outer_index + 1,
+                                    LeftPadding::zeroes(index + 1, len_max_digits),
+                                    &inner_src_path.display().to_string())
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                        .add("\n")
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+            // Show compact version of the source dirs - show only the outer (configured)
+            // dirs and then just print a count of their inner dirs
+        } else {
+            let len_max_digits = get_integer_char_count(args.source_dirs.len() as i32);
+            args.source_dirs
+                .iter()
+                .enumerate()
+                .map(|(outer_index, outer_src)| {
+                    let spacing_first_line = if outer_index == 0 { &source_dirs_str } else { &spacing_other_lines };
+                    let first_line =
+                        format!("{}{}. {}",
+                                // print dir indexes starting from 1
+                                spacing_first_line,
+                                LeftPadding::zeroes(outer_index + 1, len_max_digits - 1),
+                                &outer_src[0].display().to_string());
 
-    if args.debug { print_sets_with_index("source file sets before filtering for uniques", &sets_of_files); }
+                    if outer_src.len() > 1 {
+                        let second_line =
+                            // subtract -1 since we're displaying the first item explicitly
+                            format!("{}·- {} more subfolders",
+                                    &spacing_other_lines,
+                                    outer_src.len() - 1);
 
-    let all_unique_files = sets_of_files
-        .iter()
-        .enumerate()
-        .map(|(curr_ix, _)|
-            // keep_unique_across_sets(&sets_of_files, curr_ix))
-            keep_unique_across_sets(&sets_of_files[0..=curr_ix]))
-        .collect::<Vec<_>>();
-
-    if args.debug { print_sets_with_index("source file sets after filtering for uniques", &all_unique_files); }
-
-    Option::from(all_unique_files)
+                        format!("{}\n{}", first_line, second_line)
+                    } else {
+                        first_line
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+    } else {
+        format!("{}{}",
+                source_dir_str,
+                args.source_dirs[0]
+                    .iter()
+                    .map(|d| d.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+        )
+    }
 }
 
-/// Read contents of source dir and filter out directories or those which failed to read
+/// Read contents of the provided dir but filter out subdirectories or files which failed to read
 fn read_supported_files(
     source_dir: &Path,
     stats: &mut FileStats,
-    args: &mut Args,
+    args: &Args,
 ) -> Result<Vec<DirEntry>, std::io::Error> {
     // TODO 5d: handle all ?'s
     let dir_entries = fs::read_dir(source_dir)?
@@ -999,16 +1128,16 @@ fn read_supported_files(
 }
 
 /// Read directory and parse contents into supported data models
-fn parse_dir_contents(
-    source_dir_contents: Vec<Vec<DirEntry>>,
+fn parse_source_dirs(
+    source_dirs: BTreeMap<String, Vec<DirEntry>>,
     args: &mut Args,
     stats: &mut FileStats,
     padder: &mut Padder,
 ) -> TargetDateDeviceTree {
     let mut new_dir_tree: TargetDateDeviceTree = TargetDateDeviceTree::new();
 
-    // TODO 5g: this should already be available from source_dir_contents metadata
-    let total_no_files: usize = source_dir_contents.iter().map(|vec| vec.len()).sum();
+    // TODO 5l: this should already be available from source_dir_contents metadata
+    let total_no_files: usize = source_dirs.values().map(|vec| vec.len()).sum();
 
     stats.inc_files_total(total_no_files);
 
@@ -1016,15 +1145,15 @@ fn parse_dir_contents(
 
     // We'll print reading progress in two ways:
     // - if verbose, print a progress message in two parts for each source directory with time taken
-    // - if verbose, print a simple incrementing counter of individual files out of the total
+    // - if not verbose, print a simple incrementing counter of individual files out of the total
     if !args.verbose {
         println!("Reading source files...")
     }
 
-    for (source_ix, source_dir) in source_dir_contents.into_iter().enumerate() {
+    for (source_dir_name, source_dir_contents) in source_dirs.into_iter() {
         let time_parsing_dir = Instant::now();
 
-        let current_file_count = source_dir.len();
+        let current_file_count = source_dir_contents.len();
 
         let mut skipped_files: Vec<String> = Vec::new();
 
@@ -1033,17 +1162,19 @@ fn parse_dir_contents(
             // See also the next [print_progress] call which prints the time taken to this same line
             // e.g. `[3566/4239] Parsing 2 files from D:\Temp\source_path\... done (0.018 sec)`
             print_progress(format!(
-                "[{}/{}] Parsing {} files from '{}'... ",
+                "[{}/{}] ({}%) Parsing {} files from '{}'... ",
                 count_so_far,
                 total_no_files,
+                simple_percentage(count_so_far, total_no_files),
                 current_file_count,
-                args.source_dir[source_ix].display()
+                &source_dir_name,
             ));
         }
 
         // Parse each file into its internal representation and add it to the target tree
-        for entry in source_dir {
-            let current_file: SupportedFile = SupportedFile::parse_from(entry, source_ix, args);
+        for entry in source_dir_contents.into_iter() {
+            // TODO 10a - replace with parse_from_ref
+            let current_file: SupportedFile = SupportedFile::parse_from(entry, args);
 
             // Build final target path for this file
             match &current_file.file_type {
@@ -1143,14 +1274,196 @@ fn parse_dir_contents(
     new_dir_tree
 }
 
+/// Read directory and parse contents into supported data models
+fn parse_source_dirs_threaded(
+    source_dirs: BTreeMap<String, Vec<DirEntry>>,
+    args: &mut Args,
+    stats: &mut FileStats,
+    padder: &mut Padder,
+) -> TargetDateDeviceTree {
+    let mut new_dir_tree: TargetDateDeviceTree = TargetDateDeviceTree::new();
+
+    // TODO 5l: this should already be available from source_dir_contents metadata
+    let total_no_files: usize = source_dirs.values().map(|vec| vec.len()).sum();
+
+    stats.inc_files_total(total_no_files);
+
+    // let mut count_so_far = 0;
+
+    let mut skipped_files: Vec<String> = Vec::new();
+
+    // We'll print reading progress in two ways:
+    // - if verbose, print a progress message in two parts for each source directory with time taken
+    // - if not verbose, print a simple incrementing counter of individual files out of the total
+    if !args.verbose {
+        println!("Reading source files...")
+    }
+
+    let chunks_count = args.max_threads - 1;
+    if args.verbose {
+        println!("> using {} threads for {} files", chunks_count, total_no_files);
+    }
+
+    // TODO do we still need _source_dir_name?
+    let source_files = source_dirs
+        .into_iter()
+        .flat_map(|(_source_dir_name, source_dir_contents)| { source_dir_contents })
+        .collect::<Vec<_>>();
+
+    let mut thread_handles = Vec::new();
+
+    // split into owned chunks based on itertools and this answer:
+    //   https://stackoverflow.com/questions/66446258/rust-chunks-method-with-owned-values
+    let chunks: Vec<Vec<DirEntry>> = source_files.into_iter().chunks(chunks_count).into_iter().map(|chunk|chunk.collect()).collect();
+
+    chunks
+        .into_iter()
+        .for_each(|source_entry_chunk| {
+            let args_clone = args.clone();
+            let handle= thread::spawn( move || {
+                // TODO 10a: add progress indicator
+                parse_dir_chunk(source_entry_chunk, &args_clone)
+            });
+            thread_handles.push(handle);
+        });
+
+    for handle in thread_handles {
+        let chunk_result = handle.join().unwrap();
+
+        new_dir_tree.extend(chunk_result.new_dir_tree);
+        padder.set_max_source_filename(chunk_result.max_source_filename);
+        padder.set_max_source_path(chunk_result.max_source_path);
+
+        skipped_files.extend(chunk_result.skipped_files);
+        stats.unknown_skipped += chunk_result.stats_unknown_skipped;
+        args.non_custom_device_names.extend(chunk_result.non_custom_extensions);
+
+        // TODO 10a: print skipped files?
+    }
+
+    // This is a consuming call for now, so needs reassignment
+    // TODO 5n: it shouldn't be consuming
+    new_dir_tree = new_dir_tree.isolate_single_images(args);
+
+    // The max path length can only be computed after the tree has been filled with devices and files
+    // because of the requirement to only create device subdirs if there are at least 2 devices
+    padder.set_max_target_path(new_dir_tree.compute_max_path_len(args));
+
+    new_dir_tree
+}
+
+fn parse_dir_chunk(source_entry_chunk: Vec<DirEntry>, args: &Args) -> ParseChunkResult {
+
+    let mut skipped_files: Vec<String> = Vec::new();
+    let mut new_dir_tree: TargetDateDeviceTree = TargetDateDeviceTree::new();
+    let mut non_custom_extensions: HashSet<String> = HashSet::new();
+    let mut stats_unknown_skipped: i32 = 0;
+    let mut max_source_filename: usize = 0;
+    let mut max_source_path: usize = 0;
+
+    source_entry_chunk
+        .into_iter()
+        .for_each(|source_entry| {
+
+            let (current_file, non_custom_ext) = SupportedFile::parse_from_ref(&source_entry, args);
+
+            non_custom_extensions.extend(non_custom_ext);
+
+            match &current_file.file_type {
+                FileType::Image | FileType::Video | FileType::Audio => {
+                    let file_date = current_file.date_str.clone();
+                    let file_device = current_file.device_name.clone();
+
+                    // TODO 5i: replace these with single method in DateDeviceTree
+                    // Attach file's date as a new subdirectory to the current target path
+                    let devicetree_for_this_date = {
+                        new_dir_tree
+                            .dir_tree
+                            .entry(file_date)
+                            .or_insert_with(DeviceTree::new)
+                    };
+
+                    // TODO 5i: replace these with single method in DeviceTree
+                    let all_files_for_this_device = {
+                        devicetree_for_this_date
+                            .file_tree
+                            .entry(file_device)
+                            .or_insert_with(Vec::new)
+                    };
+
+                    // Store the string lengths of the file name and path for padding in stdout
+                    let _device_name_len = match &current_file.device_name {
+                        DirEntryType::Directory(dir_name) =>
+                            get_string_char_count(dir_name.clone()),
+                        DirEntryType::Files =>
+                            0
+                    };
+                    let _date_name_str = &current_file.date_str.chars().count();
+                    // add +1 for each path separator character
+                    let total_target_path_len = _date_name_str + 1 + _device_name_len;
+
+                    let source_filename_len = get_string_char_count(
+                        String::from(
+                            current_file.file_name.clone().to_str().unwrap()));
+                    let source_dir_path_len = get_string_char_count(
+                        String::from(
+                            current_file.file_path.display().to_string()));
+
+                    max_source_filename = max(max_source_filename, source_filename_len);
+                    max_source_path = max(max_source_path, source_dir_path_len);
+
+                    devicetree_for_this_date.max_dir_path_len = max(
+                        devicetree_for_this_date.max_dir_path_len,
+                        total_target_path_len,
+                    );
+
+                    // Add file to dir tree
+                    all_files_for_this_device.push(current_file);
+                }
+
+                FileType::Unknown(ext) => {
+                    stats_unknown_skipped += 1;
+                    new_dir_tree.unknown_extensions.insert(ext.to_lowercase());
+                    skipped_files.push(current_file.get_file_name_str());
+                }
+            }
+
+            // TODO 10a: redesign for multithreaded
+            // if !args.verbose {
+            //     count_so_far += 1;
+            //
+            //     print_progress_overwrite(
+            //         format!("{}/{} ({}%)",
+            //                 count_so_far, total_no_files, simple_percentage(count_so_far, total_no_files)).as_str());
+            // };
+        });
+
+    ParseChunkResult {
+        new_dir_tree,
+        skipped_files,
+        non_custom_extensions,
+        stats_unknown_skipped,
+        max_source_filename,
+        max_source_path
+    }
+}
+
+#[derive(Debug)]
+struct ParseChunkResult {
+    new_dir_tree: TargetDateDeviceTree,
+    skipped_files: Vec<String>,
+    non_custom_extensions: HashSet<String>,
+    stats_unknown_skipped: i32,
+    max_source_filename: usize,
+    max_source_path: usize
+}
+
 /// Iterate the files according to the projected target structure and
 /// either do a dry run and print resulting dir structure or
 /// write the files to target as configured (copy or move)
 fn process_target_dir_files(
     // The target tree representation of files to be copied/moved
     new_dir_tree: &mut TargetDateDeviceTree,
-    // For dry runs, this represents a vector of unique files per each source dir
-    source_unique_files: Option<Vec<HashSet<OsString>>>,
     args: &Args,
     mut stats: &mut FileStats,
     padder: &mut Padder,
@@ -1187,6 +1500,10 @@ fn process_target_dir_files(
         println!("{}", ColoredString::bold_white(header_separator.as_str()));
     }
 
+    // This is useful only for dry runs, where we need to track unique files
+    // as we iterate over them to be able to show the status of duplicates.
+    // For write operations, this will remain unused and empty.
+    let mut source_unique_files: HashSet<OsString> = HashSet::new();
 
     /*****************************************************************************/
     /* ---             Iterate each date directory to be created             --- */
@@ -1338,7 +1655,7 @@ fn process_target_dir_files(
             // Output is different for dry-runs and copy/move operations, so process them separately
             if is_dry_run {
                 process_files_dry_run(files_and_paths_vec, device_destination_path,
-                                      &source_unique_files, dir_count_total, curr_dir_ix, indent_level,
+                                      &mut source_unique_files, dir_count_total, curr_dir_ix, indent_level,
                                       args, &mut stats, padder)
             } else {
                 process_files_write(files_and_paths_vec, device_destination_path,
@@ -1373,7 +1690,7 @@ fn process_target_dir_files(
 fn process_files_dry_run(
     files_and_paths_vec: &[SupportedFile],
     device_destination_path: PathBuf,
-    source_unique_files: &Option<Vec<HashSet<OsString>>>,
+    source_unique_files: &mut HashSet<OsString>,
     dir_count_total: usize,
     curr_dir_ix: usize,
     indent_level: usize,
@@ -1591,30 +1908,23 @@ fn dry_run_check_target_dir_exists(
 /// * in both cases, check if the source file exists - no copy will take place
 /// * in both cases, check if the target file exists - file will be skipped
 /// * in both cases, if there are multiple source dirs, check if the file is present more than once - skip all duplicates
-/// * if the is a move, check if the source file is read-only and can't be moved (only copied)
+/// * if this is a move, check if the source file is read-only and can't be moved (only copied)
 fn dry_run_check_file_restrictions(
     source_file: &SupportedFile,
-    target_path: &Path,
-    source_unique_files: &Option<Vec<HashSet<OsString>>>,
+    target_path: &PathBuf,
+    source_unique_files: &mut HashSet<OsString>,
     args: &Args,
     stats: &mut FileStats,
 ) -> String {
-    // TODO 5d: Pre-filtering is not the best method to skip duplicate files.
-    // It can fail for files with the same name in different directories, taken with different devices.
-    // The alternative would be to store each file in a separate name during
-    // the copy/move process and check each it against all previous ones.
-    // If we find it, this means we're now dealing with a duplicate.
 
-    // Check the index of unique files for the source dir of this file
-    // If this set doesn't contain this file, then the file is a duplicate
-    let is_source_unique = || {
-        match source_unique_files {
-            Some(source_dir_sets) => {
-                let source_dir_index: usize = source_file.source_dir_index;
-                let source_dir_unique_files: &HashSet<OsString> = &source_dir_sets[source_dir_index];
-                source_dir_unique_files.contains(&source_file.file_name)
-            }
-            None => true,
+    // If this is the first time we've seen this file, store it so we can find duplicates later
+    let mut is_source_unique = || {
+        let path_string = target_path.clone().into_os_string();
+        if source_unique_files.contains(&path_string) {
+            false
+        } else {
+            source_unique_files.insert(path_string);
+            true
         }
     };
 

@@ -31,16 +31,25 @@ const DEFAULT_TARGET_SUBDIR: &str = "imgsorted";
 pub const DEFAULT_UNKNOWN_DEVICE_DIR_NAME: &str = "Unknown";
 pub const DEFAULT_NO_DATE_STR: &str = "no date";
 pub const DATE_DIR_FORMAT: &str = "%Y.%m.%d";
+pub const DEFAULT_MAX_THREADS: usize = 10;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Args {
     /// The directory or directories where the images to be sorted are located.
     /// If not provided, the current working dir will be used
-    pub source_dir: Vec<PathBuf>,
+    /// It's listed as a Vec<Vec<PathBuf>> to cover both cases when source_recursive is enabled
+    /// or not - the outer Vec references the explicitly configured paths, while the inner Vec's
+    /// will hold all subdirectories of those paths
+    pub source_dirs: Vec<Vec<PathBuf>>,
 
     /// Set to true only if we received a source_dir from the CLI
     /// Not exposed in config, only used during config parsing
     using_cli_source: bool,
+
+    /// The recursive option might result in multiple sources (subdirs) being used even if
+    ///   the configuration has a single source dir, so store the actual count after checking sources
+    /// Not exposed in config, internal only
+    pub source_dirs_count: usize,
 
     /// The directory where the images to be sorted will be moved.
     /// If not provided, the current working dir will be used.
@@ -107,6 +116,9 @@ pub struct Args {
 
     /// User-defined extensions for files to be processed which otherwise the program would skip
     pub custom_extensions: HashMap<String, Vec<String>>,
+
+    /// The number of threads to use when doing threaded work like parsing source files
+    pub max_threads: usize,
 }
 
 impl Args {
@@ -121,8 +133,9 @@ impl Args {
         custom_extensions.insert(AUDIO.to_lowercase(), Vec::new());
 
         Ok(Args {
-            source_dir: vec![cwd.clone()],
+            source_dirs: vec![vec![cwd.clone()]],
             using_cli_source: false,
+            source_dirs_count: 0,
             target_dir: cwd.clone().join(DEFAULT_TARGET_SUBDIR),
             source_recursive: DEFAULT_SOURCE_RECURSIVE,
             min_files_per_dir: DEFAULT_MIN_COUNT,
@@ -140,18 +153,19 @@ impl Args {
             custom_device_names: HashMap::new(),
             non_custom_device_names: HashSet::new(),
             custom_extensions,
+            max_threads: DEFAULT_MAX_THREADS,
         })
     }
 
-    ///// Several ways to launch the program
-    ///// - edit registry - use context menu in dir - imgsort current dir - sends current dir as path override
-    ///// - add program dir to path - use terminal - navigate to any dir
-    /////   - launch using program name only - uses source in config file
-    /////   - launch using program name and "." - uses current dir as path override
-    /////   - launch using program name and any path - uses that path as path override
-    ///// In all cases, config file should be read from the executable location, if present,
-    ///// otherwise fallback to relative path, which likely will fall as well (should only work for debug builds in IDE)\
-    ///// and will end up not using the config file and just use the preset defaults
+    /// Several ways to launch the program
+    /// - edit registry - use context menu in dir - imgsort current dir - sends current dir as path override
+    /// - add program dir to path - use terminal - navigate to any dir
+    ///   - launch using program name only - uses source in config file
+    ///   - launch using program name and "." - uses current dir as path override
+    ///   - launch using program name and any path - uses that path as path override
+    /// In all cases, config file should be read from the executable location, if present,
+    /// otherwise fallback to relative path, which likely will fall as well (should only work for debug builds in IDE)\
+    /// and will end up not using the config file and just use the preset defaults
     pub fn new_from_toml(config_file: &str) -> Result<Args, std::io::Error> {
         let mut args = Args::new()?;
 
@@ -168,11 +182,12 @@ impl Args {
         // or the current working directory from the system when launched from the Windows explorer context menu
         // If we receive this, use it as both the source and target dirs and toggle the [using_cli_source] flag to skip
         // reading the source and target values from config. Otherwise, do nothing and fallback to config.
-        if let Some(cli_source) = get_cli_source_override() {
+        if let Some(cli_source) = get_cli_source_path() {
             let cli_src_path = vec![PathBuf::from(cli_source.clone())];
-            match args.set_source_paths(cli_src_path) {
-                Ok(None) => {
+            match validate_source_paths(cli_src_path) {
+                Ok((valid_paths, _)) => {
                     println!("Using source path at: {}", &cli_source);
+                    args.set_source_paths(vec![valid_paths]);
                     args.set_target_dir(cli_source);
                     args.using_cli_source = true;
                 }
@@ -307,7 +322,8 @@ impl Args {
                                             fn print_source_folders_help() {
                                                 println!("{}",
                                                     format!(
-                                                        "{}\n{}\n{}\n{}\n{}\n{}",
+                                                        // TODO 5f: use OS-specific path separators
+                                                        "{}\n-----{}\n{}\n{}\n{}\n{}\n-----",
                                                         "Edit imgsorter.toml and add valid source folders like this:",
                                                         "[folders]",
                                                         "source_dirs = [",
@@ -321,29 +337,42 @@ impl Args {
                                                 // If no valid source paths are found, use current working directory and print a red warning
                                                 // otherwise, use whatever sources are valid and print a yellow warning for the rest
                                                 if let Some(source_paths) = get_array_value(folders, "source_dirs", &mut missing_vals) {
+
                                                     println!("Using source paths from configuration file.");
-                                                    match args.set_source_paths(get_paths(source_paths)) {
+
+                                                    match validate_source_paths(get_paths(source_paths)) {
                                                         Err(all_invalid_sources) => {
                                                             println!("{}", ColoredString::red(
                                                                 format!(
-                                                                    "All source folders are invalid!\n> {}",
-                                                                    all_invalid_sources).as_str()));
+                                                                    "All source folders are invalid!\n {}",
+                                                                    paths_to_str(all_invalid_sources)).as_str()));
                                                             print_source_folders_help();
-                                                            println!("Using current working directory for now: {}", args.source_dir[0].display());
+                                                            // The cwd previously set as default value will remain used
+                                                            println!("Using current working directory for now: {}", args.source_dirs[0][0].display());
                                                         }
-                                                        Ok(Some(invalid_folders)) => {
-                                                            println!("{}", ColoredString::orange(
-                                                                format!(
-                                                                    "> Some source folders were invalid and were ignored:\n  {}",
-                                                                    invalid_folders).as_str()));
-                                                            print_source_folders_help()
+
+                                                        Ok((valid_paths, invalid_paths)) => {
+                                                            if !invalid_paths.is_empty() {
+                                                                println!("{}", ColoredString::orange(
+                                                                    format!(
+                                                                        "Some source folders were invalid and were ignored:\n {}",
+                                                                        paths_to_str(invalid_paths)).as_str()));
+                                                                print_source_folders_help()
+                                                            }
+
+                                                            let path_vecs: Vec<Vec<PathBuf>> =
+                                                                valid_paths
+                                                                    .into_iter()
+                                                                    .map(|path|vec![path])
+                                                                    .collect();
+
+                                                            args.set_source_paths(path_vecs);
                                                         }
-                                                        Ok(None) => ()
                                                     }
                                                 } else {
                                                     println!("{}", ColoredString::red("No source folders found!"));
                                                     print_source_folders_help();
-                                                    println!("Using current working directory for now: {}", args.source_dir[0].display());
+                                                    println!("Using current working directory for now: {}", args.source_dirs[0][0].display());
                                                 }
 
                                                 // Not exposed in config; use for dev only
@@ -361,7 +390,7 @@ impl Args {
                                                         args.set_target_dir(target_dir);
                                                     }
                                                 }
-                                            }
+                                            } // end if !args.using_cli_source
 
                                             if let Some(min_files_per_dir) = get_positive_integer_value(folders, "min_files_per_dir", &mut missing_vals, &mut invalid_vals) {
                                                 args.min_files_per_dir = min_files_per_dir;
@@ -465,6 +494,21 @@ impl Args {
                                     None =>
                                         missing_vals.push(String::from("custom")),
                                 } // end config custom data
+
+                                /* --- Parse advanced configuration --- */
+
+                                match toml_content.get("advanced") {
+                                    Some(advanced_opt) => {
+                                        if let Some(advanced) = advanced_opt.as_table() {
+                                            if let Some(max_threads) = get_positive_integer_value(advanced, "max_threads", &mut missing_vals, &mut invalid_vals) {
+                                                args.max_threads = max_threads as usize;
+                                            }
+                                        }
+                                    },
+
+                                    None =>
+                                        missing_vals.push(String::from("advanced")),
+                                }
                             }
                             None => {
                                 println!("Could not parse TOML into a key-value object");
@@ -500,7 +544,6 @@ impl Args {
 
         // Once all source folders and options are read, check if we need to
         // recursively read subdirectories and set all sources
-
         if args.source_recursive {
 
             if args.verbose { println!("> Fetching source directories list recursively..."); }
@@ -508,39 +551,27 @@ impl Args {
 
             let new_source_dirs = walk_source_dirs_recursively(&args);
             if new_source_dirs.is_empty() {
-                // TODO 6f: can this happen anymore?
+                // This shouldn't happen, but let's be sure
                 panic!("Source folders are empty or don't exist");
             } else {
                 if args.verbose { println!("> Setting {} source folder(s)", new_source_dirs.len()); }
-                args.source_dir = new_source_dirs;
+                args.set_source_paths(new_source_dirs);
             }
 
-            // TODO 3d: import FileStats and reenable this
+            // TODO 10b: import FileStats and reenable this
             // stats.set_time_fetch_dirs(_time_fetching_dirs.elapsed());
         }
+
+        // The recursive option above might result in multiple sources being defined,
+        // even if the configuration has a single source, so check this now and store the result
+        args.source_dirs_count = args.source_dirs.iter().map(|v|v.len()).sum();
 
         Ok(args)
     }
 
-    fn set_source_paths(&mut self, sources: Vec<PathBuf>) -> Result<Option<String>, String> {
-        let (valid_paths, invalid_paths): (Vec<PathBuf>, Vec<PathBuf>) =
-            sources.into_iter().partition(|path| path.exists());
-
-        let list_of_invalid = invalid_paths
-            .iter()
-            .flat_map(|s| s.to_str())
-            .collect::<Vec<_>>()
-            .join("\n  ");
-
-        if valid_paths.is_empty() {
-            Err(list_of_invalid)
-        } else {
-            self.source_dir = valid_paths;
-            if !list_of_invalid.is_empty() {
-                Ok(Some(list_of_invalid))
-            } else {
-                Ok(None)
-            }
+    fn set_source_paths(&mut self, sources: Vec<Vec<PathBuf>>) {
+        if !(sources.is_empty() || sources.iter().all(|v|v.is_empty())) {
+            self.source_dirs = sources;
         }
     }
 
@@ -556,13 +587,13 @@ impl Args {
     }
 
     fn append_source_subdir(&mut self, subdir: &str) {
-        if self.source_dir.len() == 1 {
-            self.source_dir[0].push(subdir);
+        if self.source_dirs.len() == 1 && self.source_dirs[0].len() == 1{
+            self.source_dirs[0][0].push(subdir);
         }
     }
 
     pub fn has_multiple_sources(&self) -> bool {
-        self.source_dir.len() > 1
+        self.source_dirs_count > 1
     }
 
     pub fn is_compacting_enabled(&self) -> bool {
@@ -591,7 +622,7 @@ fn get_config_file_path(config_file_name: &str) -> (PathBuf, String) {
     }
 }
 
-fn get_cli_source_override() -> Option<String> {
+fn get_cli_source_path() -> Option<String> {
     let cli_args: Vec<String> = env::args().collect();
 
     cli_args
@@ -617,7 +648,38 @@ fn get_program_executable_path() -> Result<PathBuf, String> {
     }
 }
 
-fn walk_source_dirs_recursively(args: &Args) -> Vec<PathBuf> {
+/// Check if the provided sources exist and return a `valid_path`
+/// Vec only if there's at least one valid source path
+fn validate_source_paths(sources: Vec<PathBuf>) -> Result<(Vec<PathBuf>, Vec<PathBuf>), Vec<PathBuf>> {
+    let (valid_paths, invalid_paths): (Vec<PathBuf>, Vec<PathBuf>) =
+        sources.into_iter().partition(|path| path.exists());
+
+    if valid_paths.is_empty() {
+        Err(invalid_paths)
+    } else {
+        Ok((valid_paths, invalid_paths))
+    }
+}
+
+fn paths_to_str(paths: Vec<PathBuf>) -> String {
+    paths
+        .iter()
+        .flat_map(|s| s.to_str())
+        .collect::<Vec<_>>()
+        .join("\n ")
+}
+
+/// For each configured source directory, read all its inner subdirectories
+/// recursively into a separate Vec, so the end result will be a 2D Vec where
+/// the outer elements hold all subdirs of each of the configured source dirs,
+/// while the inner elements represent the actual subdir paths, e.g.:
+/// ```
+/// [
+///   [src_dir_1, src_dir_1/subdir1, src_dir_1/subdir2],
+///   [src_dir_2, src_dir_2/subdir1, src_dir_2/subdir2/another_subdir_level],
+/// ]
+/// ```
+fn walk_source_dirs_recursively(args: &Args) -> Vec<Vec<PathBuf>> {
     fn walk_dir(
         source_dir: PathBuf,
         vec_accum: &mut Vec<PathBuf>,
@@ -644,11 +706,16 @@ fn walk_source_dirs_recursively(args: &Args) -> Vec<PathBuf> {
         Ok(())
     }
 
-    let mut new_source_dirs = Vec::new();
-
-    args.source_dir.clone().into_iter().for_each(|d| {
-        walk_dir(d, &mut new_source_dirs, args).ok();
-    });
-
-    new_source_dirs
+    args.source_dirs.clone()
+        .into_iter()
+        .flat_map(|source_dir|
+            source_dir
+                .into_iter()
+                .map(|d| {
+                    let mut start_vec: Vec<PathBuf> = Vec::new();
+                    walk_dir(d, &mut start_vec, args).ok();
+                    start_vec
+                })
+        )
+        .collect()
 }

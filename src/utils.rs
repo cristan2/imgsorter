@@ -493,9 +493,9 @@ fn indent_string_snipped(indent_level: usize, file_name: String, is_last_dir: bo
     format!("{}{}{}", indents_symbols.repeat(indent_level), entry_symbol, file_name)
 }
 
-/// For any given vec of sets of filenames, check the last set against
-/// all previous sets successively remove duplicates, thus ensuring
-/// the current set contains only the first instance of any filename
+/// For any given vec of sets of filenames, check the set at the last index
+/// against all previous sets and progressively remove any duplicates, thus
+/// ensuring the last set contains only the first instance of any filename
 pub fn keep_unique_across_sets(all_dirs: &[HashSet<OsString>]) -> HashSet<OsString> {
     if all_dirs.is_empty() {
         return HashSet::new();
