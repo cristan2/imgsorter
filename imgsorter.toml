@@ -139,3 +139,11 @@ silent = false
 image = [ "psd", "gif" ]
 video = [ ]
 audio = [ ]
+
+##########################################################################################
+# ADVANCED
+# These settings allow you to customize options which may affect the performance of the program
+##########################################################################################
+[advanced]
+
+max_threads = 10

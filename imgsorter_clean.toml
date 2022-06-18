@@ -35,3 +35,6 @@ silent = false
 image = [ "psd", "gif" ]
 video = [ ]
 audio = [ ]
+
+[advanced]
+max_threads = 10

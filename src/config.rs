@@ -31,6 +31,7 @@ const DEFAULT_TARGET_SUBDIR: &str = "imgsorted";
 pub const DEFAULT_UNKNOWN_DEVICE_DIR_NAME: &str = "Unknown";
 pub const DEFAULT_NO_DATE_STR: &str = "no date";
 pub const DATE_DIR_FORMAT: &str = "%Y.%m.%d";
+pub const DEFAULT_MAX_THREADS: usize = 10;
 
 #[derive(Debug, Clone)]
 pub struct Args {
@@ -115,6 +116,9 @@ pub struct Args {
 
     /// User-defined extensions for files to be processed which otherwise the program would skip
     pub custom_extensions: HashMap<String, Vec<String>>,
+
+    /// The number of threads to use when doing threaded work like parsing source files
+    pub max_threads: usize,
 }
 
 impl Args {
@@ -149,6 +153,7 @@ impl Args {
             custom_device_names: HashMap::new(),
             non_custom_device_names: HashSet::new(),
             custom_extensions,
+            max_threads: DEFAULT_MAX_THREADS,
         })
     }
 
@@ -489,6 +494,21 @@ impl Args {
                                     None =>
                                         missing_vals.push(String::from("custom")),
                                 } // end config custom data
+
+                                /* --- Parse advanced configuration --- */
+
+                                match toml_content.get("advanced") {
+                                    Some(advanced_opt) => {
+                                        if let Some(advanced) = advanced_opt.as_table() {
+                                            if let Some(max_threads) = get_positive_integer_value(advanced, "max_threads", &mut missing_vals, &mut invalid_vals) {
+                                                args.max_threads = max_threads as usize;
+                                            }
+                                        }
+                                    },
+
+                                    None =>
+                                        missing_vals.push(String::from("advanced")),
+                                }
                             }
                             None => {
                                 println!("Could not parse TOML into a key-value object");

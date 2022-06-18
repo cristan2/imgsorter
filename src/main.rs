@@ -1281,7 +1281,7 @@ fn parse_source_dirs_threaded(
         println!("Reading source files...")
     }
 
-    let chunks_count = 10;  // needs to be args.max_threads - 1
+    let chunks_count = args.max_threads - 1;
     if args.verbose {
         println!("> using {} threads for {} files", chunks_count, total_no_files);
     }
